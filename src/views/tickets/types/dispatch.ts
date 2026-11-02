@@ -445,6 +445,7 @@ export interface DispatchLogEntry {
   /** 命中的入池规则名；未命中记「默认池」 */
   ruleName: string;
   globalMode: PoolMode;
+  /** 归属池派单方式（字段名沿用） */
   groupMode: PoolMode;
   /** 生效派单方式（较严者） */
   effectiveMode: PoolMode;

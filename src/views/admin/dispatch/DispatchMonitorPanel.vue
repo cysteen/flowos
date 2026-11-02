@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控（PRD 14.1）：页头统一筛选与派单日志入口；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 组池卡）→ 池积压与处理人负载
+// 分派监控（PRD 14.1）：页头统一筛选与派单日志入口；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
@@ -29,8 +29,8 @@ const RANGE_OPTS = [{ value: 'today', label: '今日' }, { value: '7d', label: '
 const RANGE_TEXT: Record<RangeKey, string> = { today: '今日', '7d': '近 7 日', '30d': '近 30 日' };
 const poolFilter = ref<string>('all');
 const poolFilterOpts = computed(() => [
-  { value: 'all', label: '全部组池' },
-  ...store.groups.map((g) => ({ value: g.id, label: store.poolLabel(g.id) })),
+  { value: 'all', label: '全部工单池' },
+  ...store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })),
 ]);
 const poolScope = computed(() => (poolFilter.value === 'all' ? null : [poolFilter.value]));
 
@@ -46,7 +46,7 @@ const poolRows = computed(() => {
   void store.ticketStates;
   return store.poolViews();
 });
-const backlogTableRows = computed(() => poolRows.value.filter((p) => !poolScope.value || poolScope.value.includes(p.id)));
+const backlogTableRows = computed(() => poolRows.value.filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id))));
 const backlog = computed(() => {
   const rows = backlogTableRows.value;
   return {
@@ -135,7 +135,7 @@ const logOpen = ref(false);
           </div>
           <span class="filter-divider" aria-hidden="true" />
           <div class="filter-item">
-            <span class="filter-label">组池</span>
+            <span class="filter-label">工单池</span>
             <a-select v-model:value="poolFilter" size="small" class="mon-pool-select" :options="poolFilterOpts" />
           </div>
           <a-button type="primary" size="small" @click="logOpen = true"><template #icon><FileSearchOutlined /></template>派单日志</a-button>

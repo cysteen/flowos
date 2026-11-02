@@ -56,7 +56,7 @@ function query() {
 }
 
 const agentOpts = computed(() => store.agents.map((a) => ({ value: a.name, label: `${a.name}（${a.staffNo}）` })));
-const poolOpts = computed(() => store.groups.map((g) => ({ value: g.id, label: store.poolLabel(g.id) })));
+const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
 
 function personOf(l: DispatchLogEntry): string | undefined {
   return l.kind === '人工' ? l.manual?.target : l.chosen?.name;
@@ -87,7 +87,7 @@ const cols = [
   { title: '派单方式', key: 'mode', width: 90 },
   { title: '判定路径', key: 'path', width: 100 },
   { title: '中选坐席', key: 'chosen', width: 150 },
-  { title: '失败原因', key: 'fail', width: 110 },
+  { title: '失败原因', key: 'fail', width: 140 },
   { title: '标记', key: 'flag', width: 110 },
 ];
 
@@ -110,7 +110,7 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属组派单方式', '运行方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '运行方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
@@ -217,7 +217,7 @@ function exportCsv() {
             <div class="lg-sec-t">派单方式</div>
             <div class="lg-kvs">
               <div class="lg-kv"><span>全局</span><b>{{ record.globalMode }}</b></div>
-              <div class="lg-kv"><span>归属组</span><b>{{ record.groupMode }}</b></div>
+              <div class="lg-kv"><span>归属池</span><b>{{ record.groupMode }}</b></div>
               <div class="lg-kv"><span>运行方式</span><b>{{ record.runMode }}</b></div>
               <template v-if="record.trial">
                 <div class="lg-kv"><span>建议处理人</span><b>{{ record.trial.suggested ?? '—' }}</b></div>
