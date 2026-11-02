@@ -952,6 +952,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
 
   /** 外部服务（【1215】派单引擎）写一条系统履历并落快照 */
   function appendLog(no: string, partial: Omit<TimelineEntry, 'id' | 'when'>) {
+    // 外部服务可能早于列表 / 处理页调用：先装载缓存，否则落快照会用种子态盖掉缓存
+    hydrate();
     if (!rowOf(no)) return;
     log(no, Date.now(), partial);
     bump(no);
@@ -960,6 +962,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
 
   /** 处理页改了状态后同步回工单库（领取 / 调剂等走通用咨询单流程时用） */
   function syncStatus(no: string, status: string, opts?: { assignee?: string | null }) {
+    hydrate();
     const r = rowOf(no);
     if (!r) return;
     r.nodeStatus = status as Ticket['nodeStatus'];

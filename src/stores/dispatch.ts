@@ -879,7 +879,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     try {
       if (isRefundTicket(t)) useRefundStore();
       else if (isFlashTicket(t)) useFlashStore();
-      else if (isXiaozhiTicket(t)) useXiaozhiStore();
+      // 小智服务建立时不回填缓存，须显式装载（N2：未装载时池内判定读到种子态，会把已派出的单再派一次）
+      else if (isXiaozhiTicket(t)) useXiaozhiStore().hydrate();
     } catch {
       /* 服务不可用时按工单行现值判定 */
     }
@@ -889,7 +890,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     try {
       useRefundStore();
       useFlashStore();
-      useXiaozhiStore();
+      useXiaozhiStore().hydrate();
     } catch {
       /* 同上 */
     }
