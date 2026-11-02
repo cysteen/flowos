@@ -7,6 +7,7 @@ import { CUSTOMER_DIRECTORY } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
+import { FLASH_SLA_FIRST_LIMIT_MS, readSla } from '@/views/tickets/utils/slaClock';
 import {
   registerDispatchEngine, type DispatchContext, type DispatchOutcome,
 } from '@/views/tickets/composables/aftersaleEvents';
@@ -47,6 +48,8 @@ const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
 const MIN = 60_000;
 const SYSTEM = '系统';
+/** 通用工单首响时限（分钟）：工单 SLA 规则按优先级配置的完整时限，与建单表单的 SLA 起算同源 */
+const FIRST_RESP_LIMIT_MIN: Record<string, number> = { P0: 15, P1: 480, P2: 480, P3: 480 };
 
 /* ------------------------------------------------------------------ */
 /* 工具                                                                 */
@@ -648,15 +651,44 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /* ---------------- SLA ---------------- */
 
-  /** 首响 SLA 剩余比例（0–1）；无首响 SLA 为 null */
-  function slaRemainRatio(t: Ticket, st: TicketDispatchState, now: number): number | null {
+  /**
+   * 首响时限与当前剩余（分钟，4.4）：时限取工单 SLA 规则配置的完整时限，不取进入派单时的剩余。
+   * 刷机 / 个册退费单按各自 SLA 账本（首响时限 30 分钟）；其余按优先级取首响时限（与建单起算同源），
+   * 种子单剩余大于配置值时以剩余为时限（比例不超过 1）。已首响、未计时或停钟的单无首响 SLA。
+   */
+  function firstRespOf(t: Ticket, now: number): { limitMin: number; remainMin: number } | null {
+    if (t.responded) return null;
+    if (isFlashTicket(t) || isRefundTicket(t)) {
+      const r = readSla(t, now);
+      if (!r || r.status !== 'running') return null;
+      return { limitMin: FLASH_SLA_FIRST_LIMIT_MS / MIN, remainMin: r.firstRemainMs / MIN };
+    }
+    if (!Number.isFinite(t.slaMinutes) || t.slaMinutes >= 9000) return null;
+    const remainMin = t.slaState === 'overdue' ? Math.min(t.slaMinutes, 0) : t.slaMinutes;
+    const limitMin = Math.max(FIRST_RESP_LIMIT_MIN[t.priority] ?? FIRST_RESP_LIMIT_MIN.P2, remainMin);
+    return { limitMin, remainMin };
+  }
+  /** 首响 SLA 剩余分钟（可为负＝已超时）；无首响 SLA 为 null */
+  function slaRemainRaw(t: Ticket, st: TicketDispatchState, now: number): number | null {
     if (!st.firstRespTotalMin || t.responded) return null;
-    const remain = st.firstRespTotalMin - (now - st.enteredAt) / MIN;
-    return Math.max(0, remain) / st.firstRespTotalMin;
+    // 旧缓存无截止时刻：按进入派单时剩余＝时限回落
+    const due = st.firstRespDueAt ?? st.enteredAt + st.firstRespTotalMin * MIN;
+    return (due - now) / MIN;
+  }
+  /** 首响剩余比例（0–1）＝首响 SLA 剩余 ÷ 首响时限（4.4）；无首响 SLA 为 null */
+  function slaRemainRatio(t: Ticket, st: TicketDispatchState, now: number): number | null {
+    const remain = slaRemainRaw(t, st, now);
+    if (remain == null) return null;
+    return Math.min(1, Math.max(0, remain) / st.firstRespTotalMin!);
   }
   function slaRemainMin(t: Ticket, st: TicketDispatchState, now: number): number | undefined {
-    if (!st.firstRespTotalMin || t.responded) return undefined;
-    return Math.max(0, Math.round(st.firstRespTotalMin - (now - st.enteredAt) / MIN));
+    const remain = slaRemainRaw(t, st, now);
+    return remain == null ? undefined : Math.max(0, Math.round(remain));
+  }
+  /** 首响已超时（4.4：进入派单或判定时已超时 → 直接兜底回池） */
+  function firstRespOverdue(t: Ticket, st: TicketDispatchState, now: number): boolean {
+    const remain = slaRemainRaw(t, st, now);
+    return remain != null && remain <= 0;
   }
 
   /* ---------------- 门槛（4.1） ---------------- */
@@ -752,6 +784,17 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   function decide(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, mode: PoolMode, now: number): Decision {
     if (mode === '停派态') return { path: '留池', assignee: null, status: null, relaxLevel: st.relaxLevel };
+
+    // 首响已超时（4.4）：进入派单或判定时已超时，直接兜底回池，不按「无首响 SLA」排队
+    if (mode === '正常态' && firstRespOverdue(t, st, now)) {
+      const g = gates(t, st, st.relaxLevel);
+      const failReason: DispatchFailReason | undefined = g.passed.length ? undefined
+        : g.blockedByCap.length ? '均达个人上限' : g.onDuty === 0 ? '无在班成员' : '无画像匹配成员';
+      return {
+        path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, drops: g.drops, candidateCount: 0,
+        ...(failReason ? { failReason } : {}),
+      };
+    }
 
     // 原处理人优先（降级态同样执行）
     const orig = trigger === '预留到期' ? undefined : findOriginalHandler(t, st, trigger, now);
@@ -922,6 +965,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         ruleId = r.ruleId;
       }
     }
+    const fr = firstRespOf(t, now);
     const st: TicketDispatchState = {
       ticketNo: t.no,
       poolId,
@@ -930,7 +974,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       status: null,
       relaxLevel: 0,
       queueSince: null,
-      firstRespTotalMin: !t.responded && t.slaMinutes > 0 && t.slaMinutes < 9000 ? t.slaMinutes : undefined,
+      ...(fr ? { firstRespTotalMin: fr.limitMin, firstRespDueAt: now + fr.remainMin * MIN } : {}),
       complaintTarget: opts.complaintTarget ?? prev?.complaintTarget,
       prevHandler: opts.prevHandler ?? undefined,
       seq: prev?.seq ?? 0,
@@ -1029,7 +1073,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     } else if (status === '等原处理人') {
       reason = `等原处理人 ${d.reserveFor}，${hm(d.reserveUntil!)} 到期`;
     } else if (status === '派单失败回池') {
-      reason = `自动派单未派出（${d.failReason}），已通知${g?.label ?? ''}班组长`;
+      reason = `自动派单未派出（${d.failReason ?? '首响已超时'}），已通知${g?.label ?? ''}班组长`;
     } else {
       reason = `留${poolLabel(st.poolId)}（${effectiveMode}）`;
     }
@@ -1066,8 +1110,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
       st.status = null;
     } else if (status === '派单失败回池' && prevStatus !== '派单失败回池') {
       const leaders = g?.leaders ?? [];
-      notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}自动派单未派出（${d.failReason}），请指派或调剂。`, '站内信');
-      notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}自动派单未派出（${d.failReason}），请指派或调剂。`, 'IM');
+      const why = d.failReason ?? '首响已超时';
+      notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}自动派单未派出（${why}），请指派或调剂。`, '站内信');
+      notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}自动派单未派出（${why}），请指派或调剂。`, 'IM');
       notifyPoolArrival(t, st.poolId);
     } else if (!actualAssign && trigger === '新单' && (effectiveMode !== '正常态' || trial)) {
       // 降级态、停派态、试运行：新单首次进池即发（恢复【1025】规则）；刷机、退费、小智单发各自的到组通知

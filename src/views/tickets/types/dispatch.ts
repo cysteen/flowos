@@ -464,8 +464,10 @@ export interface TicketDispatchState {
   /** 预留目标坐席与到期时刻（4.2） */
   reserveFor?: string;
   reserveUntil?: number;
-  /** 进入派单时首响 SLA 剩余与时限（分钟），用于 SLA 剩余比例；无首响 SLA 为空 */
+  /** 首响时限（分钟）：工单 SLA 规则配置的完整时限，首响剩余比例的分母（4.4）；无首响 SLA 为空 */
   firstRespTotalMin?: number;
+  /** 首响截止时刻（ms）：进入派单时刻 ＋ 当时的首响剩余；已超时的单早于进入派单时刻 */
+  firstRespDueAt?: number;
   /** 投诉对象（投诉回避） */
   complaintTarget?: string;
   /** 售后转回 / 回访打回：本单上一处理人 */

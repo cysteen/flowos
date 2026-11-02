@@ -73,7 +73,8 @@ const detailRows = computed(() => {
     .filter((t) => t.groupId === id && t.tab === 'pool' && !t.assignee && !t.archived && !t.isDraft)
     .map((t) => {
       const st = store.ticketStateOf(t.no);
-      const remain = st?.firstRespTotalMin != null ? Math.round(st.firstRespTotalMin - (now - st.enteredAt) / 60_000) : null;
+      const due = st?.firstRespTotalMin != null ? st.firstRespDueAt ?? st.enteredAt + st.firstRespTotalMin * 60_000 : null;
+      const remain = due != null && !t.responded ? Math.round((due - now) / 60_000) : null;
       return {
         ticket: t,
         no: t.no,
