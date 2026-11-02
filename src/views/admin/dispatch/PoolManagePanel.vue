@@ -10,11 +10,12 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
-import { MODE_TONE, useClock, waitText } from './dispatchUi';
+import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
-import { poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
+import { maxPoolWaitMinutes, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
+import { waitText as poolWaitText } from '@/views/tickets/composables/dispatchUi';
 import './dispatchTheme.css';
 
 const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
@@ -22,13 +23,18 @@ const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 const store = useDispatchStore();
 const clock = useClock();
 const reactiveTickets = reactive(TICKETS) as Ticket[];
-/** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态（与班组看板同口径） */
-const pendingCounts = computed(() => {
+/** 池内待派与其最长等待：池内全部未领取（无处理人）的工单，不区分派单方式与派单状态（与班组看板同口径） */
+const pendingStats = computed(() => {
   void clock.value;
   void store.ticketStates;
-  return new Map(allRows.value.map((p) => [p.id, poolTicketsOfPool(p.id, reactiveTickets).length]));
+  const now = Date.now();
+  return new Map(allRows.value.map((p) => {
+    const list = poolTicketsOfPool(p.id, reactiveTickets);
+    return [p.id, { count: list.length, maxWait: maxPoolWaitMinutes(list, now) ?? 0 }];
+  }));
 });
-const pendingOf = (id: string) => pendingCounts.value.get(id) ?? 0;
+const pendingOf = (id: string) => pendingStats.value.get(id)?.count ?? 0;
+const pendingWaitOf = (id: string) => pendingStats.value.get(id)?.maxWait ?? 0;
 
 const allRows = computed(() => {
   void clock.value;
@@ -102,13 +108,14 @@ function rulesOf(poolId: string): string {
   if (poolId === DEFAULT_POOL_ID) names.push('未命中任何规则');
   return names.join('、') || '—';
 }
-/** 次要派单计数：只列非 0 项并标色，另附最长等待 */
-function waitItems(p: { waitingOriginal: number; queued: number; failed: number; maxWaitMin: number }) {
+/** 次要派单计数：只列非 0 项并标色；均为 0 时显示一句汇总；池内有未领单时末尾附最长等待（池内全部未领单口径） */
+function waitItems(p: { id: string; waitingOriginal: number; queued: number; failed: number }) {
   const xs: { label: string; value: string | number; tone: string }[] = [];
   if (p.waitingOriginal) xs.push({ label: '等原处理人', value: p.waitingOriginal, tone: 'dx-warn' });
   if (p.queued) xs.push({ label: '排队中', value: p.queued, tone: 'dx-warn' });
   if (p.failed) xs.push({ label: '派单失败回池', value: p.failed, tone: 'dx-bad' });
-  xs.push({ label: '最长等待', value: waitText(p.maxWaitMin), tone: '' });
+  if (!xs.length) xs.push({ label: '等原处理人、排队中、派单失败回池均为 0', value: '', tone: '' });
+  if (pendingOf(p.id)) xs.push({ label: '最长等待', value: poolWaitText(pendingWaitOf(p.id)), tone: '' });
   return xs;
 }
 const globalStopped = computed(() => store.globalEffectiveMode() === '人工派单');
@@ -227,9 +234,8 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
             </div>
           </div>
           <div class="pm-sub">
-            <span v-if="!backlogOf(p)" class="pm-sub-st muted">等原处理人、排队中、派单失败回池均为 0</span>
-            <span v-else class="pm-sub-st">
-              <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template>
+            <span class="pm-sub-st">
+              <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i><span v-if="s.value === ''" class="muted">{{ s.label }}</span><template v-else>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template></template>
             </span>
           </div>
         </div>
