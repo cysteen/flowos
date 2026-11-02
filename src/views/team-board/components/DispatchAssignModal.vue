@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 【1215】班组长指派 / 改派弹窗（PRD 9.3）：标题「指派」/「改派」，按钮 [ 取消 ] [ 确定 ]；改派另有必填「改派原因」。
- * 候选为归属本组池的本组成员（不含当前处理人），每行「姓名 · 签入状态 · 在途 N / 上限 M」，
+ * 候选为工单所在池的处理组（本组）成员（不含当前处理人），每行「姓名 · 签入状态 · 在途 N / 上限 M」，
  * 画像匹配标「匹配」，超限 / 已满标橙色；不校验画像与个人开关，未签入、将超上限二次确认。
  * 跨组走调剂，本弹窗不出跨组选项。
  */
@@ -50,7 +50,11 @@ const candidates = computed<AssignCandidate[]>(() => {
   return props.groupId ? assignCandidatesOf(props.groupId, props.ticket) : [];
 });
 
-const poolText = computed(() => (props.groupId ? dispatch.poolLabel(props.groupId) : ''));
+/** 工单所在池（一个处理组可有多个池） */
+const poolText = computed(() => {
+  const id = props.ticket ? dispatch.poolIdOf(props.ticket) : props.groupId;
+  return id ? dispatch.poolLabel(id) : '';
+});
 
 function filterOption(input: string, option: { value?: string }) {
   return String(option.value ?? '').includes(input.trim());

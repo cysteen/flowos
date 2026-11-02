@@ -2,10 +2,10 @@
 /**
  * 【1215】班组看板 · 本组派单（PRD 5.4 / 6.5 / 7.5 / 8 / 9.3）。
  *
- * 班组长视角：本组派单方式（自动派单 / 混合派单 / 人工派单三档切换）、
+ * 班组长视角：处理组为本组的各工单池（每池一行：池名、派单方式及切换、池内待派、最长等待）、
  * 本组成员（签入状态、在途 / 上限、超限 / 超额指派、熟练度、画像配置、个人开关）及其维护，
- * 本组池待领工单与组内指派。组跟随班组看板顶部「班组」筛选；
- * 所选组非派单组、或当前登录人非该组班组长时整块不渲染。
+ * 各池待领工单合并显示（带「所在池」）与组内指派。组跟随班组看板顶部「班组」筛选；
+ * 所选组非派单组、本组名下没有启用中的池、或当前登录人非该组班组长时整块不渲染。
  */
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -22,10 +22,10 @@ import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
 import {
   DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
-  groupModeDisabledTip, modeTagOf, reassignableTicketsOf, reserveTipOf,
+  modeTagOf, reassignableTicketsOf, reserveTipOf,
   waitText,
 } from '@/views/tickets/composables/dispatchUi';
-import { maxPoolWaitMinutes, poolTicketsOf, poolWaitMinutesOf } from './dispatchPoolTickets';
+import { maxPoolWaitMinutes, poolTicketsOf, poolTicketsOfPool, poolWaitMinutesOf } from './dispatchPoolTickets';
 
 const props = defineProps<{ groupId?: string | null }>();
 
@@ -33,24 +33,40 @@ const router = useRouter();
 const dispatch = useDispatchStore();
 const user = useUserStore();
 
+const reactiveTickets = reactive(TICKETS) as Ticket[];
 const nowMs = ref(Date.now());
 const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 onBeforeUnmount(() => window.clearInterval(timer));
 
 /* ---------------- 当前组：顶部班组筛选所选、且本人任班组长的派单组 ---------------- */
 
+/** 处理组为本组的启用中工单池；没有池时整块不渲染 */
+const pools = computed(() => {
+  void dispatch.pools;
+  return props.groupId ? dispatch.poolsOfGroup(props.groupId, true) : [];
+});
 const group = computed(() => {
   const g = props.groupId ? dispatch.groupOf(props.groupId) : undefined;
-  return g && g.leaders.includes(user.name) ? g : undefined;
+  return g && g.leaders.includes(user.name) && pools.value.length ? g : undefined;
 });
 const groupId = computed(() => group.value?.id ?? null);
 
-const poolView = computed(() => {
+/** 每池一行：池名、派单方式（较严者）、池内待派、最长等待 */
+const poolRows = computed(() => {
   void nowMs.value;
   void dispatch.ticketStates;
-  return dispatch.poolViews().find((p) => p.id === groupId.value);
+  return pools.value.map((p) => {
+    const list = poolTicketsOfPool(p.id, reactiveTickets);
+    const mode = dispatch.effectiveModeOf(p.id);
+    return { id: p.id, name: p.name, mode, tag: modeTagOf(mode), pending: list.length, maxWait: maxPoolWaitMinutes(list, nowMs.value) };
+  });
 });
-const effectiveTag = computed(() => (groupId.value ? modeTagOf(dispatch.effectiveModeOf(groupId.value)) : null));
+/** 本组成员画像配置 */
+const profileStat = computed(() => {
+  void dispatch.agents;
+  const ms = groupId.value ? dispatch.membersOf(groupId.value) : [];
+  return { configured: ms.filter((a) => dispatch.agentView(a.name)?.profileConfigured).length, total: ms.length };
+});
 
 const tab = ref<'members' | 'pool' | 'transit'>('members');
 
@@ -60,22 +76,25 @@ function showPool() {
 }
 defineExpose({ showPool });
 
-/* ---------------- 本组派单方式（5.4） ---------------- */
+/* ---------------- 本池派单方式（5.4）：班组长可切处理组为本组的各池 ---------------- */
 
-const modeTip = computed(() => (groupId.value ? groupModeDisabledTip(groupId.value) : ''));
+const modeTip = computed(() => (dispatch.globalEffectiveMode() === '人工派单' ? '全局为人工派单，本池派单方式不可切换' : ''));
 const modeOpen = ref(false);
+const modePoolId = ref<string | null>(null);
+const modePool = computed(() => (modePoolId.value ? dispatch.poolOf(modePoolId.value) : undefined));
 const modeTarget = ref<PoolMode | undefined>(undefined);
 const modeReason = ref('');
 
-function openMode() {
+function openMode(poolId: string) {
   if (modeTip.value) return;
+  modePoolId.value = poolId;
   modeTarget.value = undefined;
   modeReason.value = '';
   modeOpen.value = true;
 }
 function onModeOk() {
-  const g = group.value;
-  if (!g) return;
+  const p = modePool.value;
+  if (!p) return;
   if (!modeTarget.value) {
     message.warning('请选择切换后的派单方式');
     return;
@@ -88,7 +107,7 @@ function onModeOk() {
     message.warning('切换原因最多 200 字');
     return;
   }
-  const res = dispatch.setPoolMode(g.id, modeTarget.value, modeReason.value, user.name);
+  const res = dispatch.setPoolMode(p.id, modeTarget.value, modeReason.value, user.name);
   if (!res.ok) {
     if (res.message) message.warning(res.message);
     return;
@@ -172,15 +191,16 @@ function saveCap(force = false) {
   message.success(res.message);
 }
 
-/* ---------------- 本组池待领工单 · 指派（9.3） ---------------- */
+/* ---------------- 本组各池待领工单（合并显示）· 指派（9.3） ---------------- */
 
-const reactiveTickets = reactive(TICKETS) as Ticket[];
 const poolTickets = computed(() => {
   void dispatch.ticketStates;
   return poolTicketsOf(groupId.value, reactiveTickets);
 });
-/** 头部「最长等待」：与池列表「等待时长」列同口径（PRD「等待时长」行） */
-const poolMaxWait = computed(() => maxPoolWaitMinutes(poolTickets.value, nowMs.value));
+function poolNameOf(t: Ticket): string {
+  const id = dispatch.poolIdOf(t);
+  return id ? dispatch.poolLabel(id) : '—';
+}
 
 const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
@@ -213,7 +233,8 @@ function slaText(t: Ticket): string {
 }
 
 const memberCols = 'minmax(132px, 1.2fr) 84px minmax(150px, 1.2fr) 72px minmax(180px, 2fr) 84px 148px';
-const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 120px 104px 120px 76px';
+const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) minmax(120px, 1fr) 60px 120px 104px 120px 76px';
+const poolRowCols = 'minmax(180px, 2fr) minmax(200px, 2fr) 96px 120px';
 const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 120px 76px';
 </script>
 
@@ -222,15 +243,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     <div class="card-hd">
       <h3 class="hd-title">本组派单</h3>
       <div class="hd-actions">
-        <div class="dtp-ctl">
-          <span class="dtp-ctl-label">本组派单方式</span>
-          <span class="dtp-mode">{{ dispatch.poolModeOf(group.id) }}</span>
-          <a-tooltip :title="modeTip || undefined">
-            <button type="button" class="btn-ghost" :disabled="!!modeTip" @click="openMode">
-              <SwapOutlined /> 切换派单方式
-            </button>
-          </a-tooltip>
-        </div>
         <div class="tabs">
           <div class="tab" :class="{ on: tab === 'members' }" @click="tab = 'members'">成员</div>
           <div class="tab" :class="{ on: tab === 'pool' }" @click="tab = 'pool'">池内工单 {{ poolTickets.length }}</div>
@@ -240,19 +252,35 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     </div>
 
     <div class="dtp-body">
-    <div v-if="poolView" class="dtp-stats">
-      <span>派单方式 <b v-if="!effectiveTag">{{ poolView.effectiveMode }}</b>
-        <span
-          v-if="effectiveTag"
-          class="dtp-tag"
-          :style="{ color: MODE_TAG_STYLE[effectiveTag].color, background: MODE_TAG_STYLE[effectiveTag].bg, borderColor: MODE_TAG_STYLE[effectiveTag].border }"
-        >{{ effectiveTag }}</span>
-      </span>
-      <span>等原处理人 <b>{{ poolView.waitingOriginal }}</b></span>
-      <span>排队中 <b>{{ poolView.queued }}</b></span>
-      <span>派单失败回池 <b :class="{ danger: poolView.failed > 0 }">{{ poolView.failed }}</b></span>
-      <span>最长等待 <b>{{ waitText(poolMaxWait) }}</b></span>
-      <span>已配置画像 <b>{{ poolView.configuredCount }} / {{ poolView.memberCount }}</b></span>
+    <!-- 本组工单池：每池一行 -->
+    <div class="dtp-pools">
+      <div class="thead grid" :style="{ gridTemplateColumns: poolRowCols }">
+        <div class="th">工单池</div>
+        <div class="th">派单方式</div>
+        <div class="th">池内待派</div>
+        <div class="th">最长等待</div>
+      </div>
+      <div v-for="r in poolRows" :key="r.id" class="trow grid" :style="{ gridTemplateColumns: poolRowCols }">
+        <div class="td"><span class="m-name ellipsis" :title="r.name">{{ r.name }}</span></div>
+        <div class="td">
+          <b v-if="!r.tag" class="dtp-mode">{{ r.mode }}</b>
+          <span
+            v-else
+            class="dtp-tag"
+            :style="{ color: MODE_TAG_STYLE[r.tag].color, background: MODE_TAG_STYLE[r.tag].bg, borderColor: MODE_TAG_STYLE[r.tag].border }"
+          >{{ r.tag }}</span>
+          <a-tooltip :title="modeTip || undefined">
+            <button type="button" class="btn-ghost" :disabled="!!modeTip" @click="openMode(r.id)">
+              <SwapOutlined /> 切换
+            </button>
+          </a-tooltip>
+        </div>
+        <div class="td num">{{ r.pending }}</div>
+        <div class="td">{{ waitText(r.maxWait) }}</div>
+      </div>
+      <div class="dtp-stats">
+        <span>已配置画像 <b>{{ profileStat.configured }} / {{ profileStat.total }}</b></span>
+      </div>
     </div>
 
     <!-- 成员 -->
@@ -327,6 +355,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <div class="thead grid" :style="{ gridTemplateColumns: poolCols }">
         <div class="th">工单号</div>
         <div class="th">标题</div>
+        <div class="th">所在池</div>
         <div class="th">优先级</div>
         <div class="th">派单状态</div>
         <div class="th">等待时长</div>
@@ -336,6 +365,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <div v-for="t in poolTickets" :key="t.no" class="trow grid" :style="{ gridTemplateColumns: poolCols }">
         <div class="td"><span class="link mono" @click="router.push(`/tickets/${t.no}`)">{{ t.no }}</span></div>
         <div class="td"><span class="ellipsis" :title="t.title">{{ t.type }} · {{ t.title }}</span></div>
+        <div class="td"><span class="ellipsis" :title="poolNameOf(t)">{{ poolNameOf(t) }}</span></div>
         <div class="td">{{ t.priority }}</div>
         <div class="td">
           <span
@@ -354,7 +384,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         <div class="td" :class="{ danger: t.slaMinutes < 0 && !t.responded }">{{ slaText(t) }}</div>
         <div class="td"><span class="link" @click="openAssign(t)">指派</span></div>
       </div>
-      <div v-if="!poolTickets.length" class="empty">本组池暂无待领工单</div>
+      <div v-if="!poolTickets.length" class="empty">本组工单池暂无待领工单</div>
     </div>
     </div>
 
@@ -370,20 +400,20 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       cancel-text="取消"
       @ok="onModeOk"
     >
-      <div class="op-form dtp-form">
+      <div v-if="modePool" class="op-form dtp-form">
         <div class="op-tip op-tip-warn">已派出、已领取的工单不收回</div>
         <div class="dtp-frow">
           <div class="op-label">范围</div>
-          <div class="dtp-ro">{{ dispatch.poolLabel(group.id) }}</div>
+          <div class="dtp-ro">{{ modePool.name }}</div>
         </div>
         <div class="dtp-frow">
           <div class="op-label">当前派单方式</div>
-          <div class="dtp-ro">{{ dispatch.poolModeOf(group.id) }}</div>
+          <div class="dtp-ro">{{ modePool.mode }}</div>
         </div>
         <div class="dtp-frow">
           <div class="op-label req">切换为</div>
           <a-radio-group v-model:value="modeTarget">
-            <a-radio v-for="m in POOL_MODES" :key="m" :value="m" :disabled="m === dispatch.poolModeOf(group.id)">{{ m }}</a-radio>
+            <a-radio v-for="m in POOL_MODES" :key="m" :value="m" :disabled="m === modePool.mode">{{ m }}</a-radio>
           </a-radio-group>
         </div>
         <div class="dtp-frow top">
@@ -485,6 +515,9 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 .dtp-stats b { margin-left: 4px; color: #0f172a; font-variant-numeric: tabular-nums; }
 .dtp-stats b.danger { color: #ef4444; }
 .dtp-stats .dtp-tag { margin-left: 6px; }
+.dtp-pools { border-bottom: 1px solid #eef2f7; }
+.dtp-pools .dtp-stats { border-bottom: none; padding-top: 8px; padding-bottom: 8px; }
+.dtp-pools .btn-ghost { height: 24px; padding: 0 8px; margin-left: 4px; }
 .tbl { overflow: auto; max-height: 420px; }
 .grid { display: grid; }
 .thead { position: sticky; top: 0; z-index: 1; background: #f8fafc; }
