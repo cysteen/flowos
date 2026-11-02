@@ -683,7 +683,7 @@ const RISK_HITS_SEED: RiskHit[] = [
     // 低档的第一条：客户只说要给差评，**没有指向任何外部渠道**，故 signal ＝ 无。
     // 「命中了规则但信号为无」不是矛盾：低档词的信号强度按 `signalOfWord` 本就落在「无」，
     // 手动筛查产出的低档命中也是这个组合。
-    id: 'h28', ticketNo: 'IFLYZX-20260609-00006', title: '@王坐席 请协助确认退款政策',
+    id: 'h28', ticketNo: 'IFLYZX-20260609-00006', title: '@张三 请协助确认退款政策',
     word: '差评', matchedWord: '给差评', level: '低', position: '沟通记录',
     excerpt: '退款政策这么算太不合理了，我只能去给差评了。',
     when: '2026-08-04 10:20:02', customer: '徐岚',

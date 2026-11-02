@@ -447,7 +447,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     add(row(8, {
       info, creator: '用户提报', customer: '梁红', phone: '13966018716',
       createdAt: at, updatedAt: handled,
-      nodeStatus: '处理中', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 3,
+      nodeStatus: '处理中', assignee: '张三', tab: 'mine', responded: true, nodeStep: 3,
       slaText: '07:05:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 425,
       upgradeCount: 1,
       flashState: state('用户提报', {
@@ -467,8 +467,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       acceptEntry(claim1, '刘一线', '一线坐席'),
       handleEntry(addSec(esc, -95), '刘一线', '一线坐席', '两次致电用户梁红均未接通，设备持续离线，一线无法跟进。'),
       escalateEntry(esc, '刘一线', '两次致电用户梁红均未接通，设备持续离线，一线无法跟进。'),
-      acceptEntry(claim2, '王坐席', '二线专员'),
-      handleEntry(handled, '王坐席', '二线专员', '已联系学校信息老师，请其协助通知学生家长将平板开机联网。'),
+      acceptEntry(claim2, '张三', '二线专员'),
+      handleEntry(handled, '张三', '二线专员', '已联系学校信息老师，请其协助通知学生家长将平板开机联网。'),
     ]);
   }
 

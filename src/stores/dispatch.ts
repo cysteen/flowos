@@ -41,7 +41,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 5;
+export const DISPATCH_CACHE_VERSION = 6;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -130,12 +130,14 @@ function seedAgents(now: number): DispatchAgent[] {
     };
   };
   return [
-    // 王坐席：老四类与教育刷机处理组种子单的二线处理人（flash 种子）；名下种子在途单多，个人上限设 40 不超限
+    // 王坐席：另一位二线坐席，名下只留少量种子单（原处理人、他人在途演示）；个人上限按默认值
     a('王坐席', 'E2001', ['二线专员'], ['line2', 'edu-flash'], {
-      proficiency: '专家', capOverride: 40, lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
+      proficiency: '专家', lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
     }),
-    // 张三：二线专员演示账号；同属教育刷机处理组（刷机池演示）、教育支持组（个册退费种子单的组员）
+    // 张三：二线专员演示账号，种子单的演示处理人（我的任务、已办、审核、催补等）；同属教育刷机处理组（刷机池演示）、
+    // 教育支持组（个册退费种子单的组员）。名下种子在途 34 张，个人上限设 40：不超限，并留出几张名额接引擎派单
     a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {
+      capOverride: 40,
       profile: { ...ANY, ticketTypes: ['咨询', '建议'], products: [{ category: '智能硬件' }] },
       lastTakenAt: now - 50 * MIN, recentTakes: [now - 50 * MIN],
     }),

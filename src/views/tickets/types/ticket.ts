@@ -102,8 +102,12 @@ export type ChipKey = MineChipKey | DoneChipKey | MentionChipKey | ReviewChipKey
 /** 待审核 · 送审原因 */
 export type ReviewReason = '挂起送审' | '强结送审' | '关单送审';
 
-/** 原型当前登录坐席对应的处理人姓名（与 mock 工单 assignee 对齐） */
-export const WORKBENCH_HANDLER = '王坐席';
+/**
+ * 种子单的演示二线处理人（与 mock 工单 assignee 对齐）：二线专员演示账号「张三」
+ * （【1215】演示身份统一：登录人、处理人、派单坐席三者同一人；「王坐席」是另一位二线坐席）。
+ * 只作种子口径与 `upgradedByMe` 主责回落用；运行时判「我」一律取登录人姓名。
+ */
+export const WORKBENCH_HANDLER = '张三';
 
 export type TicketType = CreateFormTicketType;
 export type Channel = '在线客服' | '电话' | '邮件' | '小程序' | 'APP';
