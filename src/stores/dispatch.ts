@@ -659,6 +659,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function firstRespOf(t: Ticket, now: number): { limitMin: number; remainMin: number } | null {
     if (t.responded) return null;
     if (isFlashTicket(t) || isRefundTicket(t)) {
+      // 个册退费单整单首响一经记下即停（驳回回退、自动下送后 responded 复位也不重开首响钟）
+      if (isRefundTicket(t) && t.refund?.state.firstRespAt) return null;
       const r = readSla(t, now);
       if (!r || r.status !== 'running') return null;
       return { limitMin: FLASH_SLA_FIRST_LIMIT_MS / MIN, remainMin: r.firstRemainMs / MIN };

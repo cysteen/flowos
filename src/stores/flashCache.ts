@@ -50,8 +50,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v28：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒），v27 快照里的分钟级时间作废。
  * v29：⑧ 二线处理人由「王坐席」改归演示账号「张三」（【1215】演示身份统一），旧快照作废。
  * v30：领取履历内容记「领取」（【1215】13.1），旧快照作废。
+ * v31：⑪ 池内待派演示单改为只计时 5 分钟（首响剩余充足，【1215】自动派单可演示），旧快照作废。
  */
-export const FLASH_CACHE_VERSION = 30;
+export const FLASH_CACHE_VERSION = 31;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

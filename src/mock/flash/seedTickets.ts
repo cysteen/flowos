@@ -526,14 +526,15 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '沈建', phone: '13505536419',
       createdAt: at, updatedAt: esc,
       // 一线不计 SLA：进教育刷机处理组池才起算，首响钟从进池时刻开始（1013 A26）
+      // 池内待派演示单：按加载时刻倒推只计时 5 分钟，首响剩余 25 分钟，进入派单可正常派出（【1215】）
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, nodeStep: 2,
-      slaText: '02:15:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 135,
+      slaText: '07:55:00', slaSub: '充足', slaState: 'ok', slaMinutes: 475,
       upgradeCount: 1,
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 1,
         handoffReason: '一线升级', pool: 'l2',
         result: '需升级二线', record: '已致电用户沈建，设备在线但系统版本过低，用户端检查更新无可用升级包，一线无法处理。',
-        ...ledger(nowMs, esc, 135),
+        ...ledger(nowMs, esc, 475),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
     }), [
