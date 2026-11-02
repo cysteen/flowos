@@ -1079,7 +1079,7 @@ watch(teamId, () => {
 
     <!-- 【1215】本组派单：本组派单方式、成员派单设置、池内工单指派 -->
     <div ref="dispatchAnchor">
-      <DispatchTeamPanel ref="dispatchPanelRef" />
+      <DispatchTeamPanel ref="dispatchPanelRef" :group-id="teamId" />
     </div>
 
     <!-- 工作时长分布：本组各工作类型时长与占比（话务条状态流水，组级） -->

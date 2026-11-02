@@ -4,9 +4,10 @@
  *
  * 班组长视角：本组派单方式（自动派单 / 混合派单 / 人工派单三档切换）、
  * 本组成员（签入状态、在途 / 上限、超限 / 超额指派、熟练度、画像配置、个人开关）及其维护，
- * 本组池待领工单与组内指派。组取当前登录人任班组长的派单组。
+ * 本组池待领工单与组内指派。组跟随班组看板顶部「班组」筛选；
+ * 所选组非派单组、或当前登录人非该组班组长时整块不渲染。
  */
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { SwapOutlined, ControlOutlined } from '@ant-design/icons-vue';
@@ -25,6 +26,8 @@ import {
   waitMinutesOf, waitText,
 } from '@/views/tickets/composables/dispatchUi';
 
+const props = defineProps<{ groupId?: string | null }>();
+
 const router = useRouter();
 const dispatch = useDispatchStore();
 const user = useUserStore();
@@ -33,14 +36,13 @@ const nowMs = ref(Date.now());
 const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 onBeforeUnmount(() => window.clearInterval(timer));
 
-/* ---------------- 本人任班组长的派单组 ---------------- */
+/* ---------------- 当前组：顶部班组筛选所选、且本人任班组长的派单组 ---------------- */
 
-const myGroups = computed(() => dispatch.groups.filter((g) => g.leaders.includes(user.name)));
-const groupId = ref<string | null>(null);
-watch(myGroups, (gs) => {
-  if (!gs.some((g) => g.id === groupId.value)) groupId.value = gs[0]?.id ?? null;
-}, { immediate: true });
-const group = computed(() => (groupId.value ? dispatch.groupOf(groupId.value) : undefined));
+const group = computed(() => {
+  const g = props.groupId ? dispatch.groupOf(props.groupId) : undefined;
+  return g && g.leaders.includes(user.name) ? g : undefined;
+});
+const groupId = computed(() => group.value?.id ?? null);
 
 const poolView = computed(() => {
   void nowMs.value;
@@ -221,6 +223,11 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
   <div v-if="group" class="card dtp">
     <div class="card-hd">
       <h3 class="hd-title">本组派单</h3>
+      <span
+        v-if="effectiveTag"
+        class="dtp-pool-badge"
+        :style="{ color: MODE_TAG_STYLE[effectiveTag].color, background: MODE_TAG_STYLE[effectiveTag].bg, borderColor: MODE_TAG_STYLE[effectiveTag].border }"
+      >{{ effectiveTag }}</span>
       <div class="hd-actions">
         <div class="dtp-ctl">
           <span class="dtp-ctl-label">本组派单方式</span>
@@ -238,30 +245,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         </div>
       </div>
     </div>
-
-    <nav v-if="myGroups.length" class="dtp-pool-nav" role="tablist" aria-label="组池">
-      <button
-        v-for="g in myGroups"
-        :key="g.id"
-        type="button"
-        role="tab"
-        class="dtp-pool-tab"
-        :class="{ on: g.id === groupId }"
-        :aria-selected="g.id === groupId"
-        @click="groupId = g.id"
-      >
-        <span class="dtp-pool-name">{{ dispatch.poolLabel(g.id) }}</span>
-        <span
-          v-if="g.id === groupId && modeTagOf(dispatch.effectiveModeOf(g.id))"
-          class="dtp-pool-badge"
-          :style="{
-            color: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].color,
-            background: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].bg,
-            borderColor: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].border,
-          }"
-        >{{ modeTagOf(dispatch.effectiveModeOf(g.id)) }}</span>
-      </button>
-    </nav>
 
     <div class="dtp-body">
     <div v-if="poolView" class="dtp-stats">
@@ -475,44 +458,8 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 }
 .hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; flex: none; }
 .hd-actions { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
-.dtp-pool-nav {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding: 0 8px;
-  border-bottom: 1px solid #eef2f7;
-  background: #fbfcfe;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.dtp-pool-tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  margin: 0;
-  padding: 11px 14px 10px;
-  font-size: 13px;
-  line-height: 1.35;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.dtp-pool-tab:hover { color: #334155; background: rgba(255, 255, 255, 0.65); }
-.dtp-pool-tab.on {
-  color: #1a6fff;
-  font-weight: 600;
-  border-bottom-color: #1a6fff;
-  background: #fff;
-}
-.dtp-pool-name { max-width: 168px; overflow: hidden; text-overflow: ellipsis; }
 .dtp-pool-badge {
-  display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: -8px; flex: none;
   font-size: 11px; font-weight: 500; border: 1px solid transparent; border-radius: 4px;
 }
 .dtp-body { display: flex; flex-direction: column; min-width: 0; background: #fff; }
