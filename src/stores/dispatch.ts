@@ -874,6 +874,27 @@ export const useDispatchStore = defineStore('dispatch', () => {
     t.eventTimeline = [...(t.eventTimeline ?? []), { id: `dispatch-${t.no}-${nextId('tl')}`, ...e }];
   }
 
+  /** 专属工单的服务在判定前建立（建立时按各自缓存回填工单行，须早于派单写入） */
+  function ensureSpecialService(t: Ticket) {
+    try {
+      if (isRefundTicket(t)) useRefundStore();
+      else if (isFlashTicket(t)) useFlashStore();
+      else if (isXiaozhiTicket(t)) useXiaozhiStore();
+    } catch {
+      /* 服务不可用时按工单行现值判定 */
+    }
+  }
+
+  function ensureAllSpecialServices() {
+    try {
+      useRefundStore();
+      useFlashStore();
+      useXiaozhiStore();
+    } catch {
+      /* 同上 */
+    }
+  }
+
   /** 专属工单落快照（刷机 / 小智由各自履历写入时已落，个册退费在此落） */
   function commitSpecial(t: Ticket) {
     if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
@@ -992,6 +1013,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
    * 判定并落库。`write=false` 时只判定与记日志、不改工单行（售后回传 resolver 用：工单行由调用方组装）。
    */
   function run(t: Ticket, trigger: DispatchTrigger, opts: DispatchOptions, write: boolean): DispatchResult | null {
+    // 专属工单的服务先就绪（G5）：服务首次建立时会用自己的缓存回填工单行，
+    // 若在派出之后才建立，会把刚写的处理人盖回池内态（日志记已派出、工单仍在池里）
+    ensureSpecialService(t);
     // 先到先得：已有处理人不判定
     if (t.assignee) return null;
     const now = Date.now();
@@ -1523,6 +1547,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function resumePools(groupIds: string[]): number {
     if (config.value.runMode === '试运行' && !config.value.globalSwitch) return 0;
     let n = 0;
+    // 专属工单服务先按各自缓存回填工单行，再按工单行现值筛池内单（G5）
+    ensureAllSpecialServices();
     for (const raw of TICKETS) {
       if (raw.assignee || raw.tab !== 'pool' || raw.nodeStatus !== '未认领' || !raw.groupId || !groupIds.includes(raw.groupId)) continue;
       if (raw.archived || raw.isDraft) continue;
