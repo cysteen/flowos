@@ -1,16 +1,17 @@
 <script setup lang="ts">
-// 坐席画像（PRD 14.5）：只读看板；概览条 → 筛选 → 左侧坐席列表 · 右侧选中坐席画像详情；「去编辑」跳转用户管理该坐席
+// 坐席画像（PRD 14.5）：概览条 → 筛选 → 左侧坐席列表 · 右侧选中坐席画像详情；
+// 「去编辑」在本页打开派单设置抽屉；勾选坐席后批量设置画像；画像变更记录
 import { computed, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { EditOutlined, SearchOutlined, TeamOutlined, IdcardOutlined, WarningOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, SearchOutlined, TeamOutlined, IdcardOutlined, WarningOutlined, ThunderboltOutlined, HistoryOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import { PROFICIENCIES, SIGN_IN_STATUSES } from '@/views/tickets/types/dispatch';
 import { opts, profileItems, profileSummary, useClock } from './dispatchUi';
+import DispatchSettingsDrawer from './DispatchSettingsDrawer.vue';
+import BatchProfileModal from './BatchProfileModal.vue';
 import './dispatchTheme.css';
 
 const store = useDispatchStore();
-const router = useRouter();
 const clock = useClock();
 
 const f = reactive<{ group?: string; signIn?: string; proficiency?: string; unconfigured: boolean; personal?: string; kw: string }>({
@@ -100,7 +101,30 @@ function loadFactorColor(f: number) {
 const SIGN_COLOR: Record<string, string> = { 签入: '#10b981', 小休: '#f59e0b', 签出: '#9ca3af' };
 
 function dimTags(text: string) { return text === '不限' || text === '未设' ? [] : text.split('、'); }
-function goEdit(name: string) { router.push({ path: '/admin/users', query: { agent: name } }); }
+
+/* 派单设置抽屉 · 批量设置画像 · 画像变更记录（PRD 6.5 / 14.5） */
+const settingsOpen = ref(false);
+const settingsName = ref<string | null>(null);
+function goEdit(name: string) { settingsName.value = name; settingsOpen.value = true; }
+
+const selectedKeys = ref<string[]>([]);
+const rowSelection = computed(() => ({
+  selectedRowKeys: selectedKeys.value,
+  onChange: (keys: (string | number)[]) => { selectedKeys.value = keys.map(String); },
+}));
+const batchOpen = ref(false);
+
+const recordOpen = ref(false);
+const PROFILE_AUDIT_KINDS = ['人员画像', '熟练度', '个人上限', '个人开关'];
+const profileAudits = computed(() => [...store.audits].filter((a) => PROFILE_AUDIT_KINDS.includes(a.kind)).reverse());
+const recordCols = [
+  { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
+  { title: '操作人', dataIndex: 'operator', key: 'operator', width: 90 },
+  { title: '坐席', dataIndex: 'target', key: 'target', width: 90 },
+  { title: '类型', dataIndex: 'kind', key: 'kind', width: 90 },
+  { title: '变更前', dataIndex: 'before', key: 'before', ellipsis: true },
+  { title: '变更后', dataIndex: 'after', key: 'after', ellipsis: true },
+];
 function rowClass(name: string) {
   const c = ['profile-row'];
   if (name === selected.value) c.push('profile-row-active');
@@ -130,6 +154,10 @@ function rowClass(name: string) {
       <div class="b-title inline">
         坐席画像
         <span class="b-tip">共 {{ rows.length }} 人 · 按负载降序</span>
+        <span class="hd-btn ap-hd-btns">
+          <a-button size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>画像变更记录</a-button>
+          <a-button size="small" :disabled="!selectedKeys.length" @click="batchOpen = true"><template #icon><TeamOutlined /></template>批量设置画像</a-button>
+        </span>
       </div>
 
       <div class="profile-layout">
@@ -151,7 +179,8 @@ function rowClass(name: string) {
               row-key="name"
               size="small"
               :pagination="stdPagination()"
-              :scroll="{ x: 620 }"
+              :row-selection="rowSelection"
+              :scroll="{ x: 652 }"
               :row-class-name="(r: Row) => rowClass(r.name)"
               :custom-row="(r: Row) => ({ onClick: () => { selected = r.name; } })"
             >
@@ -240,6 +269,16 @@ function rowClass(name: string) {
         </main>
       </div>
     </section>
+
+    <DispatchSettingsDrawer v-model:open="settingsOpen" :name="settingsName" />
+    <BatchProfileModal v-model:open="batchOpen" :names="selectedKeys" @done="selectedKeys = []" />
+    <a-modal v-model:open="recordOpen" title="画像变更记录" :width="900" :footer="null">
+      <a-table :columns="recordCols" :data-source="profileAudits" row-key="id" size="middle" :pagination="stdPagination()" :locale="{ emptyText: '暂无记录' }">
+        <template #bodyCell="{ column, record }">
+          <span v-if="column.key === 'before' || column.key === 'after'" :title="record[column.key as string]">{{ record[column.key as string] }}</span>
+        </template>
+      </a-table>
+    </a-modal>
   </div>
 </template>
 
@@ -284,6 +323,7 @@ function rowClass(name: string) {
 .profile-list-panel :deep(.profile-row-active > td) { background: #eff6ff !important; }
 .profile-list-panel :deep(.ant-pagination) { margin: 8px 0 0 !important; }
 
+.ap-hd-btns { display: inline-flex; gap: 8px; }
 .staff-no { font-size: 11px; margin-left: 4px; }
 .ap-prof { font-size: 12px; color: #374151; }
 .ap-flags { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }

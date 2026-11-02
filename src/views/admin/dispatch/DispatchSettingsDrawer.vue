@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 用户管理 · 坐席行「派单设置」抽屉（PRD 14.7）：所属组只读、人员画像五维、熟练度、个人上限（7.5）、个人开关
+// 坐席画像 ·「去编辑」派单设置抽屉（PRD 14.5）：所属组只读、人员画像五维、熟练度、个人上限（7.5）、个人开关
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { useDispatchStore } from '@/stores/dispatch';
