@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // 派单策略（PRD 14.2）：运行设置 / 入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { CheckCircleFilled, CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
 import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig,
+  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig, stricterMode,
   type DispatchConfig, type DispatchRole, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import {
@@ -25,6 +26,7 @@ import './dispatchTheme.css';
 const props = defineProps<{ tab?: string; focusRuleId?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
 const store = useDispatchStore();
+const router = useRouter();
 
 const TABS = [
   { key: 'run', label: '运行设置' },
@@ -66,6 +68,25 @@ function openStage(dir: 'forward' | 'back') {
   stageDir.value = dir;
   stageOpen.value = true;
 }
+
+/**
+ * 本阶段运行的池（14.2 / 第 17 章，按启用池）：
+ * - 试运行：出建议的池＝全局开关开启时，全局派单方式与本池派单方式取较严者不为人工派单的池；
+ * - 单池试点：试点池（处理组）；多池 / 全量：自动派单的池（N / M），其余启用池列为混合 / 人工派单的池。
+ */
+const stagePools = computed(() => {
+  void store.pools;
+  const list = store.enabledPools();
+  const total = list.length;
+  if (store.config.runMode === '试运行') {
+    const on = store.config.globalSwitch ? list.filter((p) => stricterMode(store.config.globalMode, p.mode) !== '人工派单') : [];
+    return { label: '出建议的池', on, rest: [] as typeof list, total, pilot: false };
+  }
+  const on = list.filter((p) => p.mode === '自动派单');
+  const rest = list.filter((p) => p.mode !== '自动派单');
+  return { label: on.length === 1 ? '试点池' : '自动派单的池', on, rest: on.length === 1 ? [] : rest, total, pilot: on.length === 1 };
+});
+function goPool(id: string) { router.push({ path: '/admin/dispatch-pool', query: { pool: id } }); }
 
 const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; unit: string; min: number; max: number }[] = [
   { key: 'autoFailRate', label: '自动转混合 · 派单失败率', prefix: '5 分钟内 ≥', unit: '%', min: 1, max: 100 },
@@ -218,7 +239,7 @@ watch(() => store.config, (c) => {
             <div class="run-col">
               <div class="run-block-hd">
                 <span class="run-block-title">开关与派单方式</span>
-                <span class="run-block-tip">全局派单开关、运行方式与全局派单方式</span>
+                <span class="run-block-tip">全局派单开关、运行方式、全局派单方式与本阶段运行的池</span>
               </div>
               <div class="run-kv">
                 <div class="run-kv-row">
@@ -235,6 +256,30 @@ watch(() => store.config, (c) => {
                     <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
                     <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动转混合</span>
                     <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
+                  </span>
+                </div>
+                <div class="run-kv-row run-pool-row">
+                  <span class="run-kv-label">{{ stagePools.label }}</span>
+                  <span class="run-kv-ctl run-pools">
+                    <template v-if="stagePools.pilot">
+                      <a class="run-pool" @click="goPool(stagePools.on[0].id)">{{ stagePools.on[0].name }}</a>
+                      <span class="run-pool-sub">（{{ store.groupOf(stagePools.on[0].groupId)?.label ?? '—' }}）</span>
+                    </template>
+                    <template v-else>
+                      <template v-for="(p, i) in stagePools.on" :key="p.id">
+                        <a class="run-pool" @click="goPool(p.id)">{{ p.name }}</a><span v-if="i < stagePools.on.length - 1" class="run-pool-sep">、</span>
+                      </template>
+                      <span v-if="!stagePools.on.length" class="run-pool-sub">—</span>
+                      <span class="run-pool-sub">（{{ stagePools.on.length }} / {{ stagePools.total }}）</span>
+                    </template>
+                  </span>
+                </div>
+                <div v-if="stagePools.rest.length" class="run-kv-row run-pool-row">
+                  <span class="run-kv-label">混合 / 人工派单的池</span>
+                  <span class="run-kv-ctl run-pools">
+                    <template v-for="(p, i) in stagePools.rest" :key="p.id">
+                      <a class="run-pool" @click="goPool(p.id)">{{ p.name }}</a><span v-if="i < stagePools.rest.length - 1" class="run-pool-sep">、</span>
+                    </template>
                   </span>
                 </div>
               </div>
@@ -584,6 +629,13 @@ watch(() => store.config, (c) => {
 .run-kv-row:last-child { border-bottom: none; }
 .run-kv-label { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.4; }
 .run-kv-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; }
+/* 本阶段运行的池：池名可点，跳工单池管理定位 */
+.run-pool-row .run-kv-label { flex: none; }
+.run-kv-ctl.run-pools { flex: 1; min-width: 0; gap: 0; font-size: 13px; line-height: 1.5; text-align: right; }
+.run-pool { color: #1a6fff; cursor: pointer; }
+.run-pool:hover { color: #4d8fff; }
+.run-pool-sep { color: #6b7280; }
+.run-pool-sub { color: #6b7280; white-space: nowrap; }
 
 /* 阈值区：左指标名 + 右「前缀 + 数字 + 单位」单行 */
 .run-col-thresh { display: flex; flex-direction: column; gap: 0; min-width: 0; }

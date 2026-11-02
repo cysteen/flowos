@@ -2,7 +2,8 @@
 // 工单池管理（PRD 14.3）：工单池在此新建（建池时选处理组），一个处理组可有多个池；
 // 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认，默认池不可停用）；
 // 停用的池另列「已停用」；池详情列池内待领工单，管理员可指派
-import { computed, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { InboxOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
@@ -175,6 +176,20 @@ const detailCols = [
 const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
 function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true; }
+
+/* ---------------- 定位到池（?pool=池 id，自派单策略 · 运行设置跳入） ---------------- */
+const route = useRoute();
+const focusPoolId = ref<string | null>(null);
+let focusTimer: ReturnType<typeof setTimeout> | undefined;
+function locatePool(id: unknown) {
+  if (typeof id !== 'string' || !id) return;
+  focusPoolId.value = id;
+  nextTick(() => document.querySelector(`[data-pool-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  clearTimeout(focusTimer);
+  focusTimer = setTimeout(() => { focusPoolId.value = null; }, 2400);
+}
+watch(() => route.query.pool, locatePool, { immediate: true });
+onBeforeUnmount(() => clearTimeout(focusTimer));
 </script>
 
 <template>
@@ -195,7 +210,8 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
         v-for="p in rows"
         :key="p.id"
         class="pm-card"
-        :class="[`pm--${MODE_TONE[p.effectiveMode]}`, { 'pm--hot': backlogOf(p) > 0 }]"
+        :data-pool-id="p.id"
+        :class="[`pm--${MODE_TONE[p.effectiveMode]}`, { 'pm--hot': backlogOf(p) > 0, 'pm--focus': focusPoolId === p.id }]"
       >
         <div class="pm-accent" aria-hidden="true" />
         <div class="pm-inner">
@@ -390,6 +406,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 }
 .pm-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }
 .pm--hot { border-color: #fed7aa; }
+.pm-card.pm--focus { border-color: #1a6fff; box-shadow: 0 0 0 3px rgba(26, 111, 255, 0.15); }
 .pm-accent { height: 3px; background: #10b981; }
 .pm--orange .pm-accent { background: #ff7d00; }
 .pm--red .pm-accent { background: #f53f3f; }
