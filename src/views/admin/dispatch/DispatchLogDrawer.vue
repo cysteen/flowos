@@ -11,23 +11,12 @@ import {
 } from '@/views/tickets/types/dispatch';
 import { PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
 import { MODE_TONE } from './dispatchUi';
-import { parseAt, trialActualOf } from './dispatchMetrics';
+import { parseAt } from './dispatchMetrics';
 import { FACTOR_LABEL, GATE_LABEL, failLabel, pathLabel } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; ticketNo?: string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
-
-/**
- * 试运行建议的实际处理人 / 是否一致（与上线阶段匹配率同口径，即时计算）：
- * 判定记录取建议之后首次人工拿单的坐席，无则取工单当前处理人；人工记录即本条拿单坐席。
- */
-function trialOf(l: Partial<Pick<DispatchLogEntry, 'trial' | 'kind' | 'manual' | 'ticketNo' | 'seq'>>): { suggested: string | null; actual: string | null; same: boolean } | null {
-  if (!l.trial) return null;
-  const suggested = l.trial.suggested ?? null;
-  const actual = l.kind === '人工' ? l.manual?.target ?? l.trial.actual ?? null : trialActualOf(store.logs, l.ticketNo ?? '', l.seq ?? 0);
-  return { suggested, actual, same: !!suggested && suggested === actual };
-}
 
 const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '组内放宽', '兜底回池', '留池'];
 const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无在班成员', '均达个人上限', '引擎异常', '首响已超时'];
@@ -70,7 +59,7 @@ const rows = computed(() => {
     if (q.no.trim() && l.ticketNo !== q.no.trim()) return false;
     const t = parseAt(l.at);
     if (t < from || t > to) return false;
-    if (q.agents.length && !q.agents.includes(personOf(l) ?? '') && !q.agents.includes(l.trial?.suggested ?? '')) return false;
+    if (q.agents.length && !q.agents.includes(personOf(l) ?? '')) return false;
     if (q.pools.length && !q.pools.includes(l.poolId)) return false;
     if (q.paths.length && !(l.path && q.paths.includes(l.path))) return false;
     if (q.fails.length && !(l.failReason && q.fails.includes(l.failReason))) return false;
@@ -110,12 +99,12 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '运行方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
-    l.globalMode, l.groupMode, l.runMode, pathLabel(l.path), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
-    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '', l.trial?.suggested ?? '', trialOf(l)?.actual ?? '',
+    l.globalMode, l.groupMode, pathLabel(l.path), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
+    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -184,8 +173,7 @@ function exportCsv() {
         <template v-else-if="column.key === 'flag'">
           <a-tag v-if="record.overCap === '超额指派'" color="red">超额指派</a-tag>
           <a-tag v-else-if="record.overCap === '超限'" color="orange">超限</a-tag>
-          <a-tag v-if="record.trial" :color="trialOf(record)?.same ? 'green' : 'default'">试运行</a-tag>
-          <span v-if="!record.overCap && !record.trial" class="lg-sub">—</span>
+          <span v-if="!record.overCap" class="lg-sub">—</span>
         </template>
       </template>
 
@@ -218,12 +206,6 @@ function exportCsv() {
             <div class="lg-kvs">
               <div class="lg-kv"><span>全局</span><b>{{ record.globalMode }}</b></div>
               <div class="lg-kv"><span>归属池</span><b>{{ record.groupMode }}</b></div>
-              <div class="lg-kv"><span>运行方式</span><b>{{ record.runMode }}</b></div>
-              <template v-if="record.trial">
-                <div class="lg-kv"><span>建议处理人</span><b>{{ record.trial.suggested ?? '—' }}</b></div>
-                <div class="lg-kv"><span>实际处理人</span><b>{{ trialOf(record)?.actual ?? '—' }}</b></div>
-                <div class="lg-kv"><span>是否一致</span><b>{{ trialOf(record)?.same ? '一致' : '不一致' }}</b></div>
-              </template>
               <div v-if="record.manual?.reason" class="lg-kv"><span>原因</span><b>{{ record.manual.reason }}</b></div>
             </div>
           </div>

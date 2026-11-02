@@ -25,7 +25,7 @@ const log = computed<DispatchLogEntry | undefined>(() => {
   const name = chosenName.value;
   const at = ms(props.entry.when);
   if (!name || !Number.isFinite(at)) return undefined;
-  return [...store.logs].reverse().find((x) => x.kind === '判定' && !x.trial && x.chosen?.name === name
+  return [...store.logs].reverse().find((x) => x.kind === '判定' && x.chosen?.name === name
     && Math.abs(ms(x.at) - at) <= 2000);
 });
 
