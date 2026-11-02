@@ -76,15 +76,13 @@ const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
   bk: { accent: '#6366f1', iconBg: '#eef2ff' },
 };
 
-/** 统计卡：数字默认中性，只有真正异常（低于转混合线、超出目标、有积压）的数字标橙 */
+/** 统计卡：数字默认中性，只有真正异常（超出目标、有积压）的数字标橙 */
 const cards = computed(() => {
   const s = stats.value;
-  const succLine = store.config.autoSuccessRate;
   const items = [
     {
-      key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined,
-      warn: s.successRate != null && s.successRate < succLine,
-      delta: { text: `转混合线 ${succLine}%`, tone: 'muted' } as Delta,
+      key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined, warn: false,
+      delta: { text: `成功 ${s.successCount} / ${s.successBase} 单`, tone: 'muted' } as Delta,
     },
     {
       key: 'fb', label: '兜底回池率', value: pct(s.fallbackRate), icon: RollbackOutlined, warn: false,

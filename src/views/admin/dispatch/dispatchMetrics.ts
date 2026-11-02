@@ -29,20 +29,9 @@ export function rangeStart(r: RangeKey, now: number): number {
   return d.getTime() - days * 24 * 60 * MIN;
 }
 
-/**
- * 试运行建议对应的实际处理人（第 17 章匹配率与派单日志同口径）：判定序号 `afterSeq` 之后首次人工拿单的坐席，
- * 无人工拿单记录时取工单当前处理人；都没有为 null。
- */
-export function trialActualOf(logs: DispatchLogEntry[], ticketNo: string, afterSeq: number): string | null {
-  const take = logs
-    .filter((l) => l.ticketNo === ticketNo && l.kind === '人工' && l.seq > afterSeq && !!l.manual?.target)
-    .sort((a, b) => a.seq - b.seq)[0];
-  return take?.manual?.target ?? TICKETS.find((t) => t.no === ticketNo)?.assignee ?? null;
-}
-
-/** 引擎派出：正式派单下的判定且中选坐席、派单状态为空 */
+/** 引擎派出：判定且中选坐席、派单状态为空 */
 export function isEngineAssign(l: DispatchLogEntry): boolean {
-  return l.kind === '判定' && l.runMode === '正式派单' && !!l.chosen && !l.status && !l.trial;
+  return l.kind === '判定' && !!l.chosen && !l.status;
 }
 /** 人工拿单（领取 / 指派 / 调剂到人 / 升级三线指定人），带目标坐席 */
 function isManualTake(l: DispatchLogEntry): boolean {
@@ -97,6 +86,9 @@ export interface MonitorStats {
   respDelta: number | null;
   balance: number | null;
   successRate: number | null;
+  /** 自动派单成功率的分子 / 分母（工单数） */
+  successCount: number;
+  successBase: number;
   fallbackRate: number | null;
   enteredCount: number;
   pathShare: { name: string; count: number; pct: number; color: string }[];
@@ -119,7 +111,7 @@ export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
   /** 坐席当日在岗小时数（签入时长） */
   onDutyHoursOf: (name: string) => number = () => 0,
-  /** 工单当前派单状态（排队中 / 等原处理人的单尚无派单结果，不计入自动派单成功率分母，5.3） */
+  /** 工单当前派单状态（排队中 / 等原处理人的单尚无派单结果，不计入自动派单成功率分母，13.2） */
   dispatchStatusOf: (no: string) => string | null | undefined = () => null,
 ): MonitorStats {
   const from = rangeStart(range, now);
@@ -127,10 +119,10 @@ export function computeStats(
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const inRange = scoped.filter((l) => inWindow(l, w));
 
-  // 进入派单：正式派单、自动派单下有判定记录的工单（混合派单 / 人工派单留池的单不进入自动派单，与自动转混合判定同口径，5.3）
-  const formal = inRange.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.effectiveMode === '自动派单');
+  // 进入派单：自动派单下有判定记录的工单（混合派单 / 人工派单留池的单不进入自动派单）
+  const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode === '自动派单');
   const entered = new Set(formal.map((l) => l.ticketNo));
-  // 自动派单成功率（13.2，与自动转混合判定同口径）：引擎派出后未被跨班次回收、未被人工换人
+  // 自动派单成功率（13.2）：引擎派出后未被跨班次回收、未被人工换人
   // （改派、调剂到人、调剂到池、班组长指派）的工单 ÷ 进入派单的工单；不含直派规则单；仍在排队 / 等原处理人的单不计入分母
   const lastAssignSeq = new Map<string, number>();
   for (const l of formal) {
@@ -183,6 +175,8 @@ export function computeStats(
     respDelta,
     balance,
     successRate: succEntered.size ? Math.round((success.size / succEntered.size) * 1000) / 10 : null,
+    successCount: success.size,
+    successBase: succEntered.size,
     fallbackRate: entered.size ? Math.round((fallback.size / entered.size) * 1000) / 10 : null,
     enteredCount: entered.size,
     pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),
@@ -227,7 +221,7 @@ export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: stri
     const de = ds + DAY;
     const dayLogs = scoped.filter((l) => { const t = parseAt(l.at); return t >= ds && t < de; });
     const out = dayLogs.filter(isEngineAssign).length;
-    const fallback = new Set(dayLogs.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.path === '兜底回池').map((l) => l.ticketNo)).size;
+    const fallback = new Set(dayLogs.filter((l) => l.kind === '判定' && l.path === '兜底回池').map((l) => l.ticketNo)).size;
     const wd = new Date(ds).getDay();
     const weekend = wd === 0 || wd === 6 ? 0.72 : 1;
     const bOut = Math.round(base.out * weekend * (0.86 + dayWave(ds, 1) * 0.28));

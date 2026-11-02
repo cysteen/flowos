@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 工单池卡片（启用中的池，按池展示）、切换与恢复确认入口、切换记录
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 工单池卡片（启用中的池，按池展示）、切换派单方式入口、切换记录
 import { computed, reactive, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
@@ -17,13 +17,6 @@ const clock = useClock();
 const reactiveTickets = reactive(TICKETS) as Ticket[];
 
 const globalMode = computed(() => store.globalEffectiveMode());
-const stage = computed(() => store.rolloutStage());
-const resumeMinutes = computed(() => store.config.resumeOkMinutes);
-/** 自动转混合后各项指标连续 N 分钟达标（5.4，由派单引擎判定） */
-const canResume = computed(() => {
-  void clock.value;
-  return store.resumeReady();
-});
 
 const modeOpen = ref(false);
 const modeScope = ref<'global' | string>('global');
@@ -43,14 +36,8 @@ const cards = computed(() => {
     }));
 });
 
-/** 自动派单池：启用中的池里本池派单方式为自动派单的池数 */
-const autoPools = computed(() => {
-  const list = store.enabledPools();
-  return { on: list.filter((p) => p.mode === '自动派单').length, total: list.length };
-});
-
 const recordOpen = ref(false);
-const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '派单方式' || a.kind === '全局开关').reverse());
+const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '派单方式').reverse());
 const recordCols = [
   { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
   { title: '操作方', dataIndex: 'operator', key: 'operator', width: 90 },
@@ -58,7 +45,7 @@ const recordCols = [
   { title: '类型', dataIndex: 'kind', key: 'kind', width: 90 },
   { title: '切换前', dataIndex: 'before', key: 'before', width: 80 },
   { title: '切换后', dataIndex: 'after', key: 'after', width: 80 },
-  { title: '触发条件或原因', dataIndex: 'reason', key: 'reason' },
+  { title: '切换原因', dataIndex: 'reason', key: 'reason' },
 ];
 </script>
 
@@ -72,24 +59,14 @@ const recordCols = [
       </span>
     </div>
 
-    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、自动派单池；右侧切换派单方式 / 确认恢复 -->
+    <!-- 全局状态条：全局派单方式；右侧切换派单方式 -->
     <div class="dx-card gs">
       <div class="gs-main">
         <span class="dx-icon gs-ic"><GlobalOutlined /></span>
         <span class="gs-name">全局</span>
         <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
-        <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动转混合</span>
-      </div>
-      <div class="gs-meta">
-        <span class="gs-kv"><em>全局开关</em>{{ store.config.globalSwitch ? '开启' : '关闭' }}</span>
-        <span class="gs-kv"><em>运行方式</em>{{ store.config.runMode }}</span>
-        <span class="gs-kv"><em>上线阶段</em>{{ stage }}</span>
-        <span class="gs-kv"><em>自动派单池</em>{{ autoPools.on }} / {{ autoPools.total }}</span>
       </div>
       <div class="gs-ops">
-        <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可恢复`">
-          <a-button type="link" size="small" :disabled="!canResume" @click="openMode('global')">确认恢复</a-button>
-        </a-tooltip>
         <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
       </div>
     </div>
@@ -115,7 +92,6 @@ const recordCols = [
           <div class="pc-tags">
             <span class="pc-tag">{{ c.label }}</span>
             <span class="pc-tag">本池 {{ c.poolMode }}</span>
-            <span class="pc-tag">{{ store.config.runMode }}</span>
           </div>
           <div class="pc-stats">
             <div class="pc-stat pc-stat-lead">
@@ -157,9 +133,6 @@ const recordCols = [
 .gs-main { display: flex; align-items: center; gap: 12px; flex: none; }
 .gs-ic { width: 32px; height: 32px; font-size: 15px; }
 .gs-name { font-size: 14px; font-weight: 600; color: #1f2329; }
-.gs-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 24px; font-size: 13px; color: #1f2329; min-width: 0; flex: 1; }
-.gs-kv { white-space: nowrap; }
-.gs-kv em { font-style: normal; color: #86909c; margin-right: 8px; }
 .gs-ops { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
 /* 工单池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
