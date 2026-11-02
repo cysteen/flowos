@@ -7,7 +7,7 @@ import type { DispatchFailReason, DispatchPath, GateKey, ScoreFactorKey } from '
 /** 接单条件（门槛 4.1） */
 export const GATE_LABEL: Record<GateKey, string> = {
   候选范围: '所属组成员',
-  两级开关: '已开启自动派单',
+  个人开关: '已开启自动派单',
   角色: '岗位可接此类工单',
   在班: '已签入',
   投诉回避: '不是被投诉人',

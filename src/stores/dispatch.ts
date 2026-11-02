@@ -14,13 +14,12 @@ import {
 import {
   DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_SCORE, PROFICIENCY_SCORE,
   RELAX_LEVEL_LABEL, TAKEN_MESSAGE, PROFILE_DIMS,
-  defaultDispatchConfig, emptyProfile, isDispatchUndone, isProfileConfigured, stricterMode,
+  defaultDispatchConfig, emptyProfile, isProfileConfigured, stricterMode,
   type AgentProfile, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
   type DispatchFailReason, type DispatchGroup, type DispatchLogEntry, type DispatchPath, type DispatchPool, type DispatchResult,
   type DispatchRole, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction, type OccupyResult,
-  ROLLOUT_STAGES,
   type PoolMode, type PoolRule, type PoolRuleConditions, type ProductPick, type Proficiency, type RelaxLevel,
-  type RolloutStage, type RunMode, type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
+  type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { buildDispatchDemo } from '@/mock/dispatchDemo';
 import { FACTOR_LABEL, failLabel } from '@/views/admin/dispatch/dispatchLabels';
@@ -32,7 +31,7 @@ import { useRefundStore } from './refund';
 import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './problemTags';
 
 /**
- * 智能派单（【1215】PRD P0）：入池规则、人员画像 / 熟练度 / 个人上限 / 两级开关、池三态、派单引擎、派单日志与审计。
+ * 智能派单（【1215】PRD P0）：入池规则、人员画像 / 熟练度 / 个人上限 / 个人开关、池三态、派单引擎、派单日志与审计。
  *
  * 【数据】坐席、组、入池规则、配置、工单派单状态、派单日志、审计都在本 store；工单行只改处理人 / 子状态 / 归属组 / 履历，
  * 派单状态（等原处理人 / 排队中 / 派单失败回池）按工单号存在 `ticketStates`，不写进工单行。
@@ -40,12 +39,12 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 派单改写过的通用工单整行随本键落库、store 建立时回放到工单库（`main.ts` 启动即建立），刷新前后工单行与派单状态 / 日志一致；
  * 刷机 / 小智 / 个册退费单的工单行由各自服务缓存落库。
  * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 派单方式 → 原处理人优先（含投诉预留）→ 门槛 → 评分 → 派出 / 留池；
- * 试运行只写建议到派单日志、不改处理人。定时判定（预留到期、排队放宽、兜底、名额释放）由 `tick()` 驱动，store 内每 30 秒跑一次。
+ * 派单方式（全局 / 各池）与个人开关全部由人手动切换，系统不自动切换。定时判定（预留到期、排队放宽、兜底、名额释放）由 `tick()` 驱动，store 内每 30 秒跑一次。
  */
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 13;
+export const DISPATCH_CACHE_VERSION = 14;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -99,7 +98,7 @@ function seedGroups(): DispatchGroup[] {
 
 /**
  * 初始工单池（14.3）：每个派单组一个池，池 id 与组 id 相同（专属工单线、售后转回的落池点按 id 接线），名称「〈组名〉池」。
- * 运行中种子（上线阶段「多池」）：二线、综合、技术支持三池为自动派单；硬件缺陷组池由管理员切为混合派单（原因见审计种子）；
+ * 运行中种子：二线、综合、技术支持三池为自动派单；硬件缺陷组池由管理员切为混合派单（原因见审计种子）；
  * 小智、教育刷机、教育支持三池（专属工单线）为混合派单、组内领取。综合处理组池为默认池。
  */
 const MIXED_SEED_POOL_IDS = new Set(['hardware', 'xiaozhi', 'edu-flash', 'edu']);
@@ -234,17 +233,6 @@ interface Persisted {
    * 刷新前后工单行与派单状态、派单日志一致。刷机 / 小智 / 个册退费单的工单行由各自服务的缓存落库，不在此存。
    */
   rows?: Record<string, Ticket>;
-  health?: DispatchHealthState;
-}
-
-/** 自动转混合判定的运行态（5.3 / 5.4） */
-interface DispatchHealthState {
-  /** 各项指标自此刻起持续达标（null＝当前未达标） */
-  okSince: number | null;
-  /** 引擎无响应起始时刻（开发态开关模拟） */
-  engineDownSince: number | null;
-  /** 坐席状态数据停止同步起始时刻（开发态开关模拟） */
-  syncStalledSince: number | null;
 }
 
 function readCache(): Persisted | null {
@@ -260,7 +248,7 @@ function readCache(): Persisted | null {
 
 /**
  * 专属工单的到组通知（11.6：刷机、退费、小智到组通知同待领取提醒口径）。
- * 各服务在建立时登记自己的到组通知；引擎在该发待领取提醒的时点（自动派单兜底回池、混合派单 / 人工派单 / 试运行新单首次进池）
+ * 各服务在建立时登记自己的到组通知；引擎在该发待领取提醒的时点（自动派单兜底回池、混合派单 / 人工派单新单首次进池）
  * 先交给登记的通知处理，返回 true 即已发；都不认领的工单发通用待领取提醒。
  */
 type PoolArrivalNotifier = (t: Ticket) => boolean;
@@ -333,26 +321,6 @@ export interface DispatchPoolView {
   configuredCount: number;
 }
 
-/** 自动转混合指标视图（5.3）：供分派监控「确认恢复」与监控卡片 */
-export interface DispatchHealthView {
-  /** 5 分钟内派单失败率（%）；样本不足为 null */
-  failRate: number | null;
-  /** 15 分钟内自动派单成功率（%）；样本不足为 null */
-  successRate: number | null;
-  /** 坐席状态数据未同步时长（分钟） */
-  syncStaleMinutes: number;
-  /** 引擎无响应时长（分钟） */
-  engineDownMinutes: number;
-  /** 当前触发的自动转混合条件（文案）；空＝各项指标达标 */
-  breaches: string[];
-  /** 各项指标连续达标起始时刻；未达标为 null */
-  okSince: number | null;
-  /** 已连续达标分钟数 */
-  okMinutes: number;
-  /** 自动转混合后已满足恢复条件（各项指标连续 N 分钟达标） */
-  resumeReady: boolean;
-}
-
 /** 坐席视图（负载、标识） */
 export interface DispatchAgentView {
   agent: DispatchAgent;
@@ -372,10 +340,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const now0 = Date.now();
   const cached = readCache();
 
-  // 运行中种子：全局开关开启、正式派单（上线以来的切换记录见审计种子）
+  // 运行中种子：全局自动派单（上线以来的切换记录见审计种子）
   const config = ref<DispatchConfig>(cached
     ? { ...defaultDispatchConfig(), ...cached.config }
-    : { ...defaultDispatchConfig(), globalSwitch: true, runMode: '正式派单' });
+    : { ...defaultDispatchConfig(), globalMode: '自动派单' });
   const groups = ref<DispatchGroup[]>(cached?.groups ?? seedGroups());
   const pools = ref<DispatchPool[]>(cached?.pools ?? seedPools(groups.value, now0));
   const agents = ref<DispatchAgent[]>(cached?.agents ?? seedAgents(now0));
@@ -385,7 +353,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const logs = ref<DispatchLogEntry[]>(cached?.logs ?? []);
   const audits = ref<DispatchAuditEntry[]>(cached?.audits ?? []);
   let seq = cached?.seq ?? 0;
-  const health = ref<DispatchHealthState>(cached?.health ?? { okSince: null, engineDownSince: null, syncStalledSince: null });
 
   /** 无缓存时铺运行中种子：近两周派单日志与审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
   const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value, rules.value);
@@ -481,7 +448,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
         audits: audits.value.slice(-AUDIT_LIMIT),
         seq,
         rows: rowSnapshots(),
-        health: health.value,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(data));
     } catch {
@@ -530,7 +496,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   }
 
   /**
-   * 派单方式、开关、上线阶段、工单池变更通知（5.4 / 8.3 / 14.3 / 17）：全部管理员及受影响班组长，渠道同 5.3（站内信与 IM）。
+   * 派单方式、工单池变更通知（5.4 / 14.3）：全部管理员及受影响班组长，渠道为站内信与 IM。
    * `poolIds` 为受影响的池（班组长取池所属处理组）；全局变更传全部池。
    */
   function notifyAdmins(title: string, poolIds: string[], content: string) {
@@ -593,9 +559,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (same && same.groupId === t.groupId) return same.id;
     return poolsOfGroup(t.groupId, true)[0]?.id;
   }
-  /** 全局生效派单方式：全局开关关闭＝人工派单（8.1） */
+  /** 全局派单方式（5.4）：人工派单＝全局不派单 */
   function globalEffectiveMode(): PoolMode {
-    return config.value.globalSwitch ? config.value.globalMode : '人工派单';
+    return config.value.globalMode;
   }
   /** 本池派单方式（5.4）；已停用或非池为人工派单 */
   function poolModeOf(id: string): PoolMode {
@@ -810,7 +776,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     };
     const poolGroupId = poolGroupIdOf(st.poolId);
     step('候选范围', (a) => !!poolGroupId && a.groupIds.includes(poolGroupId));
-    step('两级开关', (a) => config.value.globalSwitch && a.personalSwitch);
+    step('个人开关', (a) => a.personalSwitch);
     step('角色', (a) => !a.disabled && a.roles.length > 0);
     step('在班', (a) => a.signIn === '签入');
     const onDuty = list.length;
@@ -1135,24 +1101,18 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const globalMode = globalEffectiveMode();
     const groupMode = poolModeOf(st.poolId);
     const effectiveMode = stricterMode(globalMode, groupMode);
-    const runMode: RunMode = config.value.runMode;
-    const trial = runMode === '试运行' && config.value.globalSwitch;
-    // 试运行：按正式口径算建议（全局开关开启时），工单按人工派单留池
-    const decideMode: PoolMode = trial ? stricterMode(config.value.globalMode, groupMode) : effectiveMode;
 
     let d: Decision;
     try {
-      if (health.value.engineDownSince && decideMode !== '人工派单') throw new Error('engine down');
-      d = decide(t, st, trigger, decideMode, now);
+      d = decide(t, st, trigger, effectiveMode, now);
     } catch {
       d = { path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, failReason: '引擎异常' };
     }
-    const suggested = d.assignee;
-    const actualAssign = trial ? null : d.assignee;
-    const status: DispatchStatus | null = trial ? null : d.status;
+    const actualAssign = d.assignee;
+    const status: DispatchStatus | null = d.status;
 
     st.seq = nextTicketSeq(t.no);
-    const chosenAgent = agentOf(suggested);
+    const chosenAgent = agentOf(actualAssign);
     const log: DispatchLogEntry = {
       id: nextId('dl'),
       ticketNo: t.no,
@@ -1166,7 +1126,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       globalMode,
       groupMode,
       effectiveMode,
-      runMode,
       path: d.path,
       relaxLevel: d.relaxLevel,
       gateDrops: d.drops,
@@ -1177,7 +1136,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ...(d.failReason ? { failReason: d.failReason } : {}),
       status,
       snapshot: snapshotOf(t, st, now),
-      ...(trial ? { trial: { suggested, actual: t.assignee ?? null, same: !!suggested && suggested === t.assignee } } : {}),
     };
     pushLog(log);
 
@@ -1202,8 +1160,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     let reason: string;
     if (actualAssign) {
       reason = `系统派单 → ${actualAssign}（${d.path}）${relaxSuffix}${d.score ? `；${factorText(d.score)}` : ''}`;
-    } else if (trial) {
-      reason = suggested ? `试运行建议 ${suggested}（${d.path}）` : `试运行未出建议（${d.failReason ?? d.path}）`;
     } else if (status === '排队中') {
       reason = `${poolLabel(st.poolId)}排队等待：画像与工单相符的成员均达个人上限`;
     } else if (status === '等原处理人') {
@@ -1225,7 +1181,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         commitSpecial(target);
       } else {
         writePool(target, st.poolId, now);
-        if (!trial && (status !== prevStatus || d.relaxLevel !== prevLevel)) {
+        if (status !== prevStatus || d.relaxLevel !== prevLevel) {
           if (status === '排队中' && d.relaxLevel > prevLevel) writeTimeline(target, '放宽产品范围', `产品放宽至${RELAX_LEVEL_LABEL[d.relaxLevel]}`, now);
           if (status === '排队中') writeTimeline(target, '排队等待', reason, now);
           if (status === '等原处理人') writeTimeline(target, '等原处理人', reason, now);
@@ -1250,8 +1206,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
       notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}退回工单池（${why}），请指派或调剂。`, '站内信');
       notify(t.no, 'timeout', '兜底回池通知', leaders, `${t.no}退回工单池（${why}），请指派或调剂。`, 'IM');
       notifyPoolArrival(t, st.poolId);
-    } else if (!actualAssign && trigger === '新单' && (effectiveMode !== '自动派单' || trial)) {
-      // 混合派单、人工派单、试运行：新单首次进池即发（恢复【1025】规则）；刷机、退费、小智单发各自的到组通知
+    } else if (!actualAssign && trigger === '新单' && effectiveMode !== '自动派单') {
+      // 混合派单、人工派单：新单首次进池即发（恢复【1025】规则）；刷机、退费、小智单发各自的到组通知
       notifyPoolArrival(t, st.poolId);
     }
 
@@ -1264,7 +1220,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       path: d.path,
       status,
       reason,
-      ...(trial ? { suggested } : {}),
       log,
     };
   }
@@ -1335,16 +1290,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     pushLog({
       id: nextId('dl'), ticketNo: t.no, seq: nextTicketSeq(t.no), at: stamp(now), kind: '人工',
       poolId, poolLabel: poolLabel(poolId), ruleName: st ? ruleNameOf(st) : '—',
-      globalMode: globalEffectiveMode(), groupMode: poolModeOf(poolId), effectiveMode: effectiveModeOf(poolId), runMode: config.value.runMode,
+      globalMode: globalEffectiveMode(), groupMode: poolModeOf(poolId), effectiveMode: effectiveModeOf(poolId),
       snapshot: st ? snapshotOf(t, st, now) : { ticketType: t.type, priority: t.priority },
       manual: { action, operator, ...(target ? { target } : {}), ...(reason ? { reason } : {}) },
       ...(overCap ? { overCap } : {}),
-      ...(config.value.runMode === '试运行' && config.value.globalSwitch && target
-        ? (() => {
-          const s = [...logs.value].reverse().find((x) => x.ticketNo === t.no && x.kind === '判定' && x.trial);
-          return s?.trial ? { trial: { suggested: s.trial.suggested, actual: target, same: s.trial.suggested === target } } : {};
-        })()
-        : {}),
     });
   }
 
@@ -1427,7 +1376,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     for (const st of states) {
       const gid = poolGroupIdOf(st.poolId);
       if (st.status !== '排队中' || st.fallbackDone || !gid || !a.groupIds.includes(gid)) continue;
-      if (effectiveModeOf(st.poolId) !== '自动派单' || config.value.runMode === '试运行') continue;
+      if (effectiveModeOf(st.poolId) !== '自动派单') continue;
       const t = poolTicket(st.ticketNo);
       if (!t || t.assignee) continue;
       const g = gates(t, st, st.relaxLevel);
@@ -1444,7 +1393,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     pushLog({
       id: nextId('dl'), ticketNo: t.no, seq: st.seq, at: stamp(now), kind: '判定', trigger: '名额释放',
       poolId: st.poolId, poolLabel: poolLabel(st.poolId), ruleName: ruleNameOf(st),
-      globalMode: globalEffectiveMode(), groupMode: poolModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId), runMode: config.value.runMode,
+      globalMode: globalEffectiveMode(), groupMode: poolModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId),
       path: st.relaxLevel > 0 ? '组内放宽' : '加权评分', relaxLevel: st.relaxLevel, candidateCount: 1,
       chosen: { name, staffNo: a.staffNo, groupLabel: g?.label ?? '' }, chosenScore: s, status: null,
       snapshot: snapshotOf(t, st, now),
@@ -1470,104 +1419,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function onAgentAvailable(name: string) {
     let guard = 0;
     while (guard < 20 && releaseCapacity(name)) guard += 1;
-  }
-
-  /* ---------------- 自动转混合（5.3）· 恢复条件（5.4） ---------------- */
-
-  /** 指标统计的最少样本（进入派单的工单数），样本不足不判 */
-  const HEALTH_MIN_SAMPLE = 5;
-  const FAIL_WINDOW_MIN = 5;
-  const SUCCESS_WINDOW_MIN = 15;
-  /** 引擎派出的判定路径（不含预留 / 排队 / 留池 / 兜底） */
-  const ENGINE_ASSIGN_PATHS: DispatchPath[] = ['原处理人', '加权评分', '组内放宽'];
-
-  /**
-   * 正式派单、自动派单下进入派单的判定记录（自动转混合只看引擎真正执行主流程的判定）。
-   * 因「首响已超时」直接兜底回池的判定不计入自动转混合的派单失败率与自动派单成功率（5.3）。
-   */
-  function engineLogsSince(from: number): DispatchLogEntry[] {
-    return logs.value.filter((x) => x.kind === '判定' && x.runMode === '正式派单' && x.effectiveMode === '自动派单' && parseStamp(x.at) >= from
-      && !(x.status === '派单失败回池' && x.failReason === '首响已超时'));
-  }
-
-  function healthMetrics(now: number): Omit<DispatchHealthView, 'okSince' | 'okMinutes' | 'resumeReady'> {
-    const c = config.value;
-    // 派单失败率＝派单失败回池的工单数 ÷ 进入派单的工单数（5.3）
-    const failLogs = engineLogsSince(now - FAIL_WINDOW_MIN * MIN);
-    const failEntered = new Set(failLogs.map((x) => x.ticketNo));
-    const failed = new Set(failLogs.filter((x) => x.status === '派单失败回池').map((x) => x.ticketNo));
-    const failRate = failEntered.size >= HEALTH_MIN_SAMPLE ? Math.round((failed.size / failEntered.size) * 100) : null;
-    // 自动派单成功率＝引擎派出且未被回收、未被人工改派的工单 ÷ 进入派单的工单（16 章）
-    const succFrom = now - SUCCESS_WINDOW_MIN * MIN;
-    const succLogs = engineLogsSince(succFrom);
-    const succEntered = new Set(succLogs.map((x) => x.ticketNo));
-    let succ = 0;
-    for (const no of [...succEntered]) {
-      const assigned = succLogs.filter((x) => x.ticketNo === no && x.status === null && !!x.chosen && !!x.path && ENGINE_ASSIGN_PATHS.includes(x.path));
-      if (!assigned.length) {
-        // 仍在排队 / 等原处理人的单尚无派单结果，不计入（结果出来后再计）
-        const st = ticketStateOf(no)?.status;
-        if (st === '排队中' || st === '等原处理人') succEntered.delete(no);
-        continue;
-      }
-      const lastSeq = Math.max(...assigned.map((x) => x.seq));
-      // 派出后未被跨班次回收、未被人工换人（改派、调剂到人、调剂到池、班组长指派）才计成功（13.2）
-      if (!isDispatchUndone(logs.value, no, lastSeq)) succ += 1;
-    }
-    const successRate = succEntered.size >= HEALTH_MIN_SAMPLE ? Math.round((succ / succEntered.size) * 100) : null;
-    const syncStaleMinutes = health.value.syncStalledSince ? Math.max(0, Math.floor((now - health.value.syncStalledSince) / MIN)) : 0;
-    const engineDownMinutes = health.value.engineDownSince ? Math.max(0, Math.floor((now - health.value.engineDownSince) / MIN)) : 0;
-    const breaches: string[] = [];
-    if (failRate != null && failRate >= c.autoFailRate) breaches.push(`${FAIL_WINDOW_MIN} 分钟内派单失败率 ≥ ${c.autoFailRate}%`);
-    if (successRate != null && successRate < c.autoSuccessRate) breaches.push(`${SUCCESS_WINDOW_MIN} 分钟内自动派单成功率 ＜ ${c.autoSuccessRate}%`);
-    if (health.value.syncStalledSince && syncStaleMinutes > c.autoSyncMinutes) breaches.push(`坐席状态数据超过 ${c.autoSyncMinutes} 分钟未同步`);
-    if (health.value.engineDownSince && engineDownMinutes >= c.autoEngineMinutes) breaches.push(`引擎连续 ${c.autoEngineMinutes} 分钟无响应`);
-    return { failRate, successRate, syncStaleMinutes, engineDownMinutes, breaches };
-  }
-
-  /** 自动转混合指标视图（含恢复条件「各项指标连续 N 分钟达标」） */
-  function healthView(now: number = Date.now()): DispatchHealthView {
-    const m = healthMetrics(now);
-    const okSince = m.breaches.length ? null : health.value.okSince ?? now;
-    const okMinutes = okSince == null ? 0 : Math.max(0, Math.floor((now - okSince) / MIN));
-    const resumeReady = config.value.autoDegraded && okSince != null && now - okSince >= config.value.resumeOkMinutes * MIN;
-    return { ...m, okSince, okMinutes, resumeReady };
-  }
-
-  /** 自动转混合后是否满足恢复条件 */
-  function resumeReady(now: number = Date.now()): boolean {
-    return healthView(now).resumeReady;
-  }
-
-  /** 定时判定里更新达标起点，满足任一条件即转全局混合派单（人工派单不自动进入） */
-  function checkAutoDegrade(now: number) {
-    const m = healthMetrics(now);
-    const okSince = m.breaches.length ? null : health.value.okSince ?? now;
-    if (okSince !== health.value.okSince) health.value = { ...health.value, okSince };
-    if (!m.breaches.length) return;
-    if (!config.value.globalSwitch || config.value.globalMode !== '自动派单' || config.value.runMode === '试运行') return;
-    const cause = m.breaches.join('；');
-    config.value.globalMode = '混合派单';
-    config.value.autoDegraded = true;
-    audit('派单方式', '全局', '自动派单', '混合派单', SYSTEM, cause);
-    const receivers = ['全部管理员', ...new Set(groups.value.flatMap((g) => g.leaders))];
-    const text = `智能派单已自动转为混合派单：${cause}。工单按入池规则留在工单池，请组内领取或指派。`;
-    notify('—', 'timeout', '自动转混合', receivers, text, '站内信');
-    notify('—', 'timeout', '自动转混合', receivers, text, 'IM');
-    clearStatuses(allPoolIds(), true);
-  }
-
-  /**
-   * 开发态开关：模拟引擎无响应 / 坐席状态数据停止同步（自动转混合条件演示用）。
-   * 引擎无响应期间新判定按「引擎异常」兜底回池。
-   */
-  function simulateEngineDown(on: boolean, now: number = Date.now()) {
-    health.value = { ...health.value, engineDownSince: on ? health.value.engineDownSince ?? now : null };
-    persist();
-  }
-  function simulateAgentSyncStall(on: boolean, now: number = Date.now()) {
-    health.value = { ...health.value, syncStalledSince: on ? health.value.syncStalledSince ?? now : null };
-    persist();
   }
 
   /** 定时判定：预留到期、排队放宽、兜底、名额释放（4.2 / 4.4） */
@@ -1615,7 +1466,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       }
       if (a.signIn === '签入' && a.personalSwitch) onAgentAvailable(a.name);
     }
-    checkAutoDegrade(now);
     persist();
   }
 
@@ -1630,7 +1480,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     pushLog({
       id: nextId('dl'), ticketNo: t.no, seq: st.seq, at: stamp(now), kind: '判定', trigger: '组内放宽',
       poolId: st.poolId, poolLabel: poolLabel(st.poolId), ruleName: ruleNameOf(st),
-      globalMode: globalEffectiveMode(), groupMode: poolModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId), runMode: config.value.runMode,
+      globalMode: globalEffectiveMode(), groupMode: poolModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId),
       path: '兜底回池', relaxLevel: st.relaxLevel, failReason: reason, status: '派单失败回池', snapshot: snapshotOf(t, st, now),
     });
     touchRow(t);
@@ -1642,7 +1492,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     ticketStates.value = { ...ticketStates.value };
   }
 
-  /* ---------------- 派单方式 · 开关 · 运行方式 ---------------- */
+  /* ---------------- 派单方式 ---------------- */
 
   /**
    * 进入混合派单 / 人工派单时清池内派单状态（5.2：混合派单派单状态为空，人工派单全部为空）。
@@ -1676,7 +1526,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /** 恢复重派（5.1）：池内未领取的工单交回引擎重新执行主流程 */
   function resumePools(poolIds: string[]): number {
-    if (config.value.runMode === '试运行' && !config.value.globalSwitch) return 0;
     let n = 0;
     // 专属工单服务先按各自缓存回填工单行，再按工单行现值筛池内单（G5）
     ensureAllSpecialServices();
@@ -1703,32 +1552,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return n;
   }
 
-  function setGlobalSwitch(on: boolean, operator?: string): OccupyResult {
-    if (config.value.globalSwitch === on) return { ok: true, message: '' };
-    audit('全局开关', '全局', config.value.globalSwitch ? '开启' : '关闭', on ? '开启' : '关闭', operator);
-    config.value.globalSwitch = on;
-    if (!on) clearStatuses(allPoolIds(), false);
-    notifyAdmins('全局开关变更', enabledPoolIds(),
-      on ? `${operator ?? operatorName()}已开启智能派单全局开关，各工单池按本池派单方式接入自动派单。`
-        : `${operator ?? operatorName()}已关闭智能派单全局开关，全部工单池为人工派单，工单按入池规则留在工单池，请组内领取或指派。`);
-    persist();
-    if (on) resumePools(enabledPoolIds());
-    return { ok: true, message: on ? '已开启全局开关' : '已关闭全局开关，全部工单池为人工派单' };
-  }
-
+  /** 全局派单方式切换（5.4，管理员）：人工派单＝全局不派单；切回自动派单时池内未领取的单重新派送 */
   function setGlobalMode(mode: PoolMode, reason = '', operator?: string): OccupyResult {
-    if (!config.value.globalSwitch && mode !== '人工派单') return { ok: false, message: '全局开关已关闭，请先在派单策略开启' };
     if (mode !== '自动派单' && !reason.trim()) return { ok: false, message: '请填写切换原因' };
     if (reason.length > 200) return { ok: false, message: '切换原因最多 200 字' };
     const before = config.value.globalMode;
     if (before === mode) return { ok: false, message: '请选择切换后的派单方式' };
-    // 自动转混合的恢复须各项指标连续达标后由管理员确认（5.4）
-    if (config.value.autoDegraded && mode === '自动派单' && !resumeReady()) {
-      return { ok: false, message: `各项指标连续 ${config.value.resumeOkMinutes} 分钟达标后可恢复` };
-    }
     audit('派单方式', '全局', before, mode, operator, reason.trim() || undefined);
     config.value.globalMode = mode;
-    config.value.autoDegraded = false;
     if (mode !== '自动派单') clearStatuses(allPoolIds(), mode === '混合派单');
     notifyAdmins('派单方式切换', enabledPoolIds(),
       `${operator ?? operatorName()}已将智能派单全局派单方式由${before}切换为${mode}${reason.trim() ? `：${reason.trim()}` : ''}。`);
@@ -1757,109 +1588,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     persist();
     if (mode === '自动派单') resumePools([poolId]);
     return { ok: true, message: `已切换为${mode}` };
-  }
-
-  function setRunMode(mode: RunMode, operator?: string): OccupyResult {
-    if (config.value.runMode === mode) return { ok: true, message: '' };
-    audit('运行方式', '全局', config.value.runMode, mode, operator);
-    config.value.runMode = mode;
-    persist();
-    if (mode === '正式派单' && config.value.globalSwitch) resumePools(enabledPoolIds());
-    return { ok: true, message: '已保存，对此后派单生效' };
-  }
-
-  /* ---------------- 上线阶段（第 17 章） ---------------- */
-
-  const ROLLOUT_TARGET = '上线阶段';
-
-  /**
-   * 当前上线阶段（第 17 章，按池计）：运行方式为试运行即试运行；正式派单下按本池派单方式为自动派单的启用池数判定 ——
-   * 0 个池视同未上线、显示「试运行」（见 `rolloutNoAutoGroup`），1 个池单池试点，全部启用池全量，其余多池。
-   */
-  function rolloutStage(): RolloutStage {
-    if (config.value.runMode === '试运行') return '试运行';
-    const list = enabledPools();
-    const on = list.filter((p) => p.mode === '自动派单').length;
-    if (on === 0) return '试运行';
-    if (on >= list.length) return '全量';
-    return on === 1 ? '单池试点' : '多池';
-  }
-
-  /** 正式派单下没有自动派单的启用池（阶段显示「试运行」，行内标「无自动派单池」，只能推进至单池试点） */
-  function rolloutNoAutoGroup(): boolean {
-    return config.value.runMode === '正式派单' && !enabledPools().some((p) => p.mode === '自动派单');
-  }
-
-  /** 进入某阶段的时刻（取最近一次推进 / 退回到该阶段的审计；试运行另认全局开关开启） */
-  function rolloutStageSince(stage: RolloutStage): number | null {
-    const hit = [...audits.value].reverse().find((a) => (a.target === ROLLOUT_TARGET && a.after === stage)
-      || (stage === '试运行' && ((a.kind === '全局开关' && a.after === '开启') || (a.kind === '运行方式' && a.target === '全局' && a.after === '试运行'))));
-    const at = hit ? parseStamp(hit.at) : NaN;
-    return Number.isFinite(at) ? at : null;
-  }
-
-  /**
-   * 推进 / 退回上线阶段（第 17 章，按启用池计）：由管理员在运行设置确认，记审计并通知全部管理员及受影响班组长。
-   * - 试运行 → 单池试点：切正式派单，试点池（`poolIds` 一个）切为自动派单，其余池切为混合派单；
-   * - 单池试点 → 多池：`poolIds` 为本次切为自动派单的池；多池 → 全量：全部启用池切为自动派单；
-   * - 退回：单池试点 → 试运行切回试运行；多池 → 单池试点只保留 `poolIds` 一个池为自动派单；全量 → 多池把 `poolIds` 切为混合派单。
-   */
-  function setRolloutStage(to: RolloutStage, poolIds: string[] = [], operator?: string): OccupyResult {
-    const from = rolloutStage();
-    if (from === to) return { ok: false, message: '' };
-    if (!config.value.globalSwitch) return { ok: false, message: '全局开关已关闭，请先在派单策略开启' };
-    const fromIdx = ROLLOUT_STAGES.indexOf(from);
-    const toIdx = ROLLOUT_STAGES.indexOf(to);
-    if (Math.abs(fromIdx - toIdx) !== 1) return { ok: false, message: '' };
-    const forward = toIdx > fromIdx;
-    const list = enabledPools();
-    const valid = poolIds.filter((id) => isPoolEnabled(id));
-    // 各池目标：是否为自动派单
-    const isAuto = (p: DispatchPool) => p.mode === '自动派单';
-    const target = new Map(list.map((p) => [p.id, isAuto(p)]));
-    if (to === '单池试点') {
-      if (valid.length !== 1) return { ok: false, message: '请选择试点池' };
-      list.forEach((p) => target.set(p.id, p.id === valid[0]));
-    } else if (to === '多池') {
-      const tip = forward ? '请选择切为自动派单的池' : '请选择切为混合派单的池';
-      if (!valid.length) return { ok: false, message: tip };
-      valid.forEach((id) => target.set(id, forward));
-      const onCount = [...target.values()].filter(Boolean).length;
-      if (onCount <= 1 || onCount >= list.length) return { ok: false, message: tip };
-    } else if (to === '全量') {
-      list.forEach((p) => target.set(p.id, true));
-    }
-    const affected = list.filter((p) => target.get(p.id) !== isAuto(p)).map((p) => p.id);
-    const opened = list.filter((p) => target.get(p.id) && !isAuto(p)).map((p) => p.name);
-    const closed = list.filter((p) => !target.get(p.id) && isAuto(p)).map((p) => p.name);
-    if (to === '试运行') {
-      audit('运行方式', '全局', config.value.runMode, '试运行', operator);
-      config.value.runMode = '试运行';
-    } else {
-      // 正式派单下没有自动派单的池时推进：运行方式保持正式派单，只把试点池切为自动派单
-      if (from === '试运行' && config.value.runMode !== '正式派单') {
-        audit('运行方式', '全局', config.value.runMode, '正式派单', operator);
-        config.value.runMode = '正式派单';
-      }
-      for (const p of list) {
-        const on = target.get(p.id)!;
-        if (on === isAuto(p)) continue;
-        const mode: PoolMode = on ? '自动派单' : '混合派单';
-        audit('派单方式', p.name, p.mode, mode, operator, `上线阶段${forward ? '推进至' : '退回至'}${to}`);
-        p.mode = mode;
-        if (!on) clearStatuses([p.id], true);
-      }
-    }
-    audit('运行方式', ROLLOUT_TARGET, from, to, operator);
-    const detail = [
-      ...(opened.length ? [`切为自动派单：${opened.join('、')}`] : []),
-      ...(closed.length ? [`切为混合派单：${closed.join('、')}`] : []),
-    ].join('；');
-    notifyAdmins(forward ? '上线阶段推进' : '上线阶段退回', to === '试运行' || from === '试运行' ? list.map((p) => p.id) : affected,
-      `${operator ?? operatorName()}已将智能派单上线阶段由${from}${forward ? '推进至' : '退回至'}${to}${detail ? `，${detail}` : ''}。`);
-    persist();
-    if (to !== '试运行') resumePools(list.filter(isAuto).map((p) => p.id));
-    return { ok: true, message: forward ? `已推进至${to}` : `已退回至${to}` };
   }
 
   /* ---------------- 工单池（14.3）：新建 · 改名 · 停用 / 启用 ---------------- */
@@ -2166,7 +1894,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return (acc + (since ? Math.max(0, now - since) : 0)) / (60 * MIN);
   }
 
-  /** 派单策略（14.2 运行设置 / 出池规则 / 个人上限）保存：返回提示文案 */
+  /** 派单策略（14.2 出池规则 / 个人上限）保存：返回提示文案 */
   function updateConfig(patch: Partial<DispatchConfig>, operator?: string): OccupyResult {
     const next: DispatchConfig = { ...config.value, ...clone(patch) };
     if (!next.factors.some((f) => f.enabled)) return { ok: false, message: '请至少启用一个打分因素' };
@@ -2175,20 +1903,16 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (next.noSlaFallbackMinutes <= next.relaxQueueMinutes) return { ok: false, message: '退回工单池的排队时长须大于放宽产品范围的排队时长' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
-    // 运行设置 · 自动转混合 / 恢复 / 小休阈值（14.2）
-    const RUN_RANGES: [keyof DispatchConfig, number, number][] = [
-      ['autoFailRate', 1, 100], ['autoSuccessRate', 1, 100], ['autoSyncMinutes', 5, 120],
-      ['autoEngineMinutes', 1, 30], ['resumeOkMinutes', 1, 60], ['idleToBreakMinutes', 5, 240],
-    ];
-    for (const [k, lo, hi] of RUN_RANGES) {
-      const v = next[k] as number;
-      if (!Number.isInteger(v) || v < lo || v > hi) return { ok: false, message: `请输入 ${lo}–${hi} 的整数` };
+    // 小休阈值
+    if (!Number.isInteger(next.idleToBreakMinutes) || next.idleToBreakMinutes < 5 || next.idleToBreakMinutes > 240) {
+      return { ok: false, message: '请输入 5–240 的整数' };
     }
-    const changed = (Object.keys(patch) as (keyof DispatchConfig)[]).filter((k) => JSON.stringify(config.value[k]) !== JSON.stringify(next[k]));
+    // 全局派单方式走 setGlobalMode（带审计与重派），不随派单策略保存
+    const { globalMode, ...rest } = next;
+    void globalMode;
+    const changed = (Object.keys(patch) as (keyof DispatchConfig)[])
+      .filter((k) => k !== 'globalMode' && JSON.stringify(config.value[k]) !== JSON.stringify(next[k]));
     if (changed.length) audit('派单策略', '全局', changed.join('、'), '已修改', operator);
-    // 开关、派单方式、运行方式走各自 action（带审计与重派）
-    const { globalSwitch, globalMode, runMode, autoDegraded, ...rest } = next;
-    void globalSwitch; void globalMode; void runMode; void autoDegraded;
     config.value = { ...config.value, ...rest };
     persist();
     return { ok: true, message: '已保存，对此后派单生效' };
@@ -2261,10 +1985,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     }, TICK_MS);
     // 刷新 / 关页前把派单改写过的工单行现值落一次
     window.addEventListener('pagehide', () => persist());
-    // 开发态开关：控制台 `__flowosDispatch.simulateEngineDown(true)` 等模拟自动转混合条件
+    // 开发态：控制台 `__flowosDispatch.tick()` 手动跑一次定时判定
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__flowosDispatch = {
-        simulateEngineDown, simulateAgentSyncStall, tick, healthView,
+        tick,
         // 客户回访打回：`__flowosDispatch.surveyReturn('工单号')`（调研中的通用工单）
         surveyReturn: (no: string) => {
           const t = poolTicket(no);
@@ -2282,16 +2006,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
     poolIdOf, globalEffectiveMode, poolModeOf, effectiveModeOf, membersOf, poolMembersOf,
     agentOf, agentView, defaultCapOf, capOf, inTransitOf, resolvePool, profileMatches, matchesMe,
     ticketStateOf, dispatchStatusOf, logsOf, poolViews, nextRulePriority, validatePoolRule, validateProfile,
-    // 自动转混合 · 恢复
-    health, healthView, resumeReady, simulateEngineDown, simulateAgentSyncStall,
     // 引擎
     dispatchTicket, dispatchNewTicket, redispatchToPool, resolveForAftersale, releaseCapacity, onAgentAvailable, tick, resumePools,
     returnFromSurvey,
     // 先到先得 · 人工动作
     checkOccupy, checkClaim, recordManualTake, withdrawTicket,
-    // 派单方式 · 开关 · 运行方式 · 上线阶段
-    setGlobalSwitch, setGlobalMode, setPoolMode, setRunMode,
-    rolloutStage, rolloutNoAutoGroup, rolloutStageSince, setRolloutStage, onDutyHoursOf,
+    // 派单方式
+    setGlobalMode, setPoolMode, onDutyHoursOf,
     // 工单池
     validatePoolName, addPool, renamePool, poolDisableImpact, setPoolEnabled,
     // 入池规则

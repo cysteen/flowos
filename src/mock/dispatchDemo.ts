@@ -1,7 +1,8 @@
 /**
  * 【1215】智能派单 · 运行中种子（PRD 13 / 14 / 17 章）：近两周的派单日志、审计、池内待派工单与坐席当日在岗。
  *
- * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来（试运行 → 单池试点 → 多池）的判定与人工记录。
+ * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来的判定与人工记录
+ *   （管理员先开放二线处理组池自动派单，第 4 天起再放开硬件、综合、技术支持三池）。
  * - 只由 `stores/dispatch.ts` 在无缓存（或版本闸失效）时调用一次，结果随 `flowos-dispatch` 落库；改本文件须升 `DISPATCH_CACHE_VERSION`。
  * - 日志里的工单号为历史单（号段 5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
  * - 历史单的派单后首响时刻记在日志 `firstRespAt`（工单库查不到该单时，分派监控按此取首响）。
@@ -12,7 +13,7 @@ import {
   PRIORITY_SCORE, PROFICIENCY_SCORE, defaultScoreFactors, isProfileConfigured,
   type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchFailReason, type DispatchGroup,
   type DispatchLogEntry, type DispatchPath, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction,
-  type PoolMode, type PoolRule, type RelaxLevel, type RunMode, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
+  type PoolMode, type PoolRule, type RelaxLevel, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { splitProblemPath } from '@/stores/problemTags';
 
@@ -143,17 +144,17 @@ const FIRST_RESP_LIMIT: Record<Priority, number> = { P0: 15, P1: 480, P2: 480, P
 /* ------------------------------------------------------------------ */
 
 interface Mode {
-  runMode: RunMode;
   globalMode: PoolMode;
   groupMode: PoolMode;
   effectiveMode: PoolMode;
 }
-const FORMAL: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
-const TRIAL: Mode = { runMode: '试运行', globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
-const HW_DEGRADED: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
-const GLOBAL_DEGRADED: Mode = { runMode: '正式派单', globalMode: '混合派单', groupMode: '自动派单', effectiveMode: '混合派单' };
+const FORMAL: Mode = { globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
+/** 本池由管理员切为混合派单 */
+const HW_MIXED: Mode = { globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
+/** 全局由管理员切为混合派单 */
+const GLOBAL_MIXED: Mode = { globalMode: '混合派单', groupMode: '自动派单', effectiveMode: '混合派单' };
 /** 专属工单线的组：本组混合派单，组内领取 */
-const OFF_GROUP: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
+const OFF_GROUP: Mode = { globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
 
 interface Tk {
   no: string;
@@ -174,8 +175,6 @@ interface JudgeOpts {
   chosen?: DispatchAgent;
   relaxLevel?: RelaxLevel;
   failReason?: DispatchFailReason;
-  /** 试运行：建议处理人 */
-  trial?: boolean;
   /** 本次判定的候选数（不传按池成员估算） */
   candidates?: number;
   firstRespAt?: number;
@@ -235,7 +234,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     const outside = agents.length - m.length;
     if (outside) d['候选范围'] = outside;
     const off = m.filter((a) => !a.personalSwitch).length;
-    if (off) d['两级开关'] = off;
+    if (off) d['个人开关'] = off;
     const unconf = m.filter((a) => a.personalSwitch && !isProfileConfigured(a.profile)).length;
     let rest = m.length - off - unconf - keep - capBlocked;
     if (rest > 0) {
@@ -268,7 +267,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       }
     }
     const capBlocked = o.path === '排队' ? Math.max(1, Math.min(2, eligible(t.pool).length)) : 0;
-    const status = o.trial ? null : (o.status ?? null);
+    const status = o.status ?? null;
     const e: SeedLogEntry = {
       id: `dl-seed-${(idn += 1)}`,
       ticketNo: t.no,
@@ -282,7 +281,6 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       globalMode: o.mode.globalMode,
       groupMode: o.mode.groupMode,
       effectiveMode: o.mode.effectiveMode,
-      runMode: o.mode.runMode,
       path: o.path,
       relaxLevel: o.relaxLevel ?? 0,
       ...(o.path === '留池' || o.path === '预留' ? {} : { gateDrops: dropsOf(t.pool, assignLike ? candidates : 0, capBlocked), candidateCount: assignLike ? candidates : 0 }),
@@ -292,7 +290,6 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       ...(o.failReason ? { failReason: o.failReason } : {}),
       status,
       snapshot: snapshotOf(t, at),
-      ...(o.trial ? { trial: { suggested: o.chosen?.name ?? null, actual: null, same: false } } : {}),
       ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
     };
     logs.push(e);
@@ -300,7 +297,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
   }
 
   function manual(t: Tk, at: number, action: ManualAction, operator: string, mode: Mode, o: {
-    target?: string; reason?: string; overCap?: '超额指派'; firstRespAt?: number; trialSuggested?: string | null; ruleName?: string;
+    target?: string; reason?: string; overCap?: '超额指派'; firstRespAt?: number; ruleName?: string;
   } = {}): SeedLogEntry {
     t.seq += 1;
     const e: SeedLogEntry = {
@@ -315,12 +312,9 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       globalMode: mode.globalMode,
       groupMode: mode.groupMode,
       effectiveMode: mode.effectiveMode,
-      runMode: mode.runMode,
       snapshot: snapshotOf(t, at),
       manual: { action, operator, ...(o.target ? { target: o.target } : {}), ...(o.reason ? { reason: o.reason } : {}) },
       ...(o.overCap ? { overCap: o.overCap } : {}),
-      ...(o.trialSuggested !== undefined && o.target
-        ? { trial: { suggested: o.trialSuggested, actual: o.target, same: o.trialSuggested === o.target } } : {}),
       ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
     };
     logs.push(e);
@@ -342,11 +336,13 @@ const FAIL_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人�
 
 interface Timeline {
   today0: number;
-  trialStart: number;
-  singleStart: number;
+  /** 上线：全局切为自动派单，先开放二线处理组池 */
+  launchStart: number;
+  /** 放开硬件、综合、技术支持三池 */
   multiStart: number;
-  degradeStart: number;
-  degradeEnd: number;
+  /** 派单服务异常，管理员把全局切为混合派单 / 切回自动派单 */
+  mixedStart: number;
+  mixedEnd: number;
 }
 
 function timelineOf(now: number): Timeline {
@@ -354,11 +350,10 @@ function timelineOf(now: number): Timeline {
   const at = (d: number, h: number, m = 0) => today0 - d * DAY + h * HOUR + m * MIN;
   return {
     today0,
-    trialStart: at(13, 9, 30),
-    singleStart: at(7, 10),
+    launchStart: at(13, 9, 30),
     multiStart: at(4, 10, 30),
-    degradeStart: at(3, 14, 5),
-    degradeEnd: at(3, 14, 40),
+    mixedStart: at(3, 14, 5),
+    mixedEnd: at(3, 14, 40),
   };
 }
 
@@ -387,21 +382,21 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
         enteredAt: at, seq: 0,
       };
     };
-    const from = Math.max(ds + 8 * HOUR + 40 * MIN, tl.trialStart);
+    const from = Math.max(ds + 8 * HOUR + 40 * MIN, tl.launchStart);
     const to = ds + 18 * HOUR + 20 * MIN;
-    const stageAt = (ts: number) => (ts < tl.singleStart ? 'trial' : ts < tl.multiStart ? 'single' : 'multi');
-    const volume = { trial: weekend ? 9 : 15, single: weekend ? 7 : 11, multi: weekend ? 13 : 21 }[stageAt(from)];
+    const stageAt = (ts: number) => (ts < tl.multiStart ? 'single' : 'multi');
+    const volume = { single: weekend ? 8 : 13, multi: weekend ? 13 : 21 }[stageAt(from)];
     const times = Array.from({ length: volume }, () => from + r() * (to - from)).sort((x, y) => x - y);
 
-    // 自动转混合当日：引擎异常判定（转混合前）
-    if (ds <= tl.degradeStart && tl.degradeStart < ds + DAY) {
+    // 派单服务异常当日：引擎异常判定（管理员切为混合派单前）
+    if (ds <= tl.mixedStart && tl.mixedStart < ds + DAY) {
       for (const m of [1, 2, 4]) {
-        const at = tl.degradeStart - (5 - m) * MIN;
+        const at = tl.mixedStart - (5 - m) * MIN;
         const t = newTk(m === 2 ? 'general' : 'line2', at);
         b.judge(t, at, { trigger: '新单', path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: '引擎异常' });
         const who = b.pick(b.eligible(t.pool));
         const take = at + b.between(8, 20) * MIN;
-        b.manual(t, take, '班组长指派', LEADER, GLOBAL_DEGRADED, { target: who.name, firstRespAt: respAt(take) });
+        b.manual(t, take, '班组长指派', LEADER, GLOBAL_MIXED, { target: who.name, firstRespAt: respAt(take) });
       }
     }
 
@@ -413,13 +408,13 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const pool = pools.length === 1 ? 'line2' : x < 0.4 ? 'line2' : x < 0.7 ? 'general' : x < 0.88 ? 'hardware' : 'tech';
       const elig = b.eligible(pool);
       const sc = r();
-      // 自动转混合期间：全局混合派单留池，组内领取
-      if (ts >= tl.degradeStart && ts < tl.degradeEnd) {
+      // 全局混合派单期间：留池，组内领取
+      if (ts >= tl.mixedStart && ts < tl.mixedEnd) {
         const t = newTk(pool, ts);
-        b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_DEGRADED, status: null });
+        b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_MIXED, status: null });
         const who = b.pick(elig);
         const take = ts + b.between(4, 12) * MIN;
-        b.manual(t, take, '二线领取', who.name, GLOBAL_DEGRADED, { target: who.name, firstRespAt: respAt(take) });
+        b.manual(t, take, '二线领取', who.name, GLOBAL_MIXED, { target: who.name, firstRespAt: respAt(take) });
         noteTake(who.name, take);
         continue;
       }
@@ -427,31 +422,6 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const t = newTk(pool, ts, reserve ? '投诉' : undefined);
       const trigger: DispatchTrigger = pool === 'tech' ? (r() < 0.6 ? '升级三线' : '调剂到池') : r() < 0.1 ? '售后转回' : '新单';
       const agent = b.pick(elig);
-      if (stage === 'trial') {
-        // 试运行：引擎只给建议，组内领取 / 班组长指派；建议与实际有同有不同
-        let suggested: DispatchAgent | undefined;
-        if (sc < 0.5) {
-          suggested = agent;
-          b.judge(t, ts, { trigger, path: sc < 0.4 ? '加权评分' : '原处理人', mode: TRIAL, chosen: agent, trial: true });
-        } else if (sc < 0.82) {
-          b.judge(t, ts, { trigger, path: '排队', mode: TRIAL, trial: true });
-        } else if (sc < 0.9) {
-          suggested = agent;
-          b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: 1, mode: TRIAL, chosen: agent, trial: true });
-        } else {
-          b.judge(t, ts, { trigger, path: '兜底回池', mode: TRIAL, failReason: b.pick(FAIL_REASONS), trial: true });
-        }
-        const same = suggested && r() < 0.72;
-        const other = elig.filter((a) => a.name !== suggested?.name);
-        const target = same ? suggested! : (other.length ? b.pick(other) : agent);
-        const take = ts + b.between(3, 25) * MIN;
-        const byLeader = r() < 0.3;
-        b.manual(t, take, byLeader ? '班组长指派' : '二线领取', byLeader ? LEADER : target.name, TRIAL,
-          { target: target.name, trialSuggested: suggested?.name ?? null, firstRespAt: respAt(take) });
-        noteTake(target.name, take);
-        continue;
-      }
-      // 正式派单
       let assignAt: number | null = null;
       if (sc < 0.4) {
         assignAt = ts;
@@ -522,8 +492,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const ts = from + r() * (to - from);
       const t = newTk(pool, ts);
       const who = pool === 'xiaozhi' ? '谭小智' : pool === 'edu-flash' ? (r() < 0.75 ? '许文静' : '王坐席') : (r() < 0.75 ? '何教支' : '张三');
-      const mode: Mode = stageAt(ts) === 'trial' ? { ...OFF_GROUP, runMode: '试运行' } : OFF_GROUP;
-      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, mode, { target: who });
+      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, OFF_GROUP, { target: who });
     }
   }
 }
@@ -569,7 +538,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   const E = now - t0;
   const at = (f: number) => t0 + f * E;
   const A = (n: string) => agents.find((a) => a.name === n)!;
-  const hwDegradeAt = at(0.3);
+  const hwMixedAt = at(0.3);
   const respAt = (take: number) => {
     const x = take + (6 + 18 * r() ** 1.2) * MIN;
     return x < now - 2 * MIN ? x : undefined;
@@ -616,18 +585,18 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     }
   });
 
-  // 硬件缺陷组转混合后：留池，组内领取、指派、调剂到人
+  // 硬件缺陷组池切为混合派单后：留池，组内领取、指派、调剂到人
   const hw: [number, ManualAction, string, string | undefined][] = [
     [0.35, '调剂到人', '李四', '李四熟悉学习机返修流程'],
     [0.45, '二线领取', '陈坐席', undefined],
     [0.6, '班组长指派', '陈坐席', undefined],
   ];
   for (const [f, action, target, reason] of hw) {
-    const enter = Math.max(at(f), hwDegradeAt + MIN);
+    const enter = Math.max(at(f), hwMixedAt + MIN);
     const t = newTk('hardware', enter);
-    b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_DEGRADED, status: null });
+    b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_MIXED, status: null });
     const take = enter + b.between(6, 14) * MIN;
-    b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_DEGRADED, { target, reason, firstRespAt: respAt(take) });
+    b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_MIXED, { target, reason, firstRespAt: respAt(take) });
     noteTake(target, take);
   }
 
@@ -647,7 +616,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     b.manual(t, take, '二线领取', name, mode, { target: name, ...(mode === FORMAL ? { firstRespAt: respAt(take) } : {}) });
     noteTake(name, take);
   }
-  return { hwDegradeAt };
+  return { hwMixedAt };
 }
 
 /* ------------------------------------------------------------------ */
@@ -722,7 +691,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       ticketNo: no, poolId: s.pool, ruleId: null, enteredAt, status: s.status, relaxLevel: 0, queueSince: null,
       firstRespTotalMin: Math.max(FIRST_RESP_LIMIT[s.priority], s.remain0), firstRespDueAt: enteredAt + s.remain0 * MIN, seq: 0,
     };
-    const mode = s.pool === 'hardware' ? HW_DEGRADED : FORMAL;
+    const mode = s.pool === 'hardware' ? HW_MIXED : FORMAL;
     if (s.key === 'L-Q1' || s.key === 'G-Q1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       st.queueSince = enteredAt;
@@ -791,26 +760,23 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
 /* 审计（近两周）                                                        */
 /* ------------------------------------------------------------------ */
 
-function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now: number }, groups: DispatchGroup[]): DispatchAuditEntry[] {
+function buildAudits(tl: Timeline, today: { hwMixedAt: number; t0: number; now: number }, groups: DispatchGroup[]): DispatchAuditEntry[] {
   let n = 0;
   const a = (ms: number, operator: string, kind: DispatchAuditKind, target: string, before: string, after: string, reason?: string): DispatchAuditEntry => ({
     id: `da-seed-${(n += 1)}`, at: stamp(ms), operator, kind, target, before, after, ...(reason ? { reason } : {}),
   });
   const E = today.now - today.t0;
   const pl = (id: string) => `${groups.find((g) => g.id === id)?.label ?? id}池`;
-  // 单池试点：二线技术支持组池为试点池，其余池切为混合派单；多池：硬件、综合、技术支持组池切为自动派单
+  // 上线：先只开放二线处理组池，其余池切为混合派单，再把全局切为自动派单；第 4 天起放开硬件、综合、技术支持组池
   const toMixed = ['hardware', 'general', 'tech', 'xiaozhi', 'edu-flash', 'edu'].filter((id) => groups.some((g) => g.id === id));
   const toAuto = ['hardware', 'general', 'tech'];
   return [
-    a(tl.trialStart, ADMIN, '全局开关', '全局', '关闭', '开启'),
-    a(tl.singleStart, ADMIN, '运行方式', '全局', '试运行', '正式派单'),
-    ...toMixed.map((id) => a(tl.singleStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '上线阶段推进至单池试点')),
-    a(tl.singleStart, ADMIN, '运行方式', '上线阶段', '试运行', '单池试点'),
-    ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单', '上线阶段推进至多池')),
-    a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单池试点', '多池'),
-    a(tl.degradeStart, SYSTEM, '派单方式', '全局', '自动派单', '混合派单', '5 分钟内派单失败率 ≥ 20%'),
-    a(tl.degradeEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单', '派单服务已恢复，各项指标连续 10 分钟达标'),
-    a(today.hwDegradeAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
+    ...toMixed.map((id) => a(tl.launchStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '首批只开放二线处理组池自动派单')),
+    a(tl.launchStart + MIN, ADMIN, '派单方式', '全局', '人工派单', '自动派单'),
+    ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单')),
+    a(tl.mixedStart, ADMIN, '派单方式', '全局', '自动派单', '混合派单', '派单服务异常，暂停自动派单，改由组内领取'),
+    a(tl.mixedEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单'),
+    a(today.hwMixedAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
     a(today.t0 + 0.45 * E, LEADER, '个人上限', '王坐席', '默认 13', '3'),
     a(today.t0 + 0.55 * E, LEADER, '个人上限', '张三', '40', '32'),
   ];
@@ -839,7 +805,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
   const noteTake = (name: string, at: number) => { (takes[name] ??= []).push(at); };
 
   buildHistory(b, agents, tl, r, now, noteTake);
-  const { hwDegradeAt } = buildToday({ b, agents, now, t0, r, noteTake });
+  const { hwMixedAt } = buildToday({ b, agents, now, t0, r, noteTake });
   const pool = buildPool(b, now, rules);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
@@ -864,7 +830,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
 
   return {
     logs,
-    audits: buildAudits(tl, { hwDegradeAt, t0, now }, groups),
+    audits: buildAudits(tl, { hwMixedAt, t0, now }, groups),
     ticketStates: pool.states,
     overAssigned: { 王坐席: true },
     rows: pool.rows,

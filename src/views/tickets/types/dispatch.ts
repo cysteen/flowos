@@ -19,9 +19,6 @@ export function stricterMode(...modes: PoolMode[]): PoolMode {
   return modes.reduce<PoolMode>((a, b) => (MODE_RANK[b] > MODE_RANK[a] ? b : a), '自动派单');
 }
 
-/** 运行方式（14.2 运行设置 · 第 17 章）。默认试运行 */
-export type RunMode = '试运行' | '正式派单';
-
 /** 留池工单的派单状态（1.3 / 10.1）。混合派单、人工派单下为空 */
 export type DispatchStatus = '等原处理人' | '排队中' | '派单失败回池';
 export const DISPATCH_STATUSES: DispatchStatus[] = ['等原处理人', '排队中', '派单失败回池'];
@@ -233,10 +230,6 @@ export interface DispatchAgent {
   onDutyDay?: string;
 }
 
-/** 上线阶段（第 17 章，按池计）：试运行 → 单池试点 → 多池 → 全量 */
-export type RolloutStage = '试运行' | '单池试点' | '多池' | '全量';
-export const ROLLOUT_STAGES: RolloutStage[] = ['试运行', '单池试点', '多池', '全量'];
-
 /* ------------------------------------------------------------------ */
 /* 配置（14.2）                                                          */
 /* ------------------------------------------------------------------ */
@@ -264,25 +257,10 @@ export const PROFICIENCY_SCORE: Record<Proficiency, number> = { 专家: 1, 熟�
 /** 紧急度 · 优先级分（4.3） */
 export const PRIORITY_SCORE: Record<Priority, number> = { P0: 1, P1: 0.7, P2: 0.4, P3: 0.1 };
 
-/** 出池规则与运行设置（14.2，全部为后台可配默认值） */
+/** 派单配置（14.2 出池规则 / 个人上限，全部为后台可配默认值）与全局派单方式 */
 export interface DispatchConfig {
-  /* 运行设置 */
-  globalSwitch: boolean;
-  /** 全局派单方式（管理员切换或自动转混合） */
+  /** 全局派单方式（5.4，管理员在分派监控手动切换；人工派单＝全局不派单） */
   globalMode: PoolMode;
-  /** 全局派单方式是否由自动转混合进入（5.3；恢复自动派单须管理员确认） */
-  autoDegraded: boolean;
-  runMode: RunMode;
-  /** 自动转混合 · 派单失败率：5 分钟内 ≥ N%（5.3） */
-  autoFailRate: number;
-  /** 自动转混合 · 自动派单成功率：15 分钟内 ＜ N% */
-  autoSuccessRate: number;
-  /** 自动转混合 · 坐席状态数据超过 N 分钟未同步 */
-  autoSyncMinutes: number;
-  /** 自动转混合 · 引擎连续 N 分钟无响应 */
-  autoEngineMinutes: number;
-  /** 恢复提示 · 各项指标连续达标 N 分钟（5.4） */
-  resumeOkMinutes: number;
   /** 无操作转小休 N 分钟 */
   idleToBreakMinutes: number;
   /* 出池规则 */
@@ -309,15 +287,7 @@ export interface DispatchConfig {
 }
 export function defaultDispatchConfig(): DispatchConfig {
   return {
-    globalSwitch: false,
-    globalMode: '自动派单',
-    autoDegraded: false,
-    runMode: '试运行',
-    autoFailRate: 20,
-    autoSuccessRate: 60,
-    autoSyncMinutes: 30,
-    autoEngineMinutes: 3,
-    resumeOkMinutes: 10,
+    globalMode: '人工派单',
     idleToBreakMinutes: 30,
     originalFirst: true,
     windowConsultDays: 7,
@@ -403,8 +373,8 @@ export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '�
 export type DispatchFailReason = '无画像匹配成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
-export type GateKey = '候选范围' | '两级开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
-export const GATE_ORDER: GateKey[] = ['候选范围', '两级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
+export const GATE_ORDER: GateKey[] = ['候选范围', '个人开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
 
 /** 单个候选的评分明细（4.3） */
 export interface ScoreDetail {
@@ -421,7 +391,7 @@ export interface ScoreDetail {
 /** 人工动作（13.1「人工动作」列） */
 export type ManualAction = '班组长指派' | '改派' | '调剂到人' | '调剂到池' | '升级三线指定人' | '二线领取' | '升级投诉直派';
 
-/** 人工换人（13.2）：引擎派出后发生即不计自动派单成功；分派监控统计卡与自动转混合判定同用 */
+/** 人工换人（13.2）：引擎派出后发生即不计自动派单成功（分派监控统计卡） */
 export const DISPATCH_UNDO_ACTIONS: ManualAction[] = ['改派', '调剂到人', '调剂到池', '班组长指派'];
 
 /** 某单在判定序号 `afterSeq` 之后是否被跨班次回收或人工换人（自动派单成功率分子口径，13.2） */
@@ -449,13 +419,12 @@ export interface DispatchLogEntry {
   groupMode: PoolMode;
   /** 生效派单方式（较严者） */
   effectiveMode: PoolMode;
-  runMode: RunMode;
   path?: DispatchPath;
   relaxLevel?: RelaxLevel;
   /** 逐项门槛淘汰人数 */
   gateDrops?: Partial<Record<GateKey, number>>;
   candidateCount?: number;
-  /** 中选坐席（试运行为建议处理人） */
+  /** 中选坐席 */
   chosen?: { name: string; staffNo: string; groupLabel: string };
   chosenScore?: ScoreDetail;
   /** 得分前三名候选 */
@@ -480,8 +449,6 @@ export interface DispatchLogEntry {
   manual?: { action: ManualAction; operator: string; target?: string; reason?: string };
   /** 超额指派 / 超限标记 */
   overCap?: '超额指派' | '超限';
-  /** 试运行：建议处理人与实际处理人 */
-  trial?: { suggested: string | null; actual: string | null; same: boolean };
 }
 
 /** 工单在派单侧的状态（按工单号存，不写进工单行） */
@@ -513,7 +480,7 @@ export interface TicketDispatchState {
   seq: number;
   /** 兜底后引擎不再自动判定（4.4） */
   fallbackDone?: boolean;
-  /** 因「首响已超时」兜底回池：恢复重派、正式派单开启、上线阶段推进时不再重新判定，留池等人工处理（5.1） */
+  /** 因「首响已超时」兜底回池：恢复重派时不再重新判定，留池等人工处理（5.1） */
   overdueFallback?: boolean;
   /** 已首次派到人（受理短信只发一次） */
   everAssigned?: boolean;
@@ -523,7 +490,7 @@ export interface TicketDispatchState {
 /* 审计（3.1 / 5.4 / 6.5 / 7.5 / 8.3）                                   */
 /* ------------------------------------------------------------------ */
 
-export type DispatchAuditKind = '全局开关' | '个人开关' | '派单方式' | '运行方式' | '入池规则' | '工单池' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
+export type DispatchAuditKind = '个人开关' | '派单方式' | '入池规则' | '工单池' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
 export interface DispatchAuditEntry {
   id: string;
   at: string;
@@ -547,8 +514,6 @@ export interface DispatchResult {
   status: DispatchStatus | null;
   /** 履历 / 提示用的一句话 */
   reason: string;
-  /** 试运行建议处理人 */
-  suggested?: string | null;
   log: DispatchLogEntry;
 }
 
