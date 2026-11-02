@@ -90,7 +90,7 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
               <span v-for="c in condItems(record.conditions)" :key="c.label" class="pr-chip"><em>{{ c.label }}</em>{{ c.text }}</span>
             </div>
           </template>
-          <span v-else-if="column.key === 'pool'" class="pr-pool"><InboxOutlined />{{ store.poolLabel(record.poolId) }}</span>
+          <span v-else-if="column.key === 'pool'" class="pr-pool"><InboxOutlined />{{ store.poolLabel(record.poolId) }}<em v-if="!store.isPoolEnabled(record.poolId)" class="pr-pool-off">已停用</em></span>
           <span v-else-if="column.key === 'enabled'" class="pr-st" :class="{ on: record.enabled }"><i />{{ record.enabled ? '启用' : '停用' }}</span>
           <template v-else-if="column.key === 'op'">
             <a-button type="link" size="small" @click="openEdit(record as PoolRule)">编辑</a-button>
@@ -127,6 +127,7 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 .pr-name { font-weight: 500; color: #111827; font-size: 12px; }
 .pr-pool { display: inline-flex; align-items: center; gap: 6px; color: #111827; font-size: 12px; }
 .pr-pool :deep(.anticon) { color: #9ca3af; }
+.pr-pool-off { font-style: normal; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 4px; background: #f3f4f6; color: #6b7280; }
 .pr-st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af; }
 .pr-st i { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; }
 .pr-st.on { color: #374151; }

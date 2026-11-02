@@ -64,7 +64,7 @@ function goStrategy() {
               </template>
             </div>
           </template>
-          <span v-else-if="column.key === 'pool'" class="rs-pool">{{ store.poolLabel(record.poolId) }}</span>
+          <span v-else-if="column.key === 'pool'" class="rs-pool">{{ store.poolLabel(record.poolId) }}<em v-if="!store.isPoolEnabled(record.poolId)" class="rs-pool-off">已停用</em></span>
           <span v-else-if="column.key === 'priority'" class="rs-prio">{{ record.priority }}</span>
           <span v-else-if="column.key === 'enabled'" class="rs-st" :class="{ on: record.enabled }"><i />{{ record.enabled ? '启用' : '停用' }}</span>
           <a-button v-else-if="column.key === 'op'" type="link" size="small" class="rs-go" @click="goEdit(record.id)">去编辑 →</a-button>
@@ -91,6 +91,7 @@ function goStrategy() {
 .rs-expr { color: #4b5563; font-size: 12px; }
 .rs-and { color: #9ca3af; font-size: 12px; }
 .rs-pool { color: #111827; font-size: 12px; }
+.rs-pool-off { font-style: normal; margin-left: 6px; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 4px; background: #f3f4f6; color: #6b7280; }
 .rs-prio { color: #111827; font-weight: 600; font-variant-numeric: tabular-nums; font-size: 12px; }
 .rs-prio.dft { color: #9ca3af; font-weight: normal; }
 .rs-st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af; }

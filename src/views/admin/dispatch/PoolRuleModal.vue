@@ -58,7 +58,13 @@ watch(() => props.open, (v) => {
   }
 });
 
-const poolOpts = computed(() => store.groups.map((g) => ({ value: g.id, label: store.poolLabel(g.id) })));
+/** 归属池只可选启用中的池；编辑指向已停用池的规则时该池置灰并标「已停用」 */
+const poolOpts = computed(() => {
+  const opts: { value: string; label: string; disabled?: boolean }[] = store.enabledPools().map((p) => ({ value: p.id, label: p.name }));
+  const cur = f.poolId ? store.poolOf(f.poolId) : undefined;
+  if (cur && cur.status !== '启用') opts.push({ value: cur.id, label: `${cur.name}（已停用）`, disabled: true });
+  return opts;
+});
 
 function submit() {
   const draft = {
