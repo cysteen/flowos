@@ -25,7 +25,8 @@ const poolScope = computed(() => (poolFilter.value === 'all' ? null : [poolFilte
 const stats = computed(() => {
   void clock.value;
   const now = Date.now();
-  return computeStats(store.logs, store.agents, range.value, poolScope.value, now, (name) => store.onDutyHoursOf(name, now));
+  return computeStats(store.logs, store.agents, range.value, poolScope.value, now, (name) => store.onDutyHoursOf(name, now),
+    (no) => store.dispatchStatusOf(no));
 });
 
 const poolRows = computed(() => {

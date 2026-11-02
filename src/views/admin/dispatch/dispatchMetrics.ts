@@ -3,7 +3,7 @@
  * 只读：取 dispatch store 的派单日志与坐席、工单库的处理履历换算，不写任何数据。
  */
 import { TICKETS } from '@/mock/tickets';
-import type { DispatchAgent, DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import { isDispatchUndone, type DispatchAgent, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
 
 const MIN = 60_000;
 
@@ -102,6 +102,8 @@ export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
   /** 坐席当日在岗小时数（签入时长） */
   onDutyHoursOf: (name: string) => number = () => 0,
+  /** 工单当前派单状态（排队中 / 等原处理人的单尚无派单结果，不计入自动派单成功率分母，5.3） */
+  dispatchStatusOf: (no: string) => string | null | undefined = () => null,
 ): MonitorStats {
   const from = rangeStart(range, now);
   const w: Window = { from, to: now + 1, poolIds };
@@ -111,10 +113,18 @@ export function computeStats(
   // 进入派单：正式派单下有判定记录的工单
   const formal = inRange.filter((l) => l.kind === '判定' && l.runMode === '正式派单');
   const entered = new Set(formal.map((l) => l.ticketNo));
-  const reassigned = new Set(inRange.filter((l) => l.kind === '人工' && l.manual?.action === '改派').map((l) => l.ticketNo));
-  const recycled = new Set(inRange.filter((l) => l.trigger === '跨班次回收').map((l) => l.ticketNo));
-  const success = new Set(formal.filter((l) => isEngineAssign(l) && l.path !== '直派规则').map((l) => l.ticketNo)
-    .filter((no) => !reassigned.has(no) && !recycled.has(no)));
+  // 自动派单成功率（13.2，与自动降级判定同口径）：引擎派出后未被跨班次回收、未被人工换人
+  // （改派、调剂到人、调剂到池、班组长指派）的工单 ÷ 进入派单的工单；不含直派规则单；仍在排队 / 等原处理人的单不计入分母
+  const lastAssignSeq = new Map<string, number>();
+  for (const l of formal) {
+    if (isEngineAssign(l) && l.path !== '直派规则') lastAssignSeq.set(l.ticketNo, Math.max(lastAssignSeq.get(l.ticketNo) ?? 0, l.seq));
+  }
+  const success = new Set([...lastAssignSeq].filter(([no, seq]) => !isDispatchUndone(scoped, no, seq)).map(([no]) => no));
+  const succEntered = new Set([...entered].filter((no) => {
+    if (lastAssignSeq.has(no)) return true;
+    const st = dispatchStatusOf(no);
+    return st !== '排队中' && st !== '等原处理人';
+  }));
   const fallback = new Set(formal.filter((l) => l.path === '兜底回池').map((l) => l.ticketNo));
 
   const seg = firstRespSegments(scoped, w);
@@ -149,7 +159,7 @@ export function computeStats(
     respMedian: seg.resp,
     firstRespDelta,
     balance,
-    successRate: entered.size ? Math.round((success.size / entered.size) * 1000) / 10 : null,
+    successRate: succEntered.size ? Math.round((success.size / succEntered.size) * 1000) / 10 : null,
     fallbackRate: entered.size ? Math.round((fallback.size / entered.size) * 1000) / 10 : null,
     enteredCount: entered.size,
     pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),

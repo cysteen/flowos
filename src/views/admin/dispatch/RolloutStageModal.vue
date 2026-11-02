@@ -80,7 +80,8 @@ interface CondRow {
 }
 
 function statsOf(logs: DispatchLogEntry[], poolIds: string[], now: number) {
-  return computeStats(logs, store.agents, '30d', poolIds, now, (name) => store.onDutyHoursOf(name, now));
+  return computeStats(logs, store.agents, '30d', poolIds, now, (name) => store.onDutyHoursOf(name, now),
+    (no) => store.dispatchStatusOf(no));
 }
 
 const conditions = computed<CondRow[]>(() => {

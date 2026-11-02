@@ -14,7 +14,7 @@ import {
 import {
   DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, PRIORITY_SCORE, PROFICIENCY_SCORE,
   RELAX_LEVEL_LABEL, TAKEN_MESSAGE, PROFILE_DIMS,
-  defaultDispatchConfig, emptyProfile, isProfileConfigured, stricterMode,
+  defaultDispatchConfig, emptyProfile, isDispatchUndone, isProfileConfigured, stricterMode,
   type AgentProfile, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
   type DispatchFailReason, type DispatchGroup, type DispatchLogEntry, type DispatchPath, type DispatchResult,
   type DispatchRole, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction, type OccupyResult,
@@ -1366,8 +1366,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const SUCCESS_WINDOW_MIN = 15;
   /** 引擎派出的判定路径（不含预留 / 排队 / 留池 / 兜底） */
   const ENGINE_ASSIGN_PATHS: DispatchPath[] = ['原处理人', '加权评分', '组内放宽'];
-  /** 派出后被人工改派 / 调剂、被回收即不计成功 */
-  const UNDO_ACTIONS: ManualAction[] = ['改派', '调剂到人', '调剂到池', '班组长指派'];
 
   /** 正式派单、正常态下进入派单的判定记录（自动降级只看引擎真正执行主流程的判定） */
   function engineLogsSince(from: number): DispatchLogEntry[] {
@@ -1395,9 +1393,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
         continue;
       }
       const lastSeq = Math.max(...assigned.map((x) => x.seq));
-      const undone = logs.value.some((x) => x.ticketNo === no && x.seq > lastSeq
-        && ((x.kind === '人工' && !!x.manual && UNDO_ACTIONS.includes(x.manual.action)) || x.trigger === '跨班次回收'));
-      if (!undone) succ += 1;
+      // 派出后未被跨班次回收、未被人工换人（改派、调剂到人、调剂到池、班组长指派）才计成功（13.2）
+      if (!isDispatchUndone(logs.value, no, lastSeq)) succ += 1;
     }
     const successRate = succEntered.size >= HEALTH_MIN_SAMPLE ? Math.round((succ / succEntered.size) * 100) : null;
     const syncStaleMinutes = health.value.syncStalledSince ? Math.max(0, Math.floor((now - health.value.syncStalledSince) / MIN)) : 0;

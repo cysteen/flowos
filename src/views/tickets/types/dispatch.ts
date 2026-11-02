@@ -396,6 +396,15 @@ export interface ScoreDetail {
 /** 人工动作（13.1「人工动作」列） */
 export type ManualAction = '班组长指派' | '改派' | '调剂到人' | '调剂到池' | '升级三线指定人' | '二线领取' | '升级投诉直派';
 
+/** 人工换人（13.2）：引擎派出后发生即不计自动派单成功；分派监控统计卡与自动降级判定同用 */
+export const DISPATCH_UNDO_ACTIONS: ManualAction[] = ['改派', '调剂到人', '调剂到池', '班组长指派'];
+
+/** 某单在判定序号 `afterSeq` 之后是否被跨班次回收或人工换人（自动派单成功率分子口径，13.2） */
+export function isDispatchUndone(logs: DispatchLogEntry[], ticketNo: string, afterSeq: number): boolean {
+  return logs.some((x) => x.ticketNo === ticketNo && x.seq > afterSeq
+    && ((x.kind === '人工' && !!x.manual && DISPATCH_UNDO_ACTIONS.includes(x.manual.action)) || x.trigger === '跨班次回收'));
+}
+
 /** 派单日志条目（13.1） */
 export interface DispatchLogEntry {
   id: string;
