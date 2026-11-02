@@ -157,11 +157,11 @@ const COMMON_TAG_PRODUCTS: [string, string[]][] = [
   ['p-hw-r2', ['功能异常', '设备故障']],
   ['p-hw-air', ['功能异常', '设备故障']],
   ['p-hw-l1', ['功能异常', '设备故障']],
-  ['p-zxw-member', ['功能异常', '设备故障/网络', '账号问题']],
+  ['p-zxw-member', ['功能异常', '设备故障 / 网络', '账号问题']],
   ['p-zxw-tingjian', ['功能异常', '账号问题']],
-  ['p-h1', ['功能异常/播放问题']],
-  ['p1', ['功能异常/触控问题']],
-  ['p3', ['账号问题/登录']],
+  ['p-h1', ['功能异常 / 播放问题']],
+  ['p1', ['功能异常 / 触控问题']],
+  ['p3', ['账号问题 / 登录']],
 ];
 function commonTagTuples(): SeedTuple[] {
   const out: SeedTuple[] = [];
@@ -172,7 +172,7 @@ function commonTagTuples(): SeedTuple[] {
     const l1Ids = new Map<string, string>();
     const l2Ids = new Map<string, string>();
     for (const pick of picks) {
-      const [l1, onlyL2] = pick.split('/');
+      const [l1, onlyL2] = splitProblemPath(pick);
       const def = COMMON_TAGS[l1];
       for (const [l2, l3s] of Object.entries(def.l2s)) {
         if (onlyL2 && l2 !== onlyL2) continue;

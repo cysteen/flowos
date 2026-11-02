@@ -8,14 +8,16 @@ import { useDispatchStore } from '@/stores/dispatch';
 import type { PoolRule } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
 import {
-  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRIORITY_OPTS, PROBLEM_TREE_OPTS, PRODUCT_TREE_OPTS, TICKET_SOURCE_OPTS, TICKET_TYPE_OPTS,
-  productToValue, valueToProduct,
+  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRIORITY_OPTS, PRODUCT_TREE_OPTS, TICKET_SOURCE_OPTS, TICKET_TYPE_OPTS,
+  problemTreeOpts, productToValue, valueToProduct,
 } from './dispatchUi';
 
 const props = defineProps<{ open: boolean; rule: PoolRule | null }>();
 const emit = defineEmits<{ 'update:open': [v: boolean]; saved: [id: string] }>();
 const store = useDispatchStore();
 const SHOW_PARENT = TreeSelect.SHOW_PARENT;
+/** 问题分类条件树：只读引用问题分类管理 */
+const problemTree = computed(problemTreeOpts);
 
 const f = reactive({
   name: '',
@@ -121,7 +123,7 @@ function submit() {
         <a-tree-select
           v-model:value="f.problems"
           class="rm-grow"
-          :tree-data="PROBLEM_TREE_OPTS"
+          :tree-data="problemTree"
           tree-checkable
           :show-checked-strategy="SHOW_PARENT"
           :field-names="{ label: 'title', value: 'value', children: 'children' }"

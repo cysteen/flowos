@@ -12,8 +12,9 @@ import {
   PRIORITY_SCORE, PROFICIENCY_SCORE, defaultScoreFactors, isProfileConfigured,
   type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchFailReason, type DispatchGroup,
   type DispatchLogEntry, type DispatchPath, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction,
-  type PoolMode, type RelaxLevel, type RunMode, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
+  type PoolMode, type PoolRule, type RelaxLevel, type RunMode, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
+import { splitProblemPath } from '@/stores/problemTags';
 
 type Priority = Ticket['priority'];
 
@@ -87,16 +88,16 @@ const SNAPS: Record<string, Snap[]> = {
   line2: [
     { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '功能异常 / 播放问题 / 在线播放', ticketSource: '电话', customerType: '个人用户' },
     { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '蓝牙耳机 Air', problem: '功能异常 / 播放问题 / 无法播放', ticketSource: '客户服务小程序', customerType: '个人用户' },
-    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能录音笔 SR302', problem: '功能异常 / 录音问题 / 转写失败', ticketSource: 'IM', customerType: '个人用户' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '讯飞录音笔H1', problem: '功能异常 / 播放问题 / 无法播放', ticketSource: 'IM', customerType: '个人用户' },
     { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '功能异常 / 播放问题 / 无法播放', ticketSource: 'IM', customerType: '家长' },
-    { businessType: '翻译机', ticketType: '咨询', productCategory: '消费电子', product: '讯飞翻译机 T10', problem: '功能异常 / 翻译问题 / 识别不准', ticketSource: '电话', customerType: '个人用户' },
-    { businessType: '学习机', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞学习机 T20', problem: '功能异常 / 应用问题 / 闪退', ticketSource: '电话', customerType: '家长' },
+    { businessType: '翻译机', ticketType: '咨询', productCategory: '消费电子', product: '三防翻译机', problem: '功能异常 / 触控问题 / 误触', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '咨询', productCategory: '学习硬件', product: '学习机 T20', problem: '功能异常 / 触控问题 / 触摸失灵', ticketSource: '电话', customerType: '家长' },
   ],
   hardware: [
     { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '扫地机器人 R2', problem: '设备故障 / 无法开机 / 无响应', ticketSource: '电话', customerType: '个人用户' },
     { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '智能门锁 L1', problem: '设备故障 / 网络 / WiFi 连不上', ticketSource: '电话', customerType: '个人用户' },
-    { businessType: '学习机', ticketType: '投诉', productCategory: '学习硬件', product: '学习机 T20', problem: '设备故障 / 屏幕 / 花屏', ticketSource: '电话', customerType: '家长' },
-    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '空气净化器 P2', problem: '设备故障 / 无法开机 / 指示灯不亮', ticketSource: '售后系统', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '投诉', productCategory: '学习硬件', product: '学习机 T20', problem: '设备故障 / 无法开机 / 黑屏', ticketSource: '电话', customerType: '家长' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '设备故障 / 无法开机 / 黑屏', ticketSource: '售后系统', customerType: '个人用户' },
   ],
   general: [
     { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '蓝牙耳机 Air', ticketSource: '售后系统', customerType: '个人用户' },
@@ -107,9 +108,9 @@ const SNAPS: Record<string, Snap[]> = {
     { businessType: '学习机', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞学习机 T20', ticketSource: '电话', customerType: '家长' },
   ],
   tech: [
-    { ticketType: '咨询', productCategory: '开放平台', product: '开放平台', problem: '功能异常 / 接口 / 鉴权失败', ticketSource: '跨组调剂', customerType: '经销商' },
-    { ticketType: '咨询', productCategory: '企业服务', product: '企业版', problem: '功能异常 / 账号 / 单点登录失败', ticketSource: '跨组调剂', customerType: '经销商' },
-    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '功能异常 / 固件 / 升级失败', ticketSource: '跨组调剂', customerType: '个人用户' },
+    { ticketType: '咨询', productCategory: '开放平台', product: '讯飞智能质检系统V1.0', problem: '账号问题 / 登录 / 验证码失败', ticketSource: '跨组调剂', customerType: '经销商' },
+    { ticketType: '咨询', productCategory: '企业服务', product: '讯飞智能质检系统V1.0', problem: '账号问题 / 登录 / 密码错误', ticketSource: '跨组调剂', customerType: '经销商' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '设备故障 / 无法开机 / 无响应', ticketSource: '跨组调剂', customerType: '个人用户' },
   ],
   'edu-flash': [
     { businessType: '教育', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞智慧课堂学生平板 S30', problem: '售后 / 服务申请 / 自助刷机', ticketSource: '客户服务小程序', customerType: '学生' },
@@ -121,7 +122,7 @@ const SNAPS: Record<string, Snap[]> = {
   ],
   xiaozhi: [
     { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '功能异常 / 播放问题 / 在线播放', ticketSource: 'IM', customerType: '老师' },
-    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网校级版', problem: '功能异常 / 扫描 / 识别偏移', ticketSource: 'IM', customerType: '老师' },
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '功能异常 / 触控问题 / 误触', ticketSource: 'IM', customerType: '老师' },
   ],
 };
 
@@ -686,7 +687,7 @@ const POOL_SEEDS: PoolSeed[] = [
     snap: SNAPS.general[1], enteredAgo: 50, remain0: 150, status: '派单失败回池' },
   { key: 'T-F1', pool: 'tech', type: '咨询', priority: 'P2', title: 'API 回调签名校验失败，需三线排查', customer: '欧阳青',
     snap: SNAPS.tech[0], enteredAgo: 28, remain0: 400, status: '派单失败回池' },
-  { key: 'T-R1', pool: 'tech', type: '投诉', priority: 'P1', title: '企业版单点登录反复失败，投诉响应慢', customer: '程立',
+  { key: 'T-R1', pool: 'tech', type: '投诉', priority: 'P1', title: '质检系统单点登录反复失败，投诉响应慢', customer: '程立',
     snap: { ...SNAPS.tech[1], ticketType: '投诉' }, enteredAgo: 2, remain0: 330, status: '等原处理人' },
   { key: 'H-R1', pool: 'hardware', type: '投诉', priority: 'P1', title: '学习机 T20 返修后再次花屏', customer: '包蕾',
     snap: SNAPS.hardware[2], enteredAgo: 1, remain0: 350, status: '等原处理人' },
@@ -704,7 +705,7 @@ function slaTextOf(min: number): { slaText: string; slaSub: string; slaState: 'o
   return { slaText: `${t}:00`, slaSub: min < 60 ? '距超时' : '充足', slaState: min < 60 ? 'soon' : 'ok' };
 }
 
-function buildPool(b: Builder, now: number) {
+function buildPool(b: Builder, now: number, rules: PoolRule[]) {
   const rows: Ticket[] = [];
   const states: Record<string, TicketDispatchState> = {};
   POOL_SEEDS.forEach((s, i) => {
@@ -762,8 +763,8 @@ function buildPool(b: Builder, now: number) {
       b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null });
     }
     st.seq = t.seq;
-    // 命中入池规则（与 stores/dispatch 种子规则 id 对应）
-    st.ruleId = s.pool === 'line2' ? 'pr-5' : s.key === 'H-R1' ? 'pr-1' : s.key === 'H-P1' ? 'pr-4' : null;
+    // 命中入池规则（按规则名对应 stores/dispatch 种子规则；技术支持组池为指定池、综合处理组池为默认池，无规则）
+    st.ruleId = s.pool === 'line2' || s.pool === 'hardware' ? (rules.find((x) => x.name === ruleOf(s.pool, s.snap))?.id ?? null) : null;
     if (s.pool === 'tech') st.designatedPool = true;
     states[no] = st;
     const remainNow = Math.round(s.remain0 - s.enteredAgo);
@@ -773,7 +774,7 @@ function buildPool(b: Builder, now: number) {
       title: s.title, smartMarks: s.type === '投诉' ? ['情绪'] : [], customer: s.customer, vip: false,
       customerPhone: `1591200${pad(80 + i)}${pad(i * 7 % 100)}`,
       product: s.snap.product, productCategory: s.snap.productCategory, businessType: s.snap.businessType,
-      ...(s.snap.problem ? (() => { const [l1, l2, l3] = s.snap.problem!.split(' / '); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
+      ...(s.snap.problem ? (() => { const [l1, l2, l3] = splitProblemPath(s.snap.problem!); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
       ticketSource: s.snap.ticketSource,
       nodeStatus: '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority,
       ...slaTextOf(remainNow), slaMinutes: remainNow,
@@ -829,7 +830,7 @@ const AWAY: Record<string, { signIn: '小休' | '签出'; agoMin: number }> = {
 /** 当日未签入 */
 const OFF_TODAY = ['秦督导', '吴投诉'];
 
-export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: DispatchGroup[]): DispatchDemo {
+export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: DispatchGroup[], rules: PoolRule[]): DispatchDemo {
   const tl = timelineOf(now);
   const t0 = Math.min(tl.today0 + 8.5 * HOUR, now - 4 * HOUR);
   const r = rng(Math.floor(tl.today0 / DAY) * 31 + 7);
@@ -839,7 +840,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
 
   buildHistory(b, agents, tl, r, now, noteTake);
   const { hwDegradeAt } = buildToday({ b, agents, now, t0, r, noteTake });
-  const pool = buildPool(b, now);
+  const pool = buildPool(b, now, rules);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
   const agentPatch: Record<string, Partial<DispatchAgent>> = {};

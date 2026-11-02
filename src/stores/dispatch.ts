@@ -28,6 +28,7 @@ import { useUserStore } from './user';
 import { useFlashStore } from './flash';
 import { useXiaozhiStore } from './xiaozhi';
 import { useRefundStore } from './refund';
+import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './problemTags';
 
 /**
  * 智能派单（【1215】PRD P0）：入池规则、人员画像 / 熟练度 / 个人上限 / 两级开关、池三态、派单引擎、派单日志与审计。
@@ -43,7 +44,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 11;
+export const DISPATCH_CACHE_VERSION = 12;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -183,8 +184,9 @@ function cond(p: Partial<PoolRuleConditions>): PoolRuleConditions {
 
 /**
  * 入池规则种子：由规则引擎「派单 → 组」与问题分类「处理组」迁移而来（3.4），名称带「（迁移）」。
- * 规则引擎来源照搬优先级排前；问题分类来源按层级由深到浅；两处条件相同时问题分类那条置停用待复核。
- * 归属池映射到原型现有组池（一组一池）。
+ * 规则引擎来源照搬优先级排前；问题分类来源由问题分类管理的处理组生成（`problemTags.migrationRules`，11-02 D7）：
+ * 只带路径不带产品，同路径同组合并，一级下全同组时上卷一级，按层级由深到浅排列。
+ * 两处条件相同时问题分类那条置停用待复核。归属池映射到原型现有组池（一组一池）。
  */
 function seedRules(now: number): PoolRule[] {
   const at = stamp(now);
@@ -192,14 +194,16 @@ function seedRules(now: number): PoolRule[] {
     migratedFrom: PoolRule['migratedFrom'], enabled = true): PoolRule => ({
     id, name, priority, conditions: cond(c), poolId, enabled, migratedFrom, updatedBy: SYSTEM, updatedAt: at,
   });
-  return [
+  const engine = [
     r('pr-1', '投诉自动派学习机组（迁移）', 1, { ticketTypes: ['投诉'], products: T20 }, 'hardware', '规则引擎派单'),
-    r('pr-2', '自助刷机（迁移）', 10, { problems: ['售后/服务申请/自助刷机', '售后/服务申请/刷原生系统'] }, 'edu-flash', '问题分类处理组'),
-    r('pr-3', '个册退费（迁移）', 11, { problems: ['个册退费/退费申请/个册退费'] }, 'edu', '问题分类处理组'),
-    r('pr-4', '设备故障（迁移）', 20, { problems: ['设备故障'] }, 'hardware', '问题分类处理组'),
-    r('pr-5', '功能异常（迁移）', 21, { problems: ['功能异常'] }, 'line2', '问题分类处理组'),
-    r('pr-6', '学习机投诉（迁移）', 30, { ticketTypes: ['投诉'], products: T20 }, 'hardware', '问题分类处理组', false),
   ];
+  const keyOf = (c: PoolRuleConditions) => JSON.stringify(Object.entries(c).map(([k, v]) => [k, [...(v as unknown[])].map((x) => JSON.stringify(x)).sort()]));
+  const engineKeys = new Set(engine.map((x) => keyOf(x.conditions)));
+  const fromTags = useProblemTagsStore().migrationRules().map((m, i) => {
+    const c = cond({ problems: m.problems });
+    return r(`pr-pt-${i + 1}`, m.name, 10 + i, c, m.poolId, '问题分类处理组', m.enabled && !engineKeys.has(keyOf(c)));
+  });
+  return [...engine, ...fromTags];
 }
 
 interface Persisted {
@@ -363,7 +367,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const health = ref<DispatchHealthState>(cached?.health ?? { okSince: null, engineDownSince: null, syncStalledSince: null });
 
   /** 无缓存时铺运行中种子：近两周派单日志与审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
-  const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value);
+  const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value, rules.value);
   if (demo) {
     for (const a of agents.value) Object.assign(a, demo.agentPatch[a.name] ?? {});
     ticketStates.value = demo.ticketStates;
@@ -598,7 +602,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return [t.problemL1, t.problemL2, t.problemL3].filter((x): x is string => !!x);
   }
   function pathHit(ticketPath: string[], pick: string): boolean {
-    const segs = pick.split('/').filter(Boolean);
+    const segs = splitProblemPath(pick);
     return segs.length > 0 && segs.length <= ticketPath.length && segs.every((s, i) => ticketPath[i] === s);
   }
   function productExact(t: Ticket, p: ProductPick): boolean {
@@ -785,7 +789,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (!phone) return undefined;
     const days = t.type === '投诉' ? config.value.windowComplaintDays : config.value.windowConsultDays;
     const from = now - days * 24 * 60 * MIN;
-    const path = problemPathOf(t).join('/');
+    const path = joinProblemPath(problemPathOf(t));
     let best: { name: string; at: number } | undefined;
     for (const x of TICKETS) {
       if (x.no === t.no || !x.assignee || digits(x.customerPhone) !== phone) continue;
@@ -793,7 +797,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (!a) continue;
       // 升级三线：取同一客户最近一次三线处理人（9.5）
       if (trigger === '升级三线' && !a.roles.includes('技术支持')) continue;
-      if (config.value.originalSameProblem && problemPathOf(x).join('/') !== path) continue;
+      if (config.value.originalSameProblem && joinProblemPath(problemPathOf(x)) !== path) continue;
       const at = parseStamp(x.updatedAt) || parseStamp(x.createdAt);
       if (!Number.isFinite(at) || at < from) continue;
       if (!best || at > best.at) best = { name: a.name, at };
@@ -968,7 +972,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ticketType: t.type,
       productCategory: t.productCategory,
       product: t.product,
-      problem: problemPathOf(t).join(' / ') || undefined,
+      problem: joinProblemPath(problemPathOf(t)) || undefined,
       ticketSource: t.ticketSource,
       customerType: customerTypesOf(t).join('、') || undefined,
       priority: t.priority,

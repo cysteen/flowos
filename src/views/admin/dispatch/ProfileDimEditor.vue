@@ -3,7 +3,7 @@
 import { TreeSelect } from 'ant-design-vue';
 import { PROFILE_DIMS, type ProfileDimKey } from '@/views/tickets/types/dispatch';
 import {
-  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PROBLEM_TREE_OPTS, PRODUCT_TREE_OPTS, TICKET_TYPE_OPTS,
+  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRODUCT_TREE_OPTS, TICKET_TYPE_OPTS, problemTreeOpts,
 } from './dispatchUi';
 import type { ProfileDraft } from './profileDraft';
 import { computed } from 'vue';
@@ -18,7 +18,7 @@ const problemScope = computed(() => (props.groupIds ? problemPathsOfGroups(props
 const problemPickDisabled = computed(() => problemScope.value !== null && problemScope.value.length === 0);
 const problemTree = computed(() => (problemScope.value
   ? scopedProblemTree(problemScope.value, draft.value.problems.values)
-  : PROBLEM_TREE_OPTS));
+  : problemTreeOpts()));
 const staleProblems = computed(() => new Set(
   (problemTree.value as { value: string; stale?: boolean }[]).filter((n) => n.stale).map((n) => n.value),
 ));

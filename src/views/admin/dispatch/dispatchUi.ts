@@ -4,8 +4,9 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import {
-  BUSINESS_TYPES, PROBLEM_TREE, PRODUCT_CATEGORIES, PRODUCT_NAMES, TICKET_SOURCE_OPTIONS,
+  BUSINESS_TYPES, PRODUCT_CATEGORIES, PRODUCT_NAMES, TICKET_SOURCE_OPTIONS,
 } from '@/views/tickets/types/createTicket';
+import { joinProblemPath, splitProblemPath, useProblemTagsStore } from '@/stores/problemTags';
 import {
   DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS, defaultDispatchConfig,
   type AgentProfile, type DimSel, type DispatchConfig, type PoolMode, type PoolRuleConditions, type ProductPick,
@@ -20,19 +21,22 @@ export const TICKET_SOURCE_OPTS = opts(TICKET_SOURCE_OPTIONS);
 export const CUSTOMER_TYPE_OPTS = opts(DISPATCH_CUSTOMER_TYPES);
 export const PRIORITY_OPTS = (['P0', 'P1', 'P2', 'P3'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LEVEL[p] }));
 
-/* ---------------- 问题分类树：值为路径「一级/二级/三级」 ---------------- */
+/* ---------------- 问题分类树：只读引用问题分类管理，值为路径「一级 / 二级 / 三级」 ---------------- */
 export interface TreeOpt { value: string; title: string; children?: TreeOpt[] }
-export const PROBLEM_TREE_OPTS: TreeOpt[] = Object.entries(PROBLEM_TREE).map(([l1, l2s]) => ({
-  value: l1,
-  title: l1,
-  children: Object.entries(l2s).map(([l2, l3s]) => ({
-    value: `${l1}/${l2}`,
-    title: l2,
-    children: l3s.map((l3) => ({ value: `${l1}/${l2}/${l3}`, title: l3 })),
-  })),
-}));
+/** 问题分类树选项（不分产品的并集，工单可用的分类）；在 computed / 模板里调用即随问题分类管理联动 */
+export function problemTreeOpts(): TreeOpt[] {
+  return Object.entries(useProblemTagsStore().dispatchTree).map(([l1, l2s]) => ({
+    value: l1,
+    title: l1,
+    children: Object.entries(l2s).map(([l2, l3s]) => ({
+      value: joinProblemPath([l1, l2]),
+      title: l2,
+      children: l3s.map((l3) => ({ value: joinProblemPath([l1, l2, l3]), title: l3 })),
+    })),
+  }));
+}
 export function problemLabel(path: string): string {
-  return path.split('/').join(' / ');
+  return splitProblemPath(path).join(' / ');
 }
 
 /* ---------------- 产品树：分类值＝分类名，产品值＝「分类::名称」 ---------------- */

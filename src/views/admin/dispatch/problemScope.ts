@@ -1,24 +1,17 @@
 /**
- * 【1215】人员画像「问题分类」指定范围（PRD 6.5 / 3.4 / 14.6）：
- * 只列出处理组属于坐席所属组的问题分类。问题分类管理的「处理组」已按 3.4 迁成入池规则（迁移来源＝问题分类处理组），
- * 这里只读这批规则：归属池（＝组）在所属组内的，取其问题分类条件为该组处理的问题分类；多组取并集。
+ * 【1215】人员画像「问题分类」指定范围（PRD 6.5 / 14.6）：
+ * 只列出处理组属于坐席所属组的问题分类。直接读问题分类管理的「处理组」列（`stores/problemTags`，11-02 D5），
+ * 不再借道迁移出来的入池规则；多组取并集。
  */
-import { useDispatchStore } from '@/stores/dispatch';
-import { PROBLEM_TREE_OPTS, problemLabel, type TreeOpt } from './dispatchUi';
+import { PROBLEM_PATH_SEP, splitProblemPath, joinProblemPath, useProblemTagsStore } from '@/stores/problemTags';
+import { problemLabel, problemTreeOpts, type TreeOpt } from './dispatchUi';
 
-/** 所属组在问题分类管理中处理的问题分类路径（「一级」「一级/二级」「一级/二级/三级」），已去重 */
+/** 所属组在问题分类管理中处理的问题分类路径（「一级」「一级 / 二级」「一级 / 二级 / 三级」），已去重、整枝上卷 */
 export function problemPathsOfGroups(groupIds: readonly string[]): string[] {
-  const store = useDispatchStore();
-  const gs = new Set(groupIds);
-  const out = new Set<string>();
-  for (const r of store.rules) {
-    if (r.migratedFrom !== '问题分类处理组' || !gs.has(r.poolId)) continue;
-    for (const p of r.conditions.problems) out.add(p);
-  }
-  return [...out];
+  return useProblemTagsStore().pathsOfGroups(groupIds);
 }
 
-const isUnder = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
+const isUnder = (path: string, base: string) => path === base || path.startsWith(`${base}${PROBLEM_PATH_SEP}`);
 
 /** 节点被范围整块覆盖（自身或某个上级在范围内） */
 function covered(path: string, scope: readonly string[]) {
@@ -44,7 +37,7 @@ export interface ScopedTreeOpt extends TreeOpt { stale?: boolean }
  * 范围内的问题分类树；`keep` 为已存画像里的取值，不在范围内的挂在树尾并带 `stale` 标记（回显标灰、可取消）。
  */
 export function scopedProblemTree(scope: readonly string[], keep: readonly string[] = []): ScopedTreeOpt[] {
-  const tree: ScopedTreeOpt[] = prune(PROBLEM_TREE_OPTS, scope);
+  const tree: ScopedTreeOpt[] = prune(problemTreeOpts(), scope);
   for (const v of keep) {
     if (!covered(v, scope)) tree.push({ value: v, title: problemLabel(v), stale: true });
   }
@@ -62,12 +55,13 @@ export function staleProblemValues(values: readonly string[], scope: readonly st
  */
 export function normalizeProblemPicks(values: readonly string[], scope: readonly string[]): string[] {
   const out = new Set<string>();
+  const all = problemTreeOpts();
   const expand = (path: string) => {
     if (covered(path, scope)) { out.add(path); return; }
-    const segs = path.split('/');
-    let nodes: TreeOpt[] = PROBLEM_TREE_OPTS;
+    const segs = splitProblemPath(path);
+    let nodes: TreeOpt[] = all;
     for (let i = 0; i < segs.length; i += 1) {
-      const hit = nodes.find((n) => n.value === segs.slice(0, i + 1).join('/'));
+      const hit = nodes.find((n) => n.value === joinProblemPath(segs.slice(0, i + 1)));
       if (!hit) return;
       nodes = hit.children ?? [];
     }

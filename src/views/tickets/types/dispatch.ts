@@ -83,7 +83,8 @@ export interface ProductPick {
 }
 
 /**
- * 问题分类取值：节点路径，一级 / 二级 / 三级，用「/」连接，如 `功能异常/播放问题`。
+ * 问题分类取值：节点路径，一级 / 二级 / 三级，用两侧带空格的「 / 」连接（`PROBLEM_PATH_SEP`，分类名本身可含「/」），
+ * 如 `功能异常 / 播放问题`；分类只读引用问题分类管理（`stores/problemTags`）。
  * 选上级节点即含其全部下级（3.1 / 6.1）。
  */
 export type ProblemPath = string;
