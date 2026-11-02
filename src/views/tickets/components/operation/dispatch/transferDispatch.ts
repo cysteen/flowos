@@ -210,6 +210,21 @@ export interface EscalateDispatchInput {
   /** 指定技术支持：姓名 */
   member?: string;
   reason: string;
+  /** 处理页已记的「升级三线 → …」履历：随派单写进工单行，刷新后保留（13.1） */
+  escalateEntry?: TimelineEntry;
+}
+
+/** 升级履历落到工单行（同 id，本页并入时不重复）；刷机单经刷机履历落快照 */
+function persistEscalateEntry(row: Ticket, entry?: TimelineEntry) {
+  if (!entry) return;
+  if (isFlashTicket(row)) {
+    const { id: _id, when: _when, ...partial } = entry;
+    useFlashStore().logProcess(row.no, { name: entry.who, role: entry.role }, partial);
+    return;
+  }
+  if (isXiaozhiTicket(row)) return;
+  if ((row.eventTimeline ?? []).some((e) => e.id === entry.id)) return;
+  row.eventTimeline = [...(row.eventTimeline ?? []), { ...entry }];
 }
 
 /**
@@ -233,6 +248,7 @@ export function scheduleEscalateDispatch(
       const row = ticketRowOf(no);
       if (!row) return;
       const target = reactive(row) as Ticket;
+      persistEscalateEntry(target, input.escalateEntry);
       Object.assign(target, { assignee: name, tab: 'mine', updatedAt: stampNow() });
       // 刷机单的工单行由刷机服务落库（刷机缓存）：经刷机履历写一条指定记录并落快照
       if (isFlashTicket(target)) {
@@ -251,6 +267,7 @@ export function scheduleEscalateDispatch(
     const row = ticketRowOf(no);
     if (!row) return;
     const target = reactive(row) as Ticket;
+    persistEscalateEntry(target, input.escalateEntry);
     const before = rowIds(target);
     store.redispatchToPool(target, TECH_POOL_ID, '升级三线', operator, reason);
     syncNewRowEntries(target, timeline, before);

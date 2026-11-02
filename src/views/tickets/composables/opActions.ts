@@ -976,14 +976,15 @@ export function applyOpAction(
       // 【1215】三线二选一：到技术支持池由引擎派出，指定技术支持直派；二线仍为主责
       if (toTech && techMode) {
         const person = techMode === 'person' && !!member;
-        const msg = scheduleEscalateDispatch(detail, timeline, {
-          mode: person ? 'person' : 'pool', member: person ? member : undefined, reason: note ?? '',
-        }, operator, operatorRole);
-        pushEntry(timeline, {
+        // 升级履历先记，并随派单落到工单行（13.1，刷新后保留）
+        const escalateEntry = pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
           how: '升级',
           what: `${person ? `升级三线 → ${member}` : `升级三线 → ${techPoolLabel()}`}${note ? `。说明：${note}` : ''}`,
         });
+        const msg = scheduleEscalateDispatch(detail, timeline, {
+          mode: person ? 'person' : 'pool', member: person ? member : undefined, reason: note ?? '', escalateEntry,
+        }, operator, operatorRole);
         return { opState, suspendInfo, message: msg };
       }
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
