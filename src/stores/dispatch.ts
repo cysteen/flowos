@@ -42,7 +42,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 6;
+export const DISPATCH_CACHE_VERSION = 7;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -996,6 +996,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       relaxLevel: 0,
       queueSince: null,
       ...(fr ? { firstRespTotalMin: fr.limitMin, firstRespDueAt: now + fr.remainMin * MIN } : {}),
+      ...(opts.poolId && (trigger === '调剂到池' || trigger === '升级三线') ? { designatedPool: true } : {}),
       complaintTarget: opts.complaintTarget ?? prev?.complaintTarget,
       prevHandler: opts.prevHandler ?? undefined,
       seq: prev?.seq ?? 0,
@@ -1005,8 +1006,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return ticketStates.value[t.no];
   }
 
+  /** 命中规则（13.1）：入池规则名称；未命中记「默认池」；经调剂到池、升级三线指定池进入的记「指定池」 */
   function ruleNameOf(st: TicketDispatchState): string {
-    return st.ruleId ? rules.value.find((r) => r.id === st.ruleId)?.name ?? '默认池' : '默认池';
+    if (st.ruleId) return rules.value.find((r) => r.id === st.ruleId)?.name ?? '默认池';
+    return st.designatedPool ? '指定池' : '默认池';
   }
 
   /**
@@ -1603,7 +1606,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (g.switchOn === on) return { ok: true, message: '' };
     audit('班组开关', g.label, g.switchOn ? '开启' : '关闭', on ? '开启' : '关闭', operator);
     g.switchOn = on;
-    if (!on) clearStatuses([groupId], false);
+    // 关闭班组开关＝本组降级态：清空排队中、派单失败回池，保留等原处理人（5.2 / 8.2）
+    if (!on) clearStatuses([groupId], true);
     notifyAdmins('班组开关变更', [groupId],
       on ? `${operator ?? operatorName()}已开启${g.label}班组开关，${g.label}已接入自动派单。`
         : `${operator ?? operatorName()}已关闭${g.label}班组开关，${poolLabel(groupId)}转为降级态，本组成员不再接本组池的自动派单。`);
@@ -1713,7 +1717,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         if (on === g.switchOn) continue;
         audit('班组开关', g.label, g.switchOn ? '开启' : '关闭', on ? '开启' : '关闭', operator);
         g.switchOn = on;
-        if (!on) clearStatuses([g.id], false);
+        if (!on) clearStatuses([g.id], true);
       }
     }
     audit('运行方式', ROLLOUT_TARGET, from, to, operator);

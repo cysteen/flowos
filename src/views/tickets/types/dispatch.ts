@@ -477,6 +477,8 @@ export interface TicketDispatchState {
   firstRespTotalMin?: number;
   /** 首响截止时刻（ms）：进入派单时刻 ＋ 当时的首响剩余；已超时的单早于进入派单时刻 */
   firstRespDueAt?: number;
+  /** 经调剂到池、升级三线指定池进入（命中规则记「指定池」，13.1） */
+  designatedPool?: boolean;
   /** 投诉对象（投诉回避） */
   complaintTarget?: string;
   /** 售后转回 / 回访打回：本单上一处理人 */

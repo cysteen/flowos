@@ -352,7 +352,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         tl(at(done), 'node', 'handle', '系统', '系统', '退费结果更新', REFUND_TL.result(r1.taskId, '部分完成')),
         tl(at(done + 1000), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('部分完成')),
-        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', '领取'),
       ],
     }));
     todo(n, m, c + 15_000);
@@ -419,13 +419,13 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchPool),
-        tl(at(c0), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(c0), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', '领取'),
         tl(at(c0 + MIN), 'node', 'transfer', AUDITOR, AUDITOR_ROLE, '调剂', REFUND_TL.assignManager(m)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         firstClose(at(s)),
         tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果更新', REFUND_TL.result(r1.taskId, '退费成功')),
         tl(at(startedMs), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('退费成功')),
-        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', '领取'),
         tl(at(fwd), 'node', 'transfer', AUDITOR, AUDITOR_ROLE, '下送', REFUND_TL.forwardSurvey),
         tl(at(closed), 'node', 'resolved', '系统', '系统', '结案', '回访已解决，工单结案。'),
       ],
@@ -481,7 +481,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果更新', REFUND_TL.result(r1.taskId, '退费成功')),
         tl(at(pooledMs), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('退费成功')),
-        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', '领取'),
         tl(at(fwd), 'node', 'transfer', AUDITOR, AUDITOR_ROLE, '下送', REFUND_TL.forwardSurvey),
         tl(at(fwd + 1000), 'comm', 'sms', '系统', '系统', '短信通知', `发送至 13955100108：${sms}`),
       ],

@@ -158,7 +158,7 @@ export function claimPoolTicket(t: Ticket, who: string, role: TlRole, at: string
   t.eventTimeline = [...(t.eventTimeline ?? []), {
     id: `tl-${t.no}-claim-${(t.eventTimeline?.length ?? 0) + 1}`,
     category: 'node', action: 'accept', who, role,
-    how: '领取', what: `${who} 从池中领取本单。`, when: at,
+    how: '领取', what: '领取', when: at,
   }];
   t.updatedAt = at;
   return true;

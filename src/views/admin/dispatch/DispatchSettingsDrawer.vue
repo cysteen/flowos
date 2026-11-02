@@ -115,7 +115,7 @@ function save() {
         <div class="ds-kv"><span>默认值</span><b>{{ defaultCapText }}</b></div>
         <div class="ds-kv">
           <span>个人值</span>
-          <a-input-number v-model:value="capValue" :precision="0" placeholder="按默认值" style="width: 140px" />
+          <a-input-number v-model:value="capValue" :precision="0" :placeholder="`按默认值 ${view?.defaultCap ?? ''}`" style="width: 140px" />
         </div>
         <div class="ds-kv"><span>当前在途</span><b>在途 {{ view?.inTransit ?? 0 }}</b></div>
       </div>

@@ -1549,7 +1549,7 @@ export const useFlashStore = defineStore('flash', () => {
     });
     log(ticketNo, now, {
       category: 'node', action: 'accept', who: by.name, role: by.role, how: '领取',
-      what: `${by.name} 从池中领取本单。`,
+      what: '领取',
     });
     bump(ticketNo);
     persist();

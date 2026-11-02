@@ -733,7 +733,7 @@ export function takeOverReturnedTicket(
 ): Ticket | null {
   if (!t.returnedFromAftersale || t.nodeStatus !== '未认领') return null;
   const what = input.how === '领取'
-    ? `${input.assignee} 从池中领取本单。`
+    ? '领取'
     : `${input.operator} 指派本单给 ${input.assignee}。`;
   return {
     ...t,

@@ -256,7 +256,7 @@ function handoffEntry(when: string, reason: FlashHandoffReason, pool: FlashPoolK
   return tl(when, 'node', 'flashHandoff', '系统', '系统', '转人工', FLASH_TL.handoff(reason, FLASH_POOLS[pool].label));
 }
 function acceptEntry(when: string, who: string, role: TlRole): TimelineEntry {
-  return tl(when, 'node', 'accept', who, role, '领取', `${who} 从池中领取本单。`);
+  return tl(when, 'node', 'accept', who, role, '领取', '领取');
 }
 /** 坐席处理记录（「保存」登记的处理进展） */
 function handleEntry(when: string, who: string, role: TlRole, what: string): TimelineEntry {

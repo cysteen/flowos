@@ -43,7 +43,7 @@ function claimSeed(t: Ticket, who: string, at: string): Ticket {
       ...(t.eventTimeline ?? []),
       {
         id: `as-${t.no}-claim`, category: 'node', action: 'accept', who, role: '二线专员',
-        how: '领取', what: `${who} 从池中领取本单，进入「待响应」。`, when: at,
+        how: '领取', what: '领取', when: at,
       },
       {
         id: `as-${t.no}-first`, category: 'sla', action: 'slaClose', who: '系统', role: '系统',
@@ -336,7 +336,7 @@ function buildAftersaleSeeds() {
     createdAt: '2026-10-06 10:15:07', updatedAt: '2026-10-06 10:40:29',
     eventTimeline: [{
       id: 'as-IFLYTS-20261006-00049-claim', category: 'node', action: 'accept', who: '张三', role: '二线专员',
-      how: '领取', what: '张三 从池中领取本单，进入「待响应」。', when: '2026-10-06 10:40:29',
+      how: '领取', what: '领取', when: '2026-10-06 10:40:29',
     }],
   });
 
@@ -353,7 +353,7 @@ function buildAftersaleSeeds() {
     createdAt: '2026-10-06 13:20:32', updatedAt: '2026-10-06 13:45:01',
     eventTimeline: [{
       id: 'as-IFLYZX-20261006-00050-claim', category: 'node', action: 'accept', who: '张三', role: '二线专员',
-      how: '领取', what: '张三 从池中领取本单，进入「待响应」。', when: '2026-10-06 13:45:01',
+      how: '领取', what: '领取', when: '2026-10-06 13:45:01',
     }],
   });
 

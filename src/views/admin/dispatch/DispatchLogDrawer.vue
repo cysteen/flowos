@@ -102,7 +102,7 @@ function exportCsv() {
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
     l.globalMode, l.groupMode, l.runMode, l.path ?? '', l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
-    personOf(l) ?? '', l.chosenScore?.total ?? '', l.failReason ?? '', l.overCap ?? '', l.trial?.suggested ?? '', l.trial?.actual ?? '',
+    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', l.failReason ?? '', l.overCap ?? '', l.trial?.suggested ?? '', l.trial?.actual ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -160,7 +160,7 @@ function exportCsv() {
           </template>
           <template v-else-if="record.chosen">
             <span>{{ record.chosen.name }}</span><span class="lg-sub"> {{ record.chosen.staffNo }}</span>
-            <div class="lg-sub">{{ record.chosen.groupLabel }}<template v-if="record.chosenScore"> · {{ record.chosenScore.total }} 分</template></div>
+            <div class="lg-sub">{{ record.chosen.groupLabel }}<template v-if="record.chosenScore"> · {{ record.chosenScore.total.toFixed(1) }} 分</template></div>
           </template>
           <span v-else class="lg-sub">—</span>
         </template>
@@ -189,12 +189,12 @@ function exportCsv() {
           <div class="lg-sec">
             <div class="lg-sec-t">得分前三</div>
             <div v-if="record.top3?.length" class="lg-kvs">
-              <div v-for="(t, i) in record.top3" :key="t.name" class="lg-kv"><span>{{ i + 1 }}. {{ t.name }}</span><b>{{ t.total }}</b></div>
+              <div v-for="(t, i) in record.top3" :key="t.name" class="lg-kv"><span>{{ i + 1 }}. {{ t.name }}</span><b>{{ t.total.toFixed(1) }}</b></div>
             </div>
             <div v-else class="lg-sub">—</div>
           </div>
           <div class="lg-sec">
-            <div class="lg-sec-t">中选得分明细<template v-if="record.chosenScore">（{{ record.chosenScore.name }} · {{ record.chosenScore.total }} 分）</template></div>
+            <div class="lg-sec-t">中选得分明细<template v-if="record.chosenScore">（{{ record.chosenScore.name }} · {{ record.chosenScore.total.toFixed(1) }} 分）</template></div>
             <div v-if="factorItems(record as DispatchLogEntry).length" class="lg-kvs">
               <div v-for="x in factorItems(record as DispatchLogEntry)" :key="x.label" class="lg-kv"><span>{{ x.label }}</span><b>{{ x.v }}</b></div>
             </div>

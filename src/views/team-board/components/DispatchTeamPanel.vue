@@ -423,7 +423,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     <!-- 关闭班组开关 · 二次确认（8.2） -->
     <OpActionModal
       v-model:open="switchConfirmOpen"
-      title="关闭本组开关"
+      title="关闭班组开关"
       :icon="PoweroffOutlined"
       tone="warn"
       ok-tone="danger"
@@ -469,7 +469,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           <a-textarea v-model:value="modeReason" :maxlength="200" show-count :rows="3" placeholder="请填写切换原因" />
         </div>
         <div class="dtp-frow">
-          <div class="op-label">影响</div>
+          <div class="op-label">影响提示</div>
           <div class="dtp-ro">已派出、已领取的工单不收回</div>
         </div>
       </div>

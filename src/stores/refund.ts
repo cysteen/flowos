@@ -77,8 +77,9 @@ const LS_KEY = 'flowos-refund-cache';
  *      用户 10-27），v11 快照里的旧记名作废
  * v13：处理履历事件名「退费结果回写」改「退费结果更新」（种子单与产线结果回传落库同改；用户 10-27），v12 快照里的旧事件名作废
  * v15：回退页头「关联工单」与关联咨询（业务未定，用户 10-28），v14 快照里的关联咨询字段 `linkedConsultNos` 作废
+ * v16：领取履历内容记「领取」（【1215】13.1），v15 快照里的旧文案作废
  */
-const CACHE_VERSION = 15;
+const CACHE_VERSION = 16;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
