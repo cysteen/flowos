@@ -445,7 +445,7 @@ export const SUSPEND_REASONS = [
  * 常量化只是为了让小智链路与本表引用同一个字面量，不是另开一条。
  */
 export const ESCALATE_CHANNEL_TPD = 'TPD 技术问题单';
-export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', ESCALATE_CHANNEL_TPD];
+export const ESCALATE_CHANNELS = ['技术支持组', 'RDM 产研系统', ESCALATE_CHANNEL_TPD];
 export const ESCALATE_GROUPS = ['硬件技术支持组', '软件技术支持组', '账号与权益组'];
 export const ESCALATE_MEMBERS = ['陈伟', '林涛', '赵敏'];
 /** 升级到飞书项目 · 问题反馈分类（对齐飞书客户反馈单） */

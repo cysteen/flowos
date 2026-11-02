@@ -233,7 +233,7 @@ const escalateChannelOptions = computed(() => {
 });
 
 const ESCALATE_CHANNEL_GROUPS: Record<string, string[]> = {
-  '二线技术支持组（推荐）': [...ESCALATE_GROUPS],
+  '技术支持组': [...ESCALATE_GROUPS],
   'RDM 产研系统': ['RDM 硬件缺陷组', 'RDM 软件缺陷组'],
   'TPD 技术问题单': ['TPD 受理组', 'TPD 跟进组'],
 };
@@ -383,7 +383,7 @@ function resetForms() {
   suspend.approvalGroup = defaultApprovalGroup();
   // 飞书已结案：不可再选飞书通道，默认落到其他升级通道
   const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
-  // 小智单的默认值必须跟着 B10 收窄后的选项走 —— 落 ESCALATE_CHANNELS[0]（二线技术支持组）
+  // 小智单的默认值必须跟着 B10 收窄后的选项走 —— 落 ESCALATE_CHANNELS[0]（技术支持组）
   // 会得到一个不在选项里的初值，下拉显示空白、提交出去又是个不该存在的目标
   const fallbackChannel = props.isXiaozhi ? ESCALATE_CHANNEL_TPD : ESCALATE_CHANNELS[0];
   escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : fallbackChannel;
