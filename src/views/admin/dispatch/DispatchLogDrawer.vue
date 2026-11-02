@@ -82,7 +82,7 @@ const cols = [
   { title: '序号', dataIndex: 'seq', key: 'seq', width: 50, align: 'center' as const },
   { title: '触发 / 动作', key: 'trigger', width: 96 },
   { title: '归属池', key: 'pool', width: 170 },
-  { title: '池形态', key: 'mode', width: 80 },
+  { title: '派单方式', key: 'mode', width: 90 },
   { title: '判定路径', key: 'path', width: 100 },
   { title: '中选坐席', key: 'chosen', width: 150 },
   { title: '失败原因', key: 'fail', width: 110 },
@@ -108,7 +108,7 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局形态', '归属组形态', '运行方式', '判定路径', '产品放宽层级', '候选集人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属组派单方式', '运行方式', '判定路径', '产品放宽层级', '候选集人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
@@ -212,7 +212,7 @@ function exportCsv() {
             <div v-else class="lg-sub">—</div>
           </div>
           <div class="lg-sec">
-            <div class="lg-sec-t">池形态</div>
+            <div class="lg-sec-t">派单方式</div>
             <div class="lg-kvs">
               <div class="lg-kv"><span>全局</span><b>{{ record.globalMode }}</b></div>
               <div class="lg-kv"><span>归属组</span><b>{{ record.groupMode }}</b></div>

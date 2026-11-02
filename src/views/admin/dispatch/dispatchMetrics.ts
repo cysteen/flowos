@@ -127,10 +127,10 @@ export function computeStats(
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const inRange = scoped.filter((l) => inWindow(l, w));
 
-  // 进入派单：正式派单、正常态下有判定记录的工单（降级态 / 停派态留池的单不进入自动派单，与自动降级判定同口径，5.3）
-  const formal = inRange.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.effectiveMode === '正常态');
+  // 进入派单：正式派单、自动派单下有判定记录的工单（混合派单 / 人工派单留池的单不进入自动派单，与自动转混合判定同口径，5.3）
+  const formal = inRange.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.effectiveMode === '自动派单');
   const entered = new Set(formal.map((l) => l.ticketNo));
-  // 自动派单成功率（13.2，与自动降级判定同口径）：引擎派出后未被跨班次回收、未被人工换人
+  // 自动派单成功率（13.2，与自动转混合判定同口径）：引擎派出后未被跨班次回收、未被人工换人
   // （改派、调剂到人、调剂到池、班组长指派）的工单 ÷ 进入派单的工单；不含直派规则单；仍在排队 / 等原处理人的单不计入分母
   const lastAssignSeq = new Map<string, number>();
   for (const l of formal) {

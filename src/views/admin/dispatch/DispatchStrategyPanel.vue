@@ -68,11 +68,11 @@ function openStage(dir: 'forward' | 'back') {
 }
 
 const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; unit: string; min: number; max: number }[] = [
-  { key: 'autoFailRate', label: '自动降级 · 派单失败率', prefix: '5 分钟内 ≥', unit: '%', min: 1, max: 100 },
-  { key: 'autoSuccessRate', label: '自动降级 · 自动派单成功率', prefix: '15 分钟内 ＜', unit: '%', min: 1, max: 100 },
-  { key: 'autoSyncMinutes', label: '自动降级 · 数据未同步', prefix: '超过', unit: '分钟', min: 5, max: 120 },
-  { key: 'autoEngineMinutes', label: '自动降级 · 引擎无响应', prefix: '连续', unit: '分钟', min: 1, max: 30 },
-  { key: 'resumeOkMinutes', label: '回切提示 · 指标连续达标', unit: '分钟', min: 1, max: 60 },
+  { key: 'autoFailRate', label: '自动转混合 · 派单失败率', prefix: '5 分钟内 ≥', unit: '%', min: 1, max: 100 },
+  { key: 'autoSuccessRate', label: '自动转混合 · 自动派单成功率', prefix: '15 分钟内 ＜', unit: '%', min: 1, max: 100 },
+  { key: 'autoSyncMinutes', label: '自动转混合 · 数据未同步', prefix: '超过', unit: '分钟', min: 5, max: 120 },
+  { key: 'autoEngineMinutes', label: '自动转混合 · 引擎无响应', prefix: '连续', unit: '分钟', min: 1, max: 30 },
+  { key: 'resumeOkMinutes', label: '恢复提示 · 指标连续达标', unit: '分钟', min: 1, max: 60 },
   { key: 'idleToBreakMinutes', label: '无操作转小休', unit: '分钟', min: 5, max: 240 },
 ];
 const AUTO_FIELDS = RUN_FIELDS.slice(0, 4);
@@ -150,7 +150,7 @@ function saveCap() {
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
-const auditKinds = ['全局开关', '班组开关', '个人开关', '池形态', '运行方式', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
+const auditKinds = ['全局开关', '班组开关', '个人开关', '派单方式', '运行方式', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
 const operatorOpts = computed(() => opts([...new Set(store.audits.map((a) => a.operator))]));
 const auditRows = computed(() => [...store.audits].reverse().filter((a) => {
   if (af.kind && a.kind !== af.kind) return false;
@@ -220,8 +220,8 @@ watch(() => store.config, (c) => {
           <div class="run-body">
             <div class="run-col">
               <div class="run-block-hd">
-                <span class="run-block-title">开关与形态</span>
-                <span class="run-block-tip">全局派单开关、运行方式与全局形态</span>
+                <span class="run-block-title">开关与派单方式</span>
+                <span class="run-block-tip">全局派单开关、运行方式与全局派单方式</span>
               </div>
               <div class="run-kv">
                 <div class="run-kv-row">
@@ -233,10 +233,10 @@ watch(() => store.config, (c) => {
                   <span class="run-kv-ctl"><span class="dpf-val">{{ store.config.runMode }}</span></span>
                 </div>
                 <div class="run-kv-row">
-                  <span class="run-kv-label">全局形态</span>
+                  <span class="run-kv-label">全局派单方式</span>
                   <span class="run-kv-ctl">
                     <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
-                    <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
+                    <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动转混合</span>
                     <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
                   </span>
                 </div>
@@ -245,12 +245,12 @@ watch(() => store.config, (c) => {
 
             <div class="run-col">
               <div class="run-block-hd">
-                <span class="run-block-title">自动降级</span>
-                <span class="run-block-tip">触发自动降级的指标阈值</span>
+                <span class="run-block-title">自动转混合</span>
+                <span class="run-block-tip">触发自动转混合的指标阈值</span>
               </div>
               <div class="run-kv run-kv-grid">
                 <div v-for="fd in AUTO_FIELDS" :key="fd.key" class="run-kv-row">
-                  <span class="run-kv-label">{{ fd.label.replace('自动降级 · ', '') }}</span>
+                  <span class="run-kv-label">{{ fd.label.replace('自动转混合 · ', '') }}</span>
                   <span class="run-kv-ctl">
                     <span v-if="fd.prefix" class="dpf-unit">{{ fd.prefix }}</span>
                     <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
@@ -260,7 +260,7 @@ watch(() => store.config, (c) => {
               </div>
 
               <div class="run-block-hd run-block-hd-sub">
-                <span class="run-block-title">回切与小休</span>
+                <span class="run-block-title">恢复与小休</span>
               </div>
               <div class="run-kv run-kv-grid run-kv-grid-2">
                 <div v-for="fd in RESUME_FIELDS" :key="fd.key" class="run-kv-row">
@@ -478,7 +478,7 @@ watch(() => store.config, (c) => {
           <span class="meta-chip-val">{{ auditRows.length }}</span>
           <span class="meta-chip-lb">条记录</span>
         </div>
-        <span class="meta-hint">全局 / 班组 / 个人开关、池形态、运行方式等变更审计</span>
+        <span class="meta-hint">全局 / 班组 / 个人开关、派单方式、运行方式等变更审计</span>
       </div>
       <div class="audit-toolbar">
         <a-range-picker v-model:value="af.range" size="small" class="audit-range" />

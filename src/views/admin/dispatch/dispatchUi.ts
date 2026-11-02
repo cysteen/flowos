@@ -1,5 +1,5 @@
 /**
- * 【1215】智能派单后台配置页共用：字典选项、条件 / 画像摘要、形态配色、刷新时钟。
+ * 【1215】智能派单后台配置页共用：字典选项、条件 / 画像摘要、派单方式配色、刷新时钟。
  * 数据全部来自 `stores/dispatch.ts`，这里只做展示层换算。
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
@@ -96,8 +96,8 @@ export function profileSummary(p: AgentProfile): string {
   return parts.length ? parts.join('；') : '不限';
 }
 
-/* ---------------- 形态配色 ---------------- */
-export const MODE_TONE: Record<PoolMode, string> = { 正常态: 'green', 降级态: 'orange', 停派态: 'red' };
+/* ---------------- 派单方式配色 ---------------- */
+export const MODE_TONE: Record<PoolMode, string> = { 自动派单: 'green', 混合派单: 'orange', 人工派单: 'red' };
 export const SIGN_TONE: Record<string, string> = { 签入: 'green', 小休: 'orange', 签出: 'default' };
 
 export function waitText(min: number): string {
@@ -126,11 +126,11 @@ export const CONFIG_FIELD_LABEL: Record<string, string> = {
   noSlaFallbackMinutes: '无首响 SLA · 兜底排队时长',
   roleBase: '角色基准值',
   proficiencyCoef: '熟练度系数',
-  autoFailRate: '自动降级 · 派单失败率',
-  autoSuccessRate: '自动降级 · 自动派单成功率',
-  autoSyncMinutes: '自动降级 · 数据未同步',
-  autoEngineMinutes: '自动降级 · 引擎无响应',
-  resumeOkMinutes: '回切提示 · 指标连续达标',
+  autoFailRate: '自动转混合 · 派单失败率',
+  autoSuccessRate: '自动转混合 · 自动派单成功率',
+  autoSyncMinutes: '自动转混合 · 数据未同步',
+  autoEngineMinutes: '自动转混合 · 引擎无响应',
+  resumeOkMinutes: '恢复提示 · 指标连续达标',
   idleToBreakMinutes: '无操作转小休',
 };
 export function configFieldsText(raw: string): string {
@@ -138,7 +138,7 @@ export function configFieldsText(raw: string): string {
 }
 
 /**
- * 运行设置里的自动降级 / 回切 / 小休阈值（14.2）：`DispatchConfig` 正式字段，随派单策略一起保存。
+ * 运行设置里的自动转混合 / 恢复 / 小休阈值（14.2）：`DispatchConfig` 正式字段，随派单策略一起保存。
  * 默认值见 PRD 14.2 运行设置（`defaultDispatchConfig`）。
  */
 export const RUN_THRESHOLD_KEYS = [

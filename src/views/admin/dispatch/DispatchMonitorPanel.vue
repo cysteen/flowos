@@ -76,7 +76,7 @@ const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
   bk: { accent: '#6366f1', iconBg: '#eef2ff' },
 };
 
-/** 统计卡：数字默认中性，只有真正异常（低于降级线、超出目标、有积压）的数字标橙 */
+/** 统计卡：数字默认中性，只有真正异常（低于转混合线、超出目标、有积压）的数字标橙 */
 const cards = computed(() => {
   const s = stats.value;
   const succLine = store.config.autoSuccessRate;
@@ -84,7 +84,7 @@ const cards = computed(() => {
     {
       key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined,
       warn: s.successRate != null && s.successRate < succLine,
-      delta: { text: `降级线 ${succLine}%`, tone: 'muted' } as Delta,
+      delta: { text: `转混合线 ${succLine}%`, tone: 'muted' } as Delta,
     },
     {
       key: 'fb', label: '兜底回池率', value: pct(s.fallbackRate), icon: RollbackOutlined, warn: false,
@@ -114,7 +114,7 @@ const cards = computed(() => {
 /* ---------------- 池积压 ---------------- */
 const backlogCols = [
   { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
-  { title: '池形态', key: 'mode', width: 90 },
+  { title: '派单方式', key: 'mode', width: 90 },
   { title: '等原处理人', dataIndex: 'waitingOriginal', key: 'waitingOriginal', width: 96, align: 'right' as const },
   { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
   { title: '派单失败回池', dataIndex: 'failed', key: 'failed', width: 106, align: 'right' as const },

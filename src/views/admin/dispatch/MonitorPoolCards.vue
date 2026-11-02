@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 组池卡片、切换与回切确认入口、切换记录
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 组池卡片、切换与恢复确认入口、切换记录
 import { computed, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -15,7 +15,7 @@ const clock = useClock();
 const globalMode = computed(() => store.globalEffectiveMode());
 const stage = computed(() => store.rolloutStage());
 const resumeMinutes = computed(() => store.config.resumeOkMinutes);
-/** 自动降级后各项指标连续 N 分钟达标（5.4，由派单引擎判定） */
+/** 自动转混合后各项指标连续 N 分钟达标（5.4，由派单引擎判定） */
 const canResume = computed(() => {
   void clock.value;
   return store.resumeReady();
@@ -38,7 +38,7 @@ const cards = computed(() => {
 });
 
 const recordOpen = ref(false);
-const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '池形态' || a.kind === '全局开关' || a.kind === '班组开关').reverse());
+const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '派单方式' || a.kind === '全局开关' || a.kind === '班组开关').reverse());
 const recordCols = [
   { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
   { title: '操作方', dataIndex: 'operator', key: 'operator', width: 90 },
@@ -60,13 +60,13 @@ const recordCols = [
       </span>
     </div>
 
-    <!-- 全局状态条：形态、全局开关、运行方式、上线阶段、开启班组；右侧切换形态 / 确认回切 -->
+    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、开启班组；右侧切换派单方式 / 确认恢复 -->
     <div class="dx-card gs">
       <div class="gs-main">
         <span class="dx-icon gs-ic"><GlobalOutlined /></span>
         <span class="gs-name">全局</span>
         <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
-        <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
+        <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动转混合</span>
       </div>
       <div class="gs-meta">
         <span class="gs-kv"><em>全局开关</em>{{ store.config.globalSwitch ? '开启' : '关闭' }}</span>
@@ -75,10 +75,10 @@ const recordCols = [
         <span class="gs-kv"><em>开启班组</em>{{ store.groups.filter((g) => g.switchOn).length }} / {{ store.groups.length }}</span>
       </div>
       <div class="gs-ops">
-        <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可回切`">
-          <a-button type="link" size="small" :disabled="!canResume" @click="openMode('global')">确认回切</a-button>
+        <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可恢复`">
+          <a-button type="link" size="small" :disabled="!canResume" @click="openMode('global')">确认恢复</a-button>
         </a-tooltip>
-        <a-button type="link" size="small" @click="openMode('global')">切换形态</a-button>
+        <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
       </div>
     </div>
 
@@ -88,13 +88,13 @@ const recordCols = [
           <span class="dx-card-title" :title="c.poolLabel">{{ c.poolLabel }}</span>
           <span class="dx-status" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
           <span class="pc-sp" />
-          <a-tooltip :title="globalMode === '停派态' ? '全局已停派，本组形态不可切换' : '切换形态'">
-            <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '停派态'" @click="openMode(c.id)">
+          <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
+            <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
               <template #icon><SwapOutlined /></template>
             </a-button>
           </a-tooltip>
         </div>
-        <div class="dx-meta pc-meta" :title="`本组形态 ${c.groupMode} · 班组开关 ${c.switchOn ? '开启' : '关闭'} · ${store.config.runMode} · 班组长 ${c.leaders.join('、') || '—'}`">
+        <div class="dx-meta pc-meta" :title="`本组派单方式 ${c.groupMode} · 班组开关 ${c.switchOn ? '开启' : '关闭'} · ${store.config.runMode} · 班组长 ${c.leaders.join('、') || '—'}`">
           本组{{ c.groupMode }}<i class="dx-meta-sep">·</i>班组开关 {{ c.switchOn ? '开启' : '关闭' }}<i class="dx-meta-sep">·</i>{{ store.config.runMode }}<i class="dx-meta-sep">·</i>{{ c.leaders.join('、') || '—' }}
         </div>
         <div class="dx-metrics">

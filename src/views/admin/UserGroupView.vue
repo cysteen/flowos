@@ -12,7 +12,7 @@ import type { DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
 // 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组（一组一池），成员取派单坐席；
-// 组编辑增班组开关（关闭走二次确认）、本组形态只读；组级技能移除，处理能力由成员人员画像表达。
+// 组编辑增班组开关（关闭走二次确认）、本组派单方式只读；组级技能移除，处理能力由成员人员画像表达。
 interface Group {
   key: string; name: string; type: '业务班组' | '审批组' | '虚拟组';
   leader: string; shift: string;
@@ -88,10 +88,10 @@ const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
 // 角色下拉取 0830 九角色（基线 §3.0）
 const ROLE_OPTS = ['一线坐席', '二线专员', '技术支持', '二线班组长', '客诉专员', '投诉督导', '工单运营', '质检', '管理员'];
 
-/* —— 班组开关（8.1 / 8.2）· 本组形态（5.4 只读） —— */
+/* —— 班组开关（8.1 / 8.2）· 本组派单方式（5.4 只读） —— */
 function switchTip(key: string): string | undefined {
   if (!dispatch.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (dispatch.groupOf(key)?.mode === '停派态') return '本组已由管理员停派';
+  if (dispatch.groupOf(key)?.mode === '人工派单') return '本组已由管理员切为人工派单';
   return undefined;
 }
 function applySwitch(key: string, on: boolean, after?: () => void) {
@@ -105,7 +105,7 @@ function applySwitch(key: string, on: boolean, after?: () => void) {
   if (!on) {
     Modal.confirm({
       title: '关闭班组开关',
-      content: `关闭后${dispatch.poolLabel(key)}转为降级态，本组成员不再接本组池的自动派单。确定关闭？`,
+      content: `关闭后${dispatch.poolLabel(key)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？`,
       okText: '确定', cancelText: '取消', onOk: apply,
     });
   } else apply();
@@ -269,7 +269,7 @@ function removeMember(m: Member) {
                   </span>
                 </div>
                 <div class="gd-kv">
-                  <span class="gd-label">本组形态</span>
+                  <span class="gd-label">本组派单方式</span>
                   <span class="gd-val"><a-tag :color="MODE_TONE[dispatch.groupModeOf(selGroup.id)]">{{ dispatch.groupModeOf(selGroup.id) }}</a-tag></span>
                 </div>
               </template>
@@ -308,7 +308,7 @@ function removeMember(m: Member) {
               <a-switch v-model:checked="gf.switchOn" :disabled="!!switchTip(gf.key)" />
             </a-tooltip>
           </a-form-item>
-          <a-form-item label="本组形态" class="half">
+          <a-form-item label="本组派单方式" class="half">
             <a-tag :color="MODE_TONE[dispatch.groupModeOf(gf.key)]">{{ dispatch.groupModeOf(gf.key) }}</a-tag>
           </a-form-item>
         </template>

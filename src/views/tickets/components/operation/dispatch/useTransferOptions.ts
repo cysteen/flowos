@@ -3,7 +3,7 @@
  *
  * - 调剂到人：候选为全部坐席（停用除外、不含当前处理人），按组分段；每行「姓名 · 所属组 · 签入状态 · 在途 N / 上限 M」。
  *   调剂权限沿用现行：无跨组调剂权的角色只可选归属组成员，其余置灰；个册退费单只限本组成员。
- * - 调剂到池：全部二线组池与技术支持池（含当前归属池），每项「〈组名〉池 · 〈形态〉」；无跨组调剂权时只可选当前归属池。
+ * - 调剂到池：全部二线组池与技术支持池（含当前归属池），每项「〈组名〉池 · 〈派单方式〉」；无跨组调剂权时只可选当前归属池。
  * - 升级三线 · 指定技术支持：技术支持组成员，每行「姓名 · 签入状态 · 在途 N / 上限 M」。
  */
 import { computed } from 'vue';
@@ -103,7 +103,7 @@ export function useTransferOptions(ticketNo: () => string, canCrossGroup: () => 
   }
 
   function poolWaits(poolId: string): boolean {
-    return store.effectiveModeOf(poolId) !== '正常态';
+    return store.effectiveModeOf(poolId) !== '自动派单';
   }
 
   return { row, personOptions, groupChoicesFor, poolOptions, techOptions, overCapOf, poolWaits, poolLabel: store.poolLabel };

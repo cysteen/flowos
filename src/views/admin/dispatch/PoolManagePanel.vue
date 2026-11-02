@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 工单池管理（PRD 14.3）：一组一池；池形态、班组开关、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
+// 工单池管理（PRD 14.3）：一组一池；派单方式、班组开关、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
 import { computed, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { TICKETS } from '@/mock/tickets';
@@ -38,10 +38,10 @@ function waitItems(p: { waitingOriginal: number; queued: number; failed: number;
 }
 const totalBacklog = computed(() => rows.value.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0));
 
-const globalStopped = computed(() => store.globalEffectiveMode() === '停派态');
+const globalStopped = computed(() => store.globalEffectiveMode() === '人工派单');
 function switchTip(id: string): string | undefined {
   if (!store.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (store.groupOf(id)?.mode === '停派态') return '本组已由管理员停派';
+  if (store.groupOf(id)?.mode === '人工派单') return '本组已由管理员切为人工派单';
   return undefined;
 }
 function onSwitch(id: string, on: boolean) {
@@ -54,7 +54,7 @@ function onSwitch(id: string, on: boolean) {
   if (!on) {
     Modal.confirm({
       title: '关闭班组开关',
-      content: `关闭后${store.poolLabel(id)}转为降级态，本组成员不再接本组池的自动派单。确定关闭？`,
+      content: `关闭后${store.poolLabel(id)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？`,
       okText: '确定', cancelText: '取消', onOk: apply,
     });
   } else apply();
@@ -138,7 +138,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
           <a-tooltip :title="switchTip(p.id) ?? `班组开关：${p.switchOn ? '开启' : '关闭'}`">
             <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
           </a-tooltip>
-          <a-tooltip :title="globalStopped ? '全局已停派，本组形态不可切换' : '切换形态'">
+          <a-tooltip :title="globalStopped ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
             <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
               <template #icon><SwapOutlined /></template>
             </a-button>
@@ -163,7 +163,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 
     <a-drawer v-model:open="detailOpen" :title="detailId ? store.poolLabel(detailId) : ''" width="min(1040px, 100vw)" placement="right">
       <div v-if="detailPool" class="dt-sum">
-        <div class="dt-item"><span class="k">池形态</span><span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span></div>
+        <div class="dt-item"><span class="k">派单方式</span><span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span></div>
         <div class="dt-item"><span class="k">待领工单</span><b>{{ detailRows.length }}</b></div>
         <div class="dt-item"><span class="k">等原处理人</span><b :class="{ warn: detailPool.waitingOriginal }">{{ detailPool.waitingOriginal }}</b></div>
         <div class="dt-item"><span class="k">排队中</span><b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b></div>

@@ -147,12 +147,12 @@ interface Mode {
   groupMode: PoolMode;
   effectiveMode: PoolMode;
 }
-const FORMAL: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '正常态', effectiveMode: '正常态' };
-const TRIAL: Mode = { runMode: '试运行', globalMode: '正常态', groupMode: '正常态', effectiveMode: '正常态' };
-const HW_DEGRADED: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '降级态', effectiveMode: '降级态' };
-const GLOBAL_DEGRADED: Mode = { runMode: '正式派单', globalMode: '降级态', groupMode: '正常态', effectiveMode: '降级态' };
-/** 未开启班组开关的组（专属工单线）：本组降级态，组内领取 */
-const OFF_GROUP: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '降级态', effectiveMode: '降级态' };
+const FORMAL: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
+const TRIAL: Mode = { runMode: '试运行', globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
+const HW_DEGRADED: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
+const GLOBAL_DEGRADED: Mode = { runMode: '正式派单', globalMode: '混合派单', groupMode: '自动派单', effectiveMode: '混合派单' };
+/** 未开启班组开关的组（专属工单线）：本组混合派单，组内领取 */
+const OFF_GROUP: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
 
 interface Tk {
   no: string;
@@ -392,7 +392,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
     const volume = { trial: weekend ? 9 : 15, single: weekend ? 7 : 11, multi: weekend ? 13 : 21 }[stageAt(from)];
     const times = Array.from({ length: volume }, () => from + r() * (to - from)).sort((x, y) => x - y);
 
-    // 自动降级当日：引擎异常判定（降级前）
+    // 自动转混合当日：引擎异常判定（转混合前）
     if (ds <= tl.degradeStart && tl.degradeStart < ds + DAY) {
       for (const m of [1, 2, 4]) {
         const at = tl.degradeStart - (5 - m) * MIN;
@@ -412,7 +412,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const pool = pools.length === 1 ? 'line2' : x < 0.4 ? 'line2' : x < 0.7 ? 'general' : x < 0.88 ? 'hardware' : 'tech';
       const elig = b.eligible(pool);
       const sc = r();
-      // 自动降级期间：全局降级态留池，组内领取
+      // 自动转混合期间：全局混合派单留池，组内领取
       if (ts >= tl.degradeStart && ts < tl.degradeEnd) {
         const t = newTk(pool, ts);
         b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_DEGRADED, status: null });
@@ -615,7 +615,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     }
   });
 
-  // 硬件缺陷组降级后：留池，组内领取、指派、调剂到人
+  // 硬件缺陷组转混合后：留池，组内领取、指派、调剂到人
   const hw: [number, ManualAction, string, string | undefined][] = [
     [0.35, '调剂到人', '李四', '李四熟悉学习机返修流程'],
     [0.45, '二线领取', '陈坐席', undefined],
@@ -807,9 +807,9 @@ function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now
     a(tl.multiStart, ADMIN, '班组开关', '综合处理组', '关闭', '开启'),
     a(tl.multiStart, ADMIN, '班组开关', '技术支持组', '关闭', '开启'),
     a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单组试点', '多组'),
-    a(tl.degradeStart, SYSTEM, '池形态', '全局', '正常态', '降级态', '5 分钟内派单失败率 ≥ 20%'),
-    a(tl.degradeEnd, ADMIN, '池形态', '全局', '降级态', '正常态', '派单服务已恢复，各项指标连续 10 分钟达标'),
-    a(today.hwDegradeAt, ADMIN, '池形态', '硬件缺陷组池', '正常态', '降级态', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
+    a(tl.degradeStart, SYSTEM, '派单方式', '全局', '自动派单', '混合派单', '5 分钟内派单失败率 ≥ 20%'),
+    a(tl.degradeEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单', '派单服务已恢复，各项指标连续 10 分钟达标'),
+    a(today.hwDegradeAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
     a(today.t0 + 0.45 * E, LEADER, '个人上限', '王坐席', '默认 13', '3'),
     a(today.t0 + 0.55 * E, LEADER, '个人上限', '张三', '40', '32'),
   ];

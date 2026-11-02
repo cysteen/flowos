@@ -59,14 +59,14 @@ export function syncSignInFromCti(name: string, s: WorkStatus) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 标签 · 形态                                                           */
+/* 标签 · 派单方式                                                       */
 /* ------------------------------------------------------------------ */
 
-/** 池形态页面标识（5.2）：正常态不标 */
-export function modeTagOf(mode: PoolMode): '降级' | '停派' | null {
-  if (mode === '降级态') return '降级';
-  if (mode === '停派态') return '停派';
-  return null;
+export type ModeTag = Exclude<PoolMode, '自动派单'>;
+
+/** 派单方式页面标识（5.2）：自动派单不标 */
+export function modeTagOf(mode: PoolMode): ModeTag | null {
+  return mode === '自动派单' ? null : mode;
 }
 
 export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, { color: string; bg: string; border: string }> = {
@@ -75,9 +75,9 @@ export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, { color: string; bg: 
   等原处理人: { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
 };
 
-export const MODE_TAG_STYLE: Record<'降级' | '停派', { color: string; bg: string; border: string }> = {
-  降级: { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-  停派: { color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
+export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border: string }> = {
+  混合派单: { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  人工派单: { color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
 };
 
 export const SIGN_IN_COLOR: Record<SignInStatus, string> = { 签入: '#10B981', 小休: '#F59E0B', 签出: '#9CA3AF' };
@@ -116,15 +116,15 @@ export function waitText(min: number | null): string {
 export function groupSwitchDisabledTip(groupId: string): string {
   const dispatch = useDispatchStore();
   if (!dispatch.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (dispatch.groupOf(groupId)?.mode === '停派态') return '本组已由管理员停派';
+  if (dispatch.groupOf(groupId)?.mode === '人工派单') return '本组已由管理员切为人工派单';
   return '';
 }
 
-/** 本组形态切换置灰提示；可操作返回空串（停派态由管理员回切） */
+/** 本组派单方式切换置灰提示；可操作返回空串（人工派单由管理员恢复） */
 export function groupModeDisabledTip(groupId: string): string {
   const dispatch = useDispatchStore();
-  if (dispatch.globalEffectiveMode() === '停派态') return '全局已停派，本组形态不可切换';
-  if (dispatch.groupOf(groupId)?.mode === '停派态') return '本组已由管理员停派';
+  if (dispatch.globalEffectiveMode() === '人工派单') return '全局为人工派单，本组派单方式不可切换';
+  if (dispatch.groupOf(groupId)?.mode === '人工派单') return '本组已由管理员切为人工派单';
   return '';
 }
 

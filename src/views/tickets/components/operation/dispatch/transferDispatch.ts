@@ -104,11 +104,11 @@ function writeOverCapEntry(row: Ticket, timeline: TimelineEntry[], name: string)
   });
 }
 
-/** 调剂到池 / 升级进池后的提示：目标池可派单时「系统将重新派送」，降级态、停派态与试运行时「等待组内领取」 */
+/** 调剂到池 / 升级进池后的提示：目标池可派单时「系统将重新派送」，混合派单、人工派单与试运行时「等待组内领取」 */
 function poolWillDispatch(poolId: string): boolean {
   const store = useDispatchStore();
   const trial = store.config.runMode === '试运行';
-  return !trial && store.effectiveModeOf(poolId) === '正常态';
+  return !trial && store.effectiveModeOf(poolId) === '自动派单';
 }
 
 /* ------------------------------------------------------------------ */

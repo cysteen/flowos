@@ -2,7 +2,7 @@
 /**
  * 【1215】班组看板 · 本组派单（PRD 5.4 / 6.5 / 7.5 / 8 / 9.3）。
  *
- * 班组长视角：本组开关、本组形态（正常态 ⇄ 降级态；停派态由管理员控制）、
+ * 班组长视角：本组开关、本组派单方式（自动派单 ⇄ 混合派单；人工派单由管理员控制）、
  * 本组成员（签入状态、在途 / 上限、超限 / 超额指派、熟练度、画像配置、个人开关）及其维护，
  * 本组池待领工单与组内指派。组取当前登录人任班组长的派单组。
  */
@@ -82,14 +82,14 @@ function onSwitchOffConfirm() {
   else if (res.message) message.warning(res.message);
 }
 
-/* ---------------- 本组形态（5.4） ---------------- */
+/* ---------------- 本组派单方式（5.4） ---------------- */
 
 const modeTip = computed(() => (groupId.value ? groupModeDisabledTip(groupId.value) : ''));
 const modeOpen = ref(false);
 const modeTarget = ref<PoolMode | undefined>(undefined);
 const modeReason = ref('');
-/** 班组长只出正常态、降级态，不含当前形态 */
-const modeOptions = computed(() => (['正常态', '降级态'] as PoolMode[]).filter((m) => m !== group.value?.mode));
+/** 班组长只出自动派单、混合派单，不含当前派单方式 */
+const modeOptions = computed(() => (['自动派单', '混合派单'] as PoolMode[]).filter((m) => m !== group.value?.mode));
 
 function openMode() {
   if (modeTip.value) return;
@@ -101,10 +101,10 @@ function onModeOk() {
   const g = group.value;
   if (!g) return;
   if (!modeTarget.value) {
-    message.warning('请选择切换后的形态');
+    message.warning('请选择切换后的派单方式');
     return;
   }
-  if (modeTarget.value !== '正常态' && !modeReason.value.trim()) {
+  if (modeTarget.value !== '自动派单' && !modeReason.value.trim()) {
     message.warning('请填写切换原因');
     return;
   }
@@ -284,11 +284,11 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           </a-tooltip>
         </div>
         <div class="dtp-ctl">
-          <span class="dtp-ctl-label">本组形态</span>
+          <span class="dtp-ctl-label">本组派单方式</span>
           <span class="dtp-mode">{{ group.mode }}</span>
           <a-tooltip :title="modeTip || undefined">
             <button type="button" class="btn-ghost" :disabled="!!modeTip" @click="openMode">
-              <SwapOutlined /> 切换形态
+              <SwapOutlined /> 切换派单方式
             </button>
           </a-tooltip>
         </div>
@@ -301,7 +301,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     </div>
 
     <div v-if="poolView" class="dtp-stats">
-      <span>池形态 <b>{{ poolView.effectiveMode }}</b>
+      <span>派单方式 <b v-if="!effectiveTag">{{ poolView.effectiveMode }}</b>
         <span
           v-if="effectiveTag"
           class="dtp-tag"
@@ -433,14 +433,14 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       @ok="onSwitchOffConfirm"
     >
       <div class="op-form">
-        <div class="dtp-confirm">关闭后{{ group.label }}池转为降级态，本组成员不再接本组池的自动派单。确定关闭？</div>
+        <div class="op-tip op-tip-warn">关闭后{{ group.label }}池转为混合派单，本组成员不再接本组池的自动派单。确定关闭？</div>
       </div>
     </OpActionModal>
 
-    <!-- 切换池形态（5.4） -->
+    <!-- 切换派单方式（5.4） -->
     <OpActionModal
       v-model:open="modeOpen"
-      title="切换池形态"
+      title="切换派单方式"
       :icon="ControlOutlined"
       tone="primary"
       ok-tone="primary"
@@ -450,12 +450,13 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       @ok="onModeOk"
     >
       <div class="op-form dtp-form">
+        <div class="op-tip op-tip-warn">已派出、已领取的工单不收回</div>
         <div class="dtp-frow">
           <div class="op-label">范围</div>
           <div class="dtp-ro">{{ dispatch.poolLabel(group.id) }}</div>
         </div>
         <div class="dtp-frow">
-          <div class="op-label">当前形态</div>
+          <div class="op-label">当前派单方式</div>
           <div class="dtp-ro">{{ group.mode }}</div>
         </div>
         <div class="dtp-frow">
@@ -465,12 +466,8 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           </a-radio-group>
         </div>
         <div class="dtp-frow top">
-          <div class="op-label" :class="{ req: modeTarget && modeTarget !== '正常态' }">切换原因</div>
+          <div class="op-label" :class="{ req: modeTarget && modeTarget !== '自动派单' }">切换原因</div>
           <a-textarea v-model:value="modeReason" :maxlength="200" show-count :rows="3" placeholder="请填写切换原因" />
-        </div>
-        <div class="dtp-frow">
-          <div class="op-label">影响提示</div>
-          <div class="dtp-ro">已派出、已领取的工单不收回</div>
         </div>
       </div>
     </OpActionModal>
@@ -589,9 +586,8 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 .mono { font-variant-numeric: tabular-nums; }
 .muted { color: #9ca3af; }
 .empty { padding: 28px 16px; text-align: center; font-size: 12px; color: #94a3b8; }
-.dtp-confirm { font-size: 14px; line-height: 22px; color: #111827; }
 .dtp-form { display: flex; flex-direction: column; gap: 14px; }
-.dtp-frow { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; align-items: center; }
+.dtp-frow { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 10px; align-items: center; }
 .dtp-frow.top { align-items: start; }
 .dtp-frow.top > .op-label { line-height: 32px; }
 .dtp-frow > .op-label { white-space: nowrap; }

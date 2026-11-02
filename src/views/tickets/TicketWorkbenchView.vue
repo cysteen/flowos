@@ -194,7 +194,7 @@ function matchesMeCell(t: Ticket): boolean {
   return myProfileConfigured.value && dispatch.matchesMe(t, user.name);
 }
 
-/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，降级 / 停派另标；点选即按组池筛选 */
+/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，混合派单 / 人工派单另标；点选即按组池筛选 */
 const poolSegments = computed(() => {
   void dispatch.groups;
   void dispatch.config;
