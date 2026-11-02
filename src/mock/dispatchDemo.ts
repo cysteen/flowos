@@ -13,7 +13,7 @@ import {
   PRIORITY_SCORE, PROFICIENCY_SCORE, defaultScoreFactors, isProfileConfigured,
   type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchFailReason, type DispatchGroup,
   type DispatchLogEntry, type DispatchPath, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction,
-  type PoolMode, type PoolRule, type RelaxLevel, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
+  type OriginalRelation, type PoolMode, type PoolRule, type RelaxLevel, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { splitProblemPath } from '@/stores/problemTags';
 
@@ -178,6 +178,16 @@ interface JudgeOpts {
   /** 本次判定的候选数（不传按池成员估算） */
   candidates?: number;
   firstRespAt?: number;
+  /** 派回原处理人 / 为原处理人保留命中的关系（不传按触发：售后转回 → 本单退回，其余 → 同客户近期） */
+  relation?: OriginalRelation;
+  /** 因例外不派回的原处理人 */
+  excluded?: DispatchLogEntry['originalExcluded'];
+}
+
+/** 种子日志里原处理人的关系：售后转回、回访打回为本单退回；其余按时刻分到关联单 / 同客户近期（不消耗随机序列） */
+function relationOf(trigger: DispatchTrigger, at: number): OriginalRelation {
+  if (trigger === '售后转回' || trigger === '回访打回') return '本单退回';
+  return Math.floor(at / MIN) % 4 === 0 ? '关联单' : '同客户近期';
 }
 
 function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => number) {
@@ -282,6 +292,8 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       groupMode: o.mode.groupMode,
       effectiveMode: o.mode.effectiveMode,
       path: o.path,
+      ...(o.path === '原处理人' || o.path === '预留' ? { originalRelation: o.relation ?? relationOf(o.trigger, at) } : {}),
+      ...(o.excluded?.length ? { originalExcluded: o.excluded } : {}),
       relaxLevel: o.relaxLevel ?? 0,
       ...(o.path === '留池' || o.path === '预留' ? {} : { gateDrops: dropsOf(t.pool, assignLike ? candidates : 0, capBlocked), candidateCount: assignLike ? candidates : 0 }),
       ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
@@ -437,9 +449,10 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
         assignAt = ts;
         b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: r() < 0.7 ? 1 : 2, mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
       } else if (reserve) {
-        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人' });
+        const relation = relationOf(trigger, ts);
+        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
         assignAt = ts + b.between(3, 12) * MIN;
-        b.judge(t, assignAt, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
+        b.judge(t, assignAt, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
       } else if (sc < 0.93) {
         const reason = b.pick(FAIL_REASONS);
         let fbAt = ts;
@@ -570,11 +583,15 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
       b.judge(t, enter, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
       b.judge(t, take, { trigger: '名额释放', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
     } else if (via === 'r') {
-      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人' });
-      b.judge(t, take, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+      const relation = relationOf(trigger, enter);
+      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
+      b.judge(t, take, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
     } else {
       const path: DispatchPath = via === 'o' ? '原处理人' : via === 'x' ? '组内放宽' : '加权评分';
-      b.judge(t, take, { trigger, path, relaxLevel: via === 'x' ? 2 : 0, mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+      // 今日三次派回原处理人各取一种关系；一次综合打分前，同客户近期的原处理人因上次回访不满意不派回
+      const relation: OriginalRelation | undefined = via === 'o' ? (trigger === '售后转回' ? '本单退回' : i === 13 ? '关联单' : '同客户近期') : undefined;
+      const excluded = i === 1 ? [{ relation: '同客户近期' as const, name: '林坐席', reason: '上次回访不满意' as const }] : undefined;
+      b.judge(t, take, { trigger, path, relaxLevel: via === 'x' ? 2 : 0, mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation, excluded });
     }
     noteTake(name, take);
     // 改派（人工换人）：班组长把张三的一单改派给林坐席
@@ -725,9 +742,10 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     } else if (s.status === '等原处理人') {
       const who = RESERVE_FOR[s.key];
       const until = enteredAt + 15 * MIN;
-      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人' });
-      Object.assign(st, { reserveFor: who, reserveUntil: until, complaintTarget: undefined });
-      sys('等原处理人', `等原处理人 ${who}，${hm(until)} 到期`, enteredAt);
+      const relation: OriginalRelation = '同客户近期';
+      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人', relation });
+      Object.assign(st, { reserveFor: who, reserveUntil: until, reserveRelation: relation, reservedOnce: true, complaintTarget: undefined });
+      sys('等原处理人', `等原处理人 ${who}（${relation}），${hm(until)} 到期`, enteredAt);
     } else {
       b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null });
     }
@@ -753,7 +771,30 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       eventTimeline: tl.map((e, k) => ({ ...e, id: `dispatch-${no}-seed-${k + 1}` })) as TimelineEntry[],
     } as unknown as Ticket);
   });
+  rows.push(surveyBadRow(now, b.groupLabel('line2')));
   return { rows, states };
+}
+
+/**
+ * 原处理人例外「上次回访不满意」的历史单（4.2）：客户庞悦 3 天前由林坐席结案，回访人员服务打 2 分（≤ 3 计服务不满意）。
+ * 该客户 7 天内再来新单时，同客户近期的原处理人林坐席不派回、不保留。
+ */
+export const SURVEY_BAD_PHONE = '15912009901';
+function surveyBadRow(now: number, groupLabel: string): Ticket {
+  const at = now - 3 * DAY;
+  const snap = SNAPS.line2[0];
+  const [l1, l2, l3] = splitProblemPath(snap.problem!);
+  return {
+    id: 'dispatch-seed-survey-bad', no: `IFLYZX-${ymd(at)}-79001`, type: '咨询', channel: '电话',
+    title: '智能音箱在线播放卡顿', smartMarks: [], customer: '庞悦', vip: false, customerPhone: SURVEY_BAD_PHONE,
+    product: snap.product, productCategory: snap.productCategory, businessType: snap.businessType,
+    problemL1: l1, problemL2: l2, problemL3: l3, ticketSource: snap.ticketSource,
+    nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
+    assignee: '林坐席', tab: 'done', groupId: 'line2', groupNames: [groupLabel],
+    serviceScore: 2, responded: true,
+    createdAt: stamp(at - 5 * HOUR), updatedAt: stamp(at),
+  } as unknown as Ticket;
 }
 
 /* ------------------------------------------------------------------ */

@@ -328,7 +328,12 @@ function onCreate(processAfter = false) {
   // 自主发起（非一线「创建并处理」，发起人本人处理）直派发起人，计入在途、超出记超额指派并写派单日志
   const selfInitiated = isEscalateMode.value && processAfter && useUserStore().roleKey !== 'agent-l1';
   if (!selfInitiated && (!processAfter || isEscalateMode.value)) {
-    useDispatchStore().dispatchNewTicket(ticket);
+    // 原处理人「关联单」（4.2）：升级投诉、承接子单（原单已到终态）带原单号；转单不算
+    const parentNo = props.prefill?.parentNo;
+    const parentRow = parentNo ? TICKETS.find((x) => x.no === parentNo) : undefined;
+    const parentDone = !!parentRow && isTicketClosed(parentRow.nodeStatus);
+    const relatedNo = isEscalateMode.value || (isChildMode.value && parentDone) ? parentNo : undefined;
+    useDispatchStore().dispatchNewTicket(ticket, relatedNo ? { relatedNo } : {});
   }
   emit('created', ticket, processAfter);
   // 新单落工单库：打开处理页取得到本单的问题描述与附件（调用方已自行落库的不重复写入）

@@ -257,6 +257,73 @@ export const PROFICIENCY_SCORE: Record<Proficiency, number> = { 专家: 1, 熟�
 /** 紧急度 · 优先级分（4.3） */
 export const PRIORITY_SCORE: Record<Priority, number> = { P0: 1, P1: 0.7, P2: 0.4, P3: 0.1 };
 
+/* ------------------------------------------------------------------ */
+/* 原处理人优先＝有序关系链（4.2，11-02 拍板方案 B）                        */
+/* ------------------------------------------------------------------ */
+
+/** 原处理人关系（P0 次序固定、不可调）：本单退回 → 关联单 → 同客户近期 */
+export type OriginalRelation = '本单退回' | '关联单' | '同客户近期';
+export const ORIGINAL_RELATIONS: OriginalRelation[] = ['本单退回', '关联单', '同客户近期'];
+/** 人不在时：转下一步（下一行 / 综合打分）或保留 */
+export type OriginalAbsentPolicy = '转下一步' | '保留';
+/** 「保留」只对投诉单生效的关系（关联单、同客户近期）；本单退回对全部工单生效 */
+export const RESERVE_COMPLAINT_ONLY: Record<OriginalRelation, boolean> = { 本单退回: false, 关联单: true, 同客户近期: true };
+
+/** 关系链一行 */
+export interface OriginalRelationRule {
+  relation: OriginalRelation;
+  enabled: boolean;
+  /** 有效期（天，1–30）：以历史工单最近一次处理时间起算；本单退回不限，为 null */
+  days: number | null;
+  absent: OriginalAbsentPolicy;
+  /** 保留时长（分钟，1–60） */
+  reserveMinutes: number;
+  /** 保留不超过首次响应剩余时限的百分比（1–100） */
+  reserveSlaPercent: number;
+  /** 仅限同一问题分类（只挂在「同客户近期」一行） */
+  sameProblem?: boolean;
+}
+
+/** 不派回、不预留的情况（4.2 例外清单） */
+export type OriginalExclusion = '被投诉人' | '不在所属组或已停用' | '上次回访不满意' | '小智退回';
+
+export function defaultOriginalChain(): OriginalRelationRule[] {
+  return [
+    { relation: '本单退回', enabled: true, days: null, absent: '保留', reserveMinutes: 15, reserveSlaPercent: 30 },
+    { relation: '关联单', enabled: true, days: 15, absent: '保留', reserveMinutes: 15, reserveSlaPercent: 30 },
+    { relation: '同客户近期', enabled: true, days: 7, absent: '保留', reserveMinutes: 15, reserveSlaPercent: 30, sameProblem: false },
+  ];
+}
+
+/**
+ * 旧配置迁移（v2.7 及以前的出池规则 ② 五项 → 关系链）：
+ * 开关 → 三行启用；时间窗 · 投诉 → 关联单天数；时间窗 · 咨询及其他 → 同客户近期天数；
+ * 投诉预留时长 / 比例 → 各行保留时长 / 比例；同一问题分类 → 同客户近期一行。
+ */
+export function migrateOriginalChain(raw: Record<string, unknown> | null | undefined): OriginalRelationRule[] {
+  const chain = defaultOriginalChain();
+  if (!raw) return chain;
+  if (Array.isArray(raw.originalChain)) {
+    return chain.map((d) => {
+      const hit = (raw.originalChain as Partial<OriginalRelationRule>[]).find((x) => x?.relation === d.relation);
+      return hit ? { ...d, ...hit, relation: d.relation, days: d.relation === '本单退回' ? null : hit.days ?? d.days } : d;
+    });
+  }
+  const num = (k: string) => (typeof raw[k] === 'number' ? raw[k] as number : undefined);
+  const on = raw.originalFirst !== false;
+  const mins = num('reserveMinutes');
+  const pct = num('reserveSlaPercent');
+  return chain.map((d) => ({
+    ...d,
+    enabled: on,
+    ...(mins != null ? { reserveMinutes: mins } : {}),
+    ...(pct != null ? { reserveSlaPercent: pct } : {}),
+    ...(d.relation === '关联单' && num('windowComplaintDays') != null ? { days: num('windowComplaintDays')! } : {}),
+    ...(d.relation === '同客户近期' && num('windowConsultDays') != null ? { days: num('windowConsultDays')! } : {}),
+    ...(d.relation === '同客户近期' && typeof raw.originalSameProblem === 'boolean' ? { sameProblem: raw.originalSameProblem } : {}),
+  }));
+}
+
 /** 派单配置（14.2 出池规则 / 个人上限，全部为后台可配默认值）与全局派单方式 */
 export interface DispatchConfig {
   /** 全局派单方式（5.4，管理员在分派监控手动切换；人工派单＝全局不派单） */
@@ -264,14 +331,8 @@ export interface DispatchConfig {
   /** 无操作转小休 N 分钟 */
   idleToBreakMinutes: number;
   /* 出池规则 */
-  originalFirst: boolean;
-  windowConsultDays: number;
-  windowComplaintDays: number;
-  /** 附加条件「同一问题分类」，默认不勾 */
-  originalSameProblem: boolean;
-  reserveMinutes: number;
-  /** 不超过首响 SLA 剩余的百分比 */
-  reserveSlaPercent: number;
+  /** 步骤 ② 优先派回原处理人：关系链三行（4.2） */
+  originalChain: OriginalRelationRule[];
   factors: ScoreFactor[];
   recentHours: number;
   relaxEnabled: boolean;
@@ -289,12 +350,7 @@ export function defaultDispatchConfig(): DispatchConfig {
   return {
     globalMode: '人工派单',
     idleToBreakMinutes: 30,
-    originalFirst: true,
-    windowConsultDays: 7,
-    windowComplaintDays: 15,
-    originalSameProblem: false,
-    reserveMinutes: 15,
-    reserveSlaPercent: 30,
+    originalChain: defaultOriginalChain(),
     factors: defaultScoreFactors(),
     recentHours: 2,
     relaxEnabled: true,
@@ -420,6 +476,10 @@ export interface DispatchLogEntry {
   /** 生效派单方式（较严者） */
   effectiveMode: PoolMode;
   path?: DispatchPath;
+  /** 派回原处理人 / 为原处理人保留时命中的关系（4.2） */
+  originalRelation?: OriginalRelation;
+  /** 关系链上因例外不派回、不保留的原处理人（4.2 例外清单） */
+  originalExcluded?: { relation: OriginalRelation; name: string; reason: OriginalExclusion }[];
   relaxLevel?: RelaxLevel;
   /** 逐项门槛淘汰人数 */
   gateDrops?: Partial<Record<GateKey, number>>;
@@ -474,8 +534,14 @@ export interface TicketDispatchState {
   designatedPool?: boolean;
   /** 投诉对象（投诉回避） */
   complaintTarget?: string;
-  /** 售后转回 / 回访打回：本单上一处理人 */
+  /** 售后转回 / 回访打回：本单上一处理人（关系「本单退回」） */
   prevHandler?: string;
+  /** 承接子单、升级投诉的原单号（关系「关联单」；外投单读工单行「升级自」） */
+  relatedNo?: string;
+  /** 预留关系（等原处理人时） */
+  reserveRelation?: OriginalRelation;
+  /** 本次进入派单已预留过（一张单只预留一次，4.2） */
+  reservedOnce?: boolean;
   /** 判定序号 */
   seq: number;
   /** 兜底后引擎不再自动判定（4.4） */

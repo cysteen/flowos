@@ -13,8 +13,9 @@ import {
 } from '@/views/tickets/composables/aftersaleEvents';
 import {
   DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_SCORE, PROFICIENCY_SCORE,
-  RELAX_LEVEL_LABEL, TAKEN_MESSAGE, PROFILE_DIMS,
-  defaultDispatchConfig, emptyProfile, isProfileConfigured, stricterMode,
+  RELAX_LEVEL_LABEL, RESERVE_COMPLAINT_ONLY, TAKEN_MESSAGE, PROFILE_DIMS,
+  defaultDispatchConfig, emptyProfile, isProfileConfigured, migrateOriginalChain, stricterMode,
+  type OriginalExclusion, type OriginalRelation, type OriginalRelationRule,
   type AgentProfile, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
   type DispatchFailReason, type DispatchGroup, type DispatchLogEntry, type DispatchPath, type DispatchPool, type DispatchResult,
   type DispatchRole, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction, type OccupyResult,
@@ -38,13 +39,13 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 【持久化】`flowos-dispatch` 一个键，带版本号 `DISPATCH_CACHE_VERSION`；改种子必须升版本号。
  * 派单改写过的通用工单整行随本键落库、store 建立时回放到工单库（`main.ts` 启动即建立），刷新前后工单行与派单状态 / 日志一致；
  * 刷机 / 小智 / 个册退费单的工单行由各自服务缓存落库。
- * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 派单方式 → 原处理人优先（含投诉预留）→ 门槛 → 评分 → 派出 / 留池；
+ * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 派单方式 → 原处理人优先（关系链：本单退回 → 关联单 → 同客户近期，含保留）→ 门槛 → 评分 → 派出 / 留池；
  * 派单方式（全局 / 各池）与个人开关全部由人手动切换，系统不自动切换。定时判定（预留到期、排队放宽、兜底、名额释放）由 `tick()` 驱动，store 内每 30 秒跑一次。
  */
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 14;
+export const DISPATCH_CACHE_VERSION = 15;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -246,6 +247,14 @@ function readCache(): Persisted | null {
   }
 }
 
+/** 缓存配置补全：旧版出池规则 ② 五项（开关 / 时间窗两项 / 同一问题分类 / 投诉预留两项）迁移为关系链（4.2） */
+const LEGACY_ORIGINAL_KEYS = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem', 'reserveMinutes', 'reserveSlaPercent'];
+function normalizeConfig(raw: Partial<DispatchConfig> & Record<string, unknown>): DispatchConfig {
+  const next = { ...defaultDispatchConfig(), ...raw, originalChain: migrateOriginalChain(raw) } as DispatchConfig & Record<string, unknown>;
+  for (const k of LEGACY_ORIGINAL_KEYS) delete next[k];
+  return next;
+}
+
 /**
  * 专属工单的到组通知（11.6：刷机、退费、小智到组通知同待领取提醒口径）。
  * 各服务在建立时登记自己的到组通知；引擎在该发待领取提醒的时点（自动派单兜底回池、混合派单 / 人工派单新单首次进池）
@@ -284,6 +293,17 @@ interface Decision {
   failReason?: DispatchFailReason;
   reserveFor?: string;
   reserveUntil?: number;
+  /** 派回原处理人 / 预留命中的关系（4.2） */
+  originalRelation?: OriginalRelation;
+  /** 因例外不派回、不保留的原处理人 */
+  originalExcluded?: { relation: OriginalRelation; name: string; reason: OriginalExclusion }[];
+}
+
+/** 关系链上取到的一名原处理人（每种关系只取最近一个，4.2） */
+interface OriginalCandidate {
+  relation: OriginalRelation;
+  rule: OriginalRelationRule;
+  name: string;
 }
 
 export interface DispatchOptions {
@@ -291,8 +311,10 @@ export interface DispatchOptions {
   poolId?: string;
   /** 投诉对象（投诉回避） */
   complaintTarget?: string;
-  /** 售后转回 / 回访打回：本单上一处理人（原处理人不受时间窗限制） */
+  /** 售后转回 / 回访打回：本单上一处理人（关系「本单退回」，有效期不限） */
   prevHandler?: string | null;
+  /** 承接子单、升级投诉：原单号（关系「关联单」） */
+  relatedNo?: string | null;
 }
 
 /** 池视图（供工单池管理、分派监控、班组看板） */
@@ -342,7 +364,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   // 运行中种子：全局自动派单（上线以来的切换记录见审计种子）
   const config = ref<DispatchConfig>(cached
-    ? { ...defaultDispatchConfig(), ...cached.config }
+    ? normalizeConfig(cached.config as unknown as Partial<DispatchConfig> & Record<string, unknown>)
     : { ...defaultDispatchConfig(), globalMode: '自动派单' });
   const groups = ref<DispatchGroup[]>(cached?.groups ?? seedGroups());
   const pools = ref<DispatchPool[]>(cached?.pools ?? seedPools(groups.value, now0));
@@ -823,32 +845,111 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /* ---------------- 原处理人（4.2） ---------------- */
 
-  function findOriginalHandler(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, now: number): string | undefined {
-    if (st.prevHandler) return agentOf(st.prevHandler) ? st.prevHandler : undefined;
-    if (!config.value.originalFirst) return undefined;
+  /** 历史工单最近一次处理时间（有效期起算点） */
+  function handledAtOf(x: Ticket): number {
+    const at = parseStamp(x.updatedAt);
+    return Number.isFinite(at) ? at : parseStamp(x.createdAt);
+  }
+  /** 层级（4.2 通用约束）：只认二线及以上（派单坐席）；技术支持组池只认三线 */
+  function layerOk(a: DispatchAgent, st: TicketDispatchState, trigger: DispatchTrigger): boolean {
+    if (trigger === '升级三线' || poolGroupIdOf(st.poolId) === 'tech') return a.roles.includes('技术支持');
+    return true;
+  }
+  /** 某张历史工单的最后一名二线及以上处理人：当前处理人 → 上次处理人 → 履历中最近的处理人 */
+  function lastHandlerOf(x: Ticket, st: TicketDispatchState, trigger: DispatchTrigger): DispatchAgent | undefined {
+    const names = [x.assignee, x.lastHandler, ...[...(x.eventTimeline ?? [])].reverse().map((e) => e.who)];
+    for (const n of names) {
+      const a = agentOf(n);
+      if (a && layerOk(a, st, trigger)) return a;
+    }
+    return undefined;
+  }
+
+  /** 关系链一行取原处理人（每种关系只取最近一个）；取不到返回空 */
+  function candidateOf(rule: OriginalRelationRule, t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, now: number): OriginalCandidate | undefined {
+    const from = rule.days == null ? -Infinity : now - rule.days * 24 * 60 * MIN;
+    if (rule.relation === '本单退回') {
+      // 售后转回、回访打回：本单上一处理人，有效期不限
+      const a = agentOf(st.prevHandler);
+      return a && layerOk(a, st, trigger) ? { relation: rule.relation, rule, name: a.name } : undefined;
+    }
+    if (rule.relation === '关联单') {
+      // 承接子单、升级投诉：建单时带入的原单；外投单：工单行「升级自」
+      const no = st.relatedNo ?? t.escalatedFromNo;
+      const origin = no && no !== t.no ? TICKETS.find((x) => x.no === no) : undefined;
+      if (!origin || handledAtOf(origin) < from) return undefined;
+      const a = lastHandlerOf(origin, st, trigger);
+      return a ? { relation: rule.relation, rule, name: a.name } : undefined;
+    }
+    // 同客户近期：同一客户（手机号）最近一次工单的处理人；技术支持组池取最近一次三线处理人
     const phone = digits(t.customerPhone);
     if (!phone) return undefined;
-    const days = t.type === '投诉' ? config.value.windowComplaintDays : config.value.windowConsultDays;
-    const from = now - days * 24 * 60 * MIN;
     const path = joinProblemPath(problemPathOf(t));
     let best: { name: string; at: number } | undefined;
     for (const x of TICKETS) {
       if (x.no === t.no || !x.assignee || digits(x.customerPhone) !== phone) continue;
       const a = agentOf(x.assignee);
-      if (!a) continue;
-      // 升级三线：取同一客户最近一次三线处理人（9.5）
-      if (trigger === '升级三线' && !a.roles.includes('技术支持')) continue;
-      if (config.value.originalSameProblem && joinProblemPath(problemPathOf(x)) !== path) continue;
-      const at = parseStamp(x.updatedAt) || parseStamp(x.createdAt);
+      if (!a || !layerOk(a, st, trigger)) continue;
+      if (rule.sameProblem && joinProblemPath(problemPathOf(x)) !== path) continue;
+      const at = handledAtOf(x);
       if (!Number.isFinite(at) || at < from) continue;
       if (!best || at > best.at) best = { name: a.name, at };
     }
-    return best?.name;
+    return best ? { relation: rule.relation, rule, name: best.name } : undefined;
   }
 
-  function reserveUntilOf(t: Ticket, st: TicketDispatchState, now: number): number {
+  /** 该客户上一次对此人的回访评价为不满意（人员服务 1–3 分，与班组看板「服务不满意」同口径） */
+  function lastSurveyBad(t: Ticket, name: string): boolean {
+    const phone = digits(t.customerPhone);
+    let last: { at: number; score: number } | undefined;
+    for (const x of TICKETS) {
+      if (x.serviceScore == null || (x.assignee !== name && x.lastHandler !== name)) continue;
+      if (x.no !== t.no && (!phone || digits(x.customerPhone) !== phone)) continue;
+      const at = handledAtOf(x);
+      if (!last || at > last.at) last = { at: Number.isFinite(at) ? at : 0, score: x.serviceScore };
+    }
+    return !!last && last.score <= 3;
+  }
+
+  /** 例外清单（4.2，统一判定）：命中即不派回、不保留 */
+  function exclusionOf(t: Ticket, st: TicketDispatchState, c: OriginalCandidate): OriginalExclusion | null {
+    if (st.complaintTarget && c.name === st.complaintTarget) return '被投诉人';
+    const a = agentOf(c.name);
+    const gid = poolGroupIdOf(st.poolId);
+    if (!a || a.disabled || !gid || !a.groupIds.includes(gid)) return '不在所属组或已停用';
+    // 小智产研退回、确认未解决：回小智工单处理组池待领，不派回原处理人（【1120】）
+    if (c.relation === '本单退回' && isXiaozhiTicket(t)) return '小智退回';
+    if (lastSurveyBad(t, c.name)) return '上次回访不满意';
+    return null;
+  }
+
+  /**
+   * 按次序走关系链（4.2）：每行取一名原处理人，命中例外的跳过；第一个通过全部接单条件的即派出。
+   * 均不可用时返回待保留的候选（链上次序）。
+   */
+  function walkChain(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, now: number) {
+    const excluded: NonNullable<Decision['originalExcluded']> = [];
+    const waiting: OriginalCandidate[] = [];
+    const seen = new Set<string>();
+    for (const rule of config.value.originalChain) {
+      if (!rule.enabled) continue;
+      const c = candidateOf(rule, t, st, trigger, now);
+      if (!c || seen.has(c.name)) continue;
+      seen.add(c.name);
+      const ex = exclusionOf(t, st, c);
+      if (ex) {
+        excluded.push({ relation: c.relation, name: c.name, reason: ex });
+        continue;
+      }
+      if (gates(t, st, 0, { only: c.name }).passed.length) return { hit: c, waiting, excluded };
+      waiting.push(c);
+    }
+    return { hit: undefined, waiting, excluded };
+  }
+
+  function reserveUntilOf(t: Ticket, st: TicketDispatchState, rule: OriginalRelationRule, now: number): number {
     const remain = slaRemainMin(t, st, now);
-    const cap = remain == null ? config.value.reserveMinutes : Math.min(config.value.reserveMinutes, (remain * config.value.reserveSlaPercent) / 100);
+    const cap = remain == null ? rule.reserveMinutes : Math.min(rule.reserveMinutes, (remain * rule.reserveSlaPercent) / 100);
     return now + Math.max(1, cap) * MIN;
   }
 
@@ -866,31 +967,39 @@ export const useDispatchStore = defineStore('dispatch', () => {
       };
     }
 
-    // 原处理人优先（混合派单同样执行）
-    const orig = trigger === '预留到期' ? undefined : findOriginalHandler(t, st, trigger, now);
-    if (orig && orig !== st.complaintTarget) {
-      const a = agentOf(orig)!;
-      const gid = poolGroupIdOf(st.poolId);
-      const inGroup = !!gid && a.groupIds.includes(gid);
-      if (inGroup) {
-        const g = gates(t, st, 0, { only: orig });
-        if (g.passed.length) {
-          const pool = gates(t, st, st.relaxLevel).passed;
-          return {
-            path: '原处理人', assignee: orig, status: null, relaxLevel: 0,
-            score: score(t, st, a, pool.length ? pool : [a], 0, now), drops: g.drops, candidateCount: 1,
-          };
-        }
-        // 投诉预留：原处理人当日在班但当前不可用
-        if (t.type === '投诉' && a.signedInToday && !a.disabled) {
-          return {
-            path: '预留', assignee: null, status: '等原处理人', relaxLevel: st.relaxLevel,
-            reserveFor: orig, reserveUntil: st.reserveFor === orig && st.reserveUntil ? st.reserveUntil : reserveUntilOf(t, st, now),
-          };
-        }
+    // 原处理人优先＝有序关系链（4.2，混合派单同样执行）
+    const chain = walkChain(t, st, trigger, now);
+    const ex = chain.excluded.length ? { originalExcluded: chain.excluded } : {};
+    if (chain.hit) {
+      const a = agentOf(chain.hit.name)!;
+      const g = gates(t, st, 0, { only: a.name });
+      const pool = gates(t, st, st.relaxLevel).passed;
+      return {
+        path: '原处理人', assignee: a.name, status: null, relaxLevel: 0, originalRelation: chain.hit.relation,
+        score: score(t, st, a, pool.length ? pool : [a], 0, now), drops: g.drops, candidateCount: 1, ...ex,
+      };
+    }
+    // 人不在时保留：链上均无可用者 → 预留给次序最靠前、策略为保留且当日签入过的关系人；一张单只预留一次
+    const reserving = st.status === '等原处理人' && !!st.reserveUntil && now < st.reserveUntil && trigger !== '预留到期';
+    if (!st.reservedOnce || reserving) {
+      const r = chain.waiting.find((c) => {
+        const a = agentOf(c.name)!;
+        if (reserving) return c.name === st.reserveFor;
+        return c.rule.absent === '保留' && (!RESERVE_COMPLAINT_ONLY[c.relation] || t.type === '投诉') && a.signedInToday && !a.disabled;
+      });
+      if (r) {
+        return {
+          path: '预留', assignee: null, status: '等原处理人', relaxLevel: st.relaxLevel, originalRelation: r.relation,
+          reserveFor: r.name, reserveUntil: reserving && st.reserveUntil ? st.reserveUntil : reserveUntilOf(t, st, r.rule, now), ...ex,
+        };
       }
     }
-    if (mode === '混合派单') return { path: '留池', assignee: null, status: null, relaxLevel: st.relaxLevel };
+    if (mode === '混合派单') return { path: '留池', assignee: null, status: null, relaxLevel: st.relaxLevel, ...ex };
+    return { ...decideScore(t, st, now), ...ex };
+  }
+
+  /** 步骤 ③ ④：综合打分、放宽、排队、兜底（4.3 / 4.4） */
+  function decideScore(t: Ticket, st: TicketDispatchState, now: number): Decision {
 
     // 候选集为空时（4.4）：首响剩余 < 兜底阈值 → 兜底；无画像匹配在班成员或首响剩余 < 放宽阈值 → 放宽一级；
     // 有匹配成员但均达上限 → 排队；放宽至最远层级仍无 → 兜底
@@ -1073,6 +1182,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ...(opts.poolId && poolId === opts.poolId && (trigger === '调剂到池' || trigger === '升级三线') ? { designatedPool: true } : {}),
       complaintTarget: opts.complaintTarget ?? prev?.complaintTarget,
       prevHandler: opts.prevHandler ?? undefined,
+      relatedNo: opts.relatedNo ?? undefined,
       seq: prev?.seq ?? 0,
       everAssigned: prev?.everAssigned,
     };
@@ -1127,6 +1237,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
       groupMode,
       effectiveMode,
       path: d.path,
+      ...(d.originalRelation ? { originalRelation: d.originalRelation } : {}),
+      ...(d.originalExcluded?.length ? { originalExcluded: d.originalExcluded } : {}),
       relaxLevel: d.relaxLevel,
       gateDrops: d.drops,
       candidateCount: d.candidateCount,
@@ -1149,21 +1261,25 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (status === '等原处理人') {
       st.reserveFor = d.reserveFor;
       st.reserveUntil = d.reserveUntil;
+      st.reserveRelation = d.originalRelation;
+      st.reservedOnce = true;
     } else {
       st.reserveFor = undefined;
       st.reserveUntil = undefined;
+      st.reserveRelation = undefined;
     }
     st.fallbackDone = status === '派单失败回池';
     st.overdueFallback = status === '派单失败回池' && d.failReason === '首响已超时';
 
     const relaxSuffix = d.relaxLevel > 0 && actualAssign ? `；产品放宽至${RELAX_LEVEL_LABEL[d.relaxLevel]}` : '';
+    const pathText = d.originalRelation && d.path === '原处理人' ? `${d.path} · ${d.originalRelation}` : d.path;
     let reason: string;
     if (actualAssign) {
-      reason = `系统派单 → ${actualAssign}（${d.path}）${relaxSuffix}${d.score ? `；${factorText(d.score)}` : ''}`;
+      reason = `系统派单 → ${actualAssign}（${pathText}）${relaxSuffix}${d.score ? `；${factorText(d.score)}` : ''}`;
     } else if (status === '排队中') {
       reason = `${poolLabel(st.poolId)}排队等待：画像与工单相符的成员均达个人上限`;
     } else if (status === '等原处理人') {
-      reason = `等原处理人 ${d.reserveFor}，${hm(d.reserveUntil!)} 到期`;
+      reason = `等原处理人 ${d.reserveFor}（${d.originalRelation}），${hm(d.reserveUntil!)} 到期`;
     } else if (status === '派单失败回池') {
       reason = `退回工单池（${failLabel(d.failReason ?? '首响已超时')}），已通知${g?.label ?? ''}班组长`;
     } else {
@@ -1263,7 +1379,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (r.assignee) recordTake(r.assignee, Date.now());
     // 归属组＝池所属处理组；所在池记在派单侧（ticketStates）
     const g = poolGroupOf(r.poolId);
-    return { groupId: g?.id ?? r.poolId, groupLabel: g?.label ?? r.poolId, assignee: r.assignee, reason: r.assignee ? r.path : undefined };
+    const rel = r.path === '原处理人' ? r.log.originalRelation : undefined;
+    return {
+      groupId: g?.id ?? r.poolId, groupLabel: g?.label ?? r.poolId, assignee: r.assignee,
+      reason: r.assignee ? (rel ? `${r.path} · ${rel}` : r.path) : undefined,
+    };
   }
 
   /* ---------------- 先到先得 · 人工动作 ---------------- */
@@ -1897,6 +2017,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /** 派单策略（14.2 出池规则 / 个人上限）保存：返回提示文案 */
   function updateConfig(patch: Partial<DispatchConfig>, operator?: string): OccupyResult {
     const next: DispatchConfig = { ...config.value, ...clone(patch) };
+    // 关系链（4.2 校验表）
+    const intIn = (v: unknown, a: number, b: number) => typeof v === 'number' && Number.isInteger(v) && v >= a && v <= b;
+    for (const row of next.originalChain) {
+      if (row.relation !== '本单退回' && !intIn(row.days, 1, 30)) return { ok: false, message: '请输入 1–30 的整数' };
+      if (!intIn(row.reserveMinutes, 1, 60)) return { ok: false, message: '请输入 1–60 的整数' };
+      if (!intIn(row.reserveSlaPercent, 1, 100)) return { ok: false, message: '请输入 1–100 的整数' };
+    }
+    if (!next.originalChain.some((r) => r.enabled)) return { ok: false, message: '请至少启用一种原处理人关系' };
     if (!next.factors.some((f) => f.enabled)) return { ok: false, message: '请至少启用一个打分因素' };
     if (next.factors.some((f) => !Number.isInteger(f.weight) || f.weight < 0 || f.weight > 100)) return { ok: false, message: '请输入 0–100 的整数' };
     if (next.relaxSlaPercent <= next.fallbackSlaPercent) return { ok: false, message: '放宽产品范围的首次响应剩余比例须大于退回工单池的比例' };
@@ -1993,6 +2121,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
         surveyReturn: (no: string) => {
           const t = poolTicket(no);
           return t ? returnFromSurvey(t) : null;
+        },
+        // 新单进入派单：`__flowosDispatch.dispatchNew(工单行, { relatedNo: '原单号' })`（关联单 / 同客户近期演示）
+        dispatchNew: (row: Ticket, opts: DispatchOptions = {}) => {
+          if (!TICKETS.some((x) => x.no === row.no)) TICKETS.unshift(row);
+          const t = poolTicket(row.no);
+          return t ? dispatchNewTicket(t, opts) : null;
         },
       };
     }
