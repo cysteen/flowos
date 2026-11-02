@@ -8,6 +8,7 @@ import { stdPagination } from '@/config/adminUi';
 import { PROFICIENCIES, SIGN_IN_STATUSES } from '@/views/tickets/types/dispatch';
 import { SIGN_TONE, opts, profileItems, profileSummary, useClock } from './dispatchUi';
 import DispatchCard from './DispatchCard.vue';
+import './dispatchTheme.css';
 
 const store = useDispatchStore();
 const router = useRouter();
@@ -54,12 +55,17 @@ const rows = computed(() => all.value
   .filter((r) => !f.kw.trim() || `${r.name}${r.staffNo}`.includes(f.kw.trim()))
   .filter((r) => !f.unconfigured || !r.configured));
 
-const overview = computed(() => [
-  { key: 'all', label: '坐席数', value: all.value.length, icon: TeamOutlined, accent: '#1a6fff', bg: '#eff6ff' },
-  { key: 'cfg', label: '已配置画像', value: all.value.filter((r) => r.configured).length, icon: IdcardOutlined, accent: '#10b981', bg: '#ecfdf5' },
-  { key: 'over', label: '超限', value: all.value.filter((r) => r.overLimit).length, icon: WarningOutlined, accent: '#f59e0b', bg: '#fffbeb' },
-  { key: 'oa', label: '超额指派', value: all.value.filter((r) => r.overAssigned).length, icon: ThunderboltOutlined, accent: '#ef4444', bg: '#fef2f2' },
-]);
+/** 概览数字默认中性；超限 / 超额指派有人时才标橙 / 红 */
+const overview = computed(() => {
+  const over = all.value.filter((r) => r.overLimit).length;
+  const oa = all.value.filter((r) => r.overAssigned).length;
+  return [
+    { key: 'all', label: '坐席数', value: all.value.length, icon: TeamOutlined, tone: '' },
+    { key: 'cfg', label: '已配置画像', value: all.value.filter((r) => r.configured).length, icon: IdcardOutlined, tone: '' },
+    { key: 'over', label: '超限', value: over, icon: WarningOutlined, tone: over ? 'is-warn' : '' },
+    { key: 'oa', label: '超额指派', value: oa, icon: ThunderboltOutlined, tone: oa ? 'is-bad' : '' },
+  ];
+});
 
 const cols = [
   { title: '姓名', key: 'name', width: 130 },
@@ -76,9 +82,9 @@ watch(rows, (rs) => {
 }, { immediate: true });
 const cur = computed(() => (selected.value ? all.value.find((r) => r.name === selected.value) ?? null : null));
 
-const PROF_TONE: Record<string, string> = { 初级: 'default', 熟练: 'blue', 专家: 'purple' };
 const loadPct = (r: Row) => (r.cap ? Math.min(100, Math.round((r.inTransit / r.cap) * 100)) : 0);
-const loadTone = (r: Row) => (r.inTransit >= r.cap ? 'full' : r.inTransit / (r.cap || 1) >= 0.8 ? 'warm' : '');
+/** 进度条统一一个颜色，在途达到上限（超限）时变橙 */
+const loadFull = (r: Row) => r.inTransit >= r.cap;
 function dimTags(text: string) { return text === '不限' || text === '未设' ? [] : text.split('、'); }
 function goEdit(name: string) { router.push({ path: '/admin/users', query: { agent: name } }); }
 </script>
@@ -86,9 +92,9 @@ function goEdit(name: string) { router.push({ path: '/admin/users', query: { age
 <template>
   <div class="ap">
     <div class="ov-row">
-      <div v-for="o in overview" :key="o.key" class="ov" :style="{ '--accent': o.accent }">
-        <div class="ov-main"><div class="ov-lb">{{ o.label }}</div><div class="ov-val">{{ o.value }}</div></div>
-        <div class="ov-ic" :style="{ background: o.bg, color: o.accent }"><component :is="o.icon" /></div>
+      <div v-for="o in overview" :key="o.key" class="dx-card ov">
+        <div class="ov-main"><div class="ov-lb">{{ o.label }}</div><div class="dx-num ov-val" :class="o.tone">{{ o.value }}</div></div>
+        <span class="dx-icon ov-ic"><component :is="o.icon" /></span>
       </div>
     </div>
 
@@ -120,18 +126,18 @@ function goEdit(name: string) { router.push({ path: '/admin/users', query: { age
               <template v-if="column.key === 'name'"><span class="ap-nm">{{ record.name }}</span><span class="muted">{{ record.staffNo }}</span></template>
               <template v-else-if="column.key === 'load'">
                 <div class="ld">
-                  <span class="ld-tx" :class="loadTone(record as Row)">{{ record.inTransit }} / {{ record.cap }}</span>
-                  <div class="ld-bar" :class="loadTone(record as Row)"><i :style="{ width: `${loadPct(record as Row)}%` }" /></div>
+                  <span class="ld-tx" :class="{ full: loadFull(record as Row) }">{{ record.inTransit }} / {{ record.cap }}</span>
+                  <div class="dx-bar ld-bar" :class="{ 'is-warn': loadFull(record as Row) }"><i :style="{ width: `${loadPct(record as Row)}%` }" /></div>
                 </div>
               </template>
-              <a-tag v-else-if="column.key === 'proficiency'" :color="PROF_TONE[record.proficiency]">{{ record.proficiency }}</a-tag>
-              <span v-else-if="column.key === 'signIn'" class="sg" :class="`t-${SIGN_TONE[record.signIn]}`"><i />{{ record.signIn }}</span>
-              <template v-else-if="column.key === 'flag'">
-                <a-tag v-if="!record.configured" color="default">画像未配置</a-tag>
-                <a-tag v-if="record.overAssigned" color="red">超额指派</a-tag>
-                <a-tag v-else-if="record.overLimit" color="orange">超限</a-tag>
-                <span v-if="record.configured && !record.overAssigned && !record.overLimit" class="muted">—</span>
-              </template>
+              <span v-else-if="column.key === 'proficiency'" class="ap-prof">{{ record.proficiency }}</span>
+              <span v-else-if="column.key === 'signIn'" class="dx-status" :class="`is-${SIGN_TONE[record.signIn]}`">{{ record.signIn }}</span>
+              <span v-else-if="column.key === 'flag'" class="ap-flags">
+                <span v-if="!record.configured" class="flag-muted">画像未配置</span>
+                <span v-if="record.overAssigned" class="dx-bad">超额指派</span>
+                <span v-else-if="record.overLimit" class="dx-warn">超限</span>
+                <span v-if="record.configured && !record.overAssigned && !record.overLimit" class="flag-muted">—</span>
+              </span>
             </template>
           </a-table>
         </aside>
@@ -144,27 +150,27 @@ function goEdit(name: string) { router.push({ path: '/admin/users', query: { age
                 <div class="pd-nm">{{ cur.name }}<span class="muted">{{ cur.staffNo }}</span></div>
                 <div class="pd-grp" :title="cur.groups">{{ cur.groups || '—' }}</div>
               </div>
-              <span class="sg" :class="`t-${SIGN_TONE[cur.signIn]}`"><i />{{ cur.signIn }}</span>
+              <span class="dx-status" :class="`is-${SIGN_TONE[cur.signIn]}`">{{ cur.signIn }}</span>
             </div>
 
             <div class="pd-kpis">
-              <div class="pd-kpi blue">
-                <div class="pd-kpi-val" :class="loadTone(cur)">{{ cur.inTransit }}<small> / {{ cur.cap }}</small></div>
+              <div class="pd-kpi">
+                <div class="pd-kpi-val" :class="{ full: loadFull(cur) }">{{ cur.inTransit }}<small> / {{ cur.cap }}</small></div>
                 <div class="pd-kpi-lb">在途 / 上限</div>
               </div>
-              <div class="pd-kpi purple"><div class="pd-kpi-val">{{ cur.proficiency }}</div><div class="pd-kpi-lb">熟练度</div></div>
-              <div class="pd-kpi" :class="cur.personalSwitch ? 'green' : 'gray'"><div class="pd-kpi-val">{{ cur.personalSwitch ? '开启' : '关闭' }}</div><div class="pd-kpi-lb">个人开关</div></div>
+              <div class="pd-kpi"><div class="pd-kpi-val">{{ cur.proficiency }}</div><div class="pd-kpi-lb">熟练度</div></div>
+              <div class="pd-kpi"><div class="pd-kpi-val" :class="{ off: !cur.personalSwitch }">{{ cur.personalSwitch ? '开启' : '关闭' }}</div><div class="pd-kpi-lb">个人开关</div></div>
             </div>
 
             <div class="pd-sec">
               <h4 class="pd-sec-title">个人上限</h4>
-              <div class="kv"><span class="k">当前上限</span><span class="v">{{ cur.cap }}<a-tag v-if="cur.capCustom" color="blue" class="kv-tag">个人值</a-tag></span></div>
+              <div class="kv"><span class="k">当前上限</span><span class="v">{{ cur.cap }}<span v-if="cur.capCustom" class="kv-tag">个人值</span></span></div>
               <div class="kv"><span class="k">默认值</span><span class="v">{{ cur.defaultCapText }}</span></div>
-              <div class="ld-bar lg" :class="loadTone(cur)"><i :style="{ width: `${loadPct(cur)}%` }" /></div>
+              <div class="dx-bar ld-bar lg" :class="{ 'is-warn': loadFull(cur) }"><i :style="{ width: `${loadPct(cur)}%` }" /></div>
               <div v-if="cur.overAssigned || cur.overLimit || !cur.configured" class="pd-flags">
-                <a-tag v-if="!cur.configured" color="default">画像未配置</a-tag>
-                <a-tag v-if="cur.overAssigned" color="red">超额指派</a-tag>
-                <a-tag v-else-if="cur.overLimit" color="orange">超限</a-tag>
+                <span v-if="!cur.configured" class="flag-muted">画像未配置</span>
+                <span v-if="cur.overAssigned" class="dx-bad">超额指派</span>
+                <span v-else-if="cur.overLimit" class="dx-warn">超限</span>
               </div>
             </div>
 
@@ -190,75 +196,70 @@ function goEdit(name: string) { router.push({ path: '/admin/users', query: { age
 </template>
 
 <style scoped>
-.ap { display: flex; flex-direction: column; gap: 16px; container-type: inline-size; min-width: 0; }
-.ov-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.ov { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; position: relative; overflow: hidden; min-width: 0; }
-.ov::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
-.ov-lb { font-size: 12px; color: #6b7280; }
-.ov-val { font-size: 24px; font-weight: 700; color: #111827; line-height: 1.15; margin-top: 8px; }
-.ov-ic { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none; }
+.ap { display: flex; flex-direction: column; gap: 24px; container-type: inline-size; min-width: 0; }
+/* 概览：直接平铺在页面上的中性白卡 */
+.ov-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.ov { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
+.ov-lb { font-size: 13px; color: #86909c; line-height: 20px; }
+.ov-val { margin-top: 8px; }
+.ov-ic { width: 32px; height: 32px; font-size: 15px; }
 
-.ap-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 14px; }
+.ap-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
 .ap-kw { width: 200px; }
-.ap-kw-ic { color: #9ca3af; }
-.ap-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
-.ap-list { border: 1px solid #eef0f3; border-radius: 8px; padding: 12px; background: #fafbfc; min-width: 0; }
-.ap-list :deep(.ant-table) { background: #fff; border-radius: 6px; }
+.ap-kw-ic { color: #86909c; }
+/* 左列表 · 右详情：用分隔线区分，不再卡中套卡 */
+.ap-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); align-items: start; }
+.ap-list { min-width: 0; padding-right: 24px; }
 .ap-list :deep(.ant-table-row) { cursor: pointer; }
-.ap-list :deep(.ap-active > td) { background: #eff6ff !important; }
-.ap-nm { font-weight: 600; color: #111827; }
-.muted { color: #9ca3af; font-size: 12px; margin-left: 6px; font-weight: normal; }
+.ap-list :deep(.ap-active > td) { background: #f2f7ff !important; }
+.ap-nm { font-weight: 500; color: #1f2329; }
+.muted { color: #86909c; font-size: 13px; margin-left: 6px; font-weight: normal; }
+.ap-prof { color: #1f2329; }
+.ap-flags { display: inline-flex; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.flag-muted { color: #86909c; }
 .ld { display: flex; flex-direction: column; gap: 4px; }
-.ld-tx { font-size: 12px; color: #374151; font-variant-numeric: tabular-nums; }
-.ld-tx.warm { color: #f59e0b; }
-.ld-tx.full { color: #ea580c; font-weight: 600; }
-.ld-bar { height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; width: 100%; max-width: 110px; }
-.ld-bar.lg { max-width: none; height: 6px; margin-top: 6px; }
-.ld-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 2px; }
-.ld-bar.warm i { background: #f59e0b; }
-.ld-bar.full i { background: #ef4444; }
-.sg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #9ca3af; white-space: nowrap; }
-.sg i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.sg.t-green { color: #10b981; }
-.sg.t-orange { color: #f59e0b; }
+.ld-tx { font-size: 13px; color: #1f2329; font-variant-numeric: tabular-nums; }
+.ld-tx.full { color: #ff7d00; font-weight: 600; }
+.ld-bar { max-width: 110px; }
+.ld-bar.lg { max-width: none; height: 6px; border-radius: 3px; margin-top: 8px; }
 
-.ap-detail { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04); padding: 18px 20px 12px; min-width: 0; position: sticky; top: 12px; }
-.pd-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; min-width: 0; }
-.pd-av { width: 40px; height: 40px; border-radius: 50%; background: #1a6fff; color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
+.ap-detail { min-width: 0; position: sticky; top: 12px; padding-left: 24px; border-left: 1px solid #f2f3f5; }
+.pd-hd { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; min-width: 0; }
+.pd-av { width: 40px; height: 40px; border-radius: 50%; background: #f2f3f5; color: #4e5969; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
 .pd-tt { flex: 1; min-width: 0; }
-.pd-nm { font-size: 15px; font-weight: 600; color: #111827; }
-.pd-grp { font-size: 12px; color: #6b7280; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pd-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-.pd-kpi { text-align: center; padding: 12px 6px; border-radius: 10px; min-width: 0; }
-.pd-kpi-val { font-size: 20px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
-.pd-kpi-val small { font-size: 13px; font-weight: 600; color: #6b7280; }
-.pd-kpi-lb { font-size: 12px; color: #6b7280; margin-top: 6px; }
-.pd-kpi.blue { background: #eff6ff; } .pd-kpi.blue .pd-kpi-val { color: #1a6fff; }
-.pd-kpi.blue .pd-kpi-val.full { color: #ea580c; }
-.pd-kpi.purple { background: #f5f3ff; } .pd-kpi.purple .pd-kpi-val { color: #7c3aed; }
-.pd-kpi.green { background: #ecfdf5; } .pd-kpi.green .pd-kpi-val { color: #059669; }
-.pd-kpi.gray { background: #f3f4f6; } .pd-kpi.gray .pd-kpi-val { color: #6b7280; }
-.pd-sec { margin-bottom: 16px; }
-.pd-sec-title { font-size: 13px; font-weight: 600; color: #374151; margin: 0 0 10px; }
-.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; line-height: 26px; }
-.k { color: #6b7280; flex: none; }
-.v { color: #374151; text-align: right; }
-.kv-tag { margin-inline: 6px 0; }
-.pd-flags { display: flex; gap: 6px; margin-top: 10px; }
-.dim { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #f0f0f0; font-size: 13px; }
+.pd-nm { font-size: 15px; font-weight: 600; color: #1f2329; }
+.pd-grp { font-size: 13px; color: #86909c; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 中性三栏数字 */
+.pd-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 20px; padding: 16px 0; border-top: 1px solid #f2f3f5; border-bottom: 1px solid #f2f3f5; }
+.pd-kpi { text-align: center; min-width: 0; }
+.pd-kpi + .pd-kpi { border-left: 1px solid #f2f3f5; }
+.pd-kpi-val { font-size: 22px; font-weight: 600; line-height: 30px; color: #1f2329; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pd-kpi-val small { font-size: 13px; font-weight: normal; color: #86909c; }
+.pd-kpi-val.full { color: #ff7d00; }
+.pd-kpi-val.off { color: #86909c; }
+.pd-kpi-lb { font-size: 13px; color: #86909c; margin-top: 4px; }
+.pd-sec { margin-bottom: 20px; }
+.pd-sec-title { font-size: 14px; font-weight: 600; color: #1f2329; margin: 0 0 8px; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; line-height: 28px; }
+.k { color: #86909c; flex: none; }
+.v { color: #1f2329; text-align: right; }
+.kv-tag { margin-left: 8px; font-size: 12px; color: #86909c; }
+.pd-flags { display: flex; gap: 12px; margin-top: 12px; font-size: 13px; }
+.dim { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f2f3f5; font-size: 14px; }
 .dim:last-child { border-bottom: none; }
-.dim-k { width: 64px; flex: none; color: #6b7280; line-height: 22px; }
+.dim-k { width: 64px; flex: none; color: #86909c; line-height: 22px; }
 .dim-v { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.dim-tag { display: inline-block; padding: 0 8px; border-radius: 999px; background: #eff6ff; color: #1a6fff; font-size: 12px; line-height: 22px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dim-any { color: #10b981; line-height: 22px; }
-.dim-unset { color: #9ca3af; line-height: 22px; }
-.pd-foot { text-align: right; border-top: 1px solid #f3f4f6; padding-top: 10px; }
+.dim-tag { display: inline-block; padding: 0 8px; border-radius: 4px; background: #f2f3f5; color: #1f2329; font-size: 13px; line-height: 22px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dim-any { color: #1f2329; line-height: 22px; }
+.dim-unset { color: #86909c; line-height: 22px; }
+.pd-foot { text-align: right; border-top: 1px solid #f2f3f5; padding-top: 12px; }
 .pd-empty { padding: 40px 0; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 
 @container (max-width: 1080px) {
   .ap-split { grid-template-columns: minmax(0, 1fr); }
-  .ap-detail { position: static; }
+  .ap-list { padding-right: 0; }
+  .ap-detail { position: static; padding: 24px 0 0; margin-top: 24px; border-left: none; border-top: 1px solid #f2f3f5; }
 }
 @container (max-width: 560px) {
   .ov-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
