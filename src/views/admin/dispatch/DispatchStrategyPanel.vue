@@ -19,6 +19,7 @@ import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import RolloutStageModal from './RolloutStageModal.vue';
 import DispatchCard from './DispatchCard.vue';
 import './dispatchForm.css';
+import './dispatchTheme.css';
 
 const props = defineProps<{ tab?: string; focusRuleId?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
@@ -191,11 +192,11 @@ watch(() => store.config, (c) => {
     <!-- 运行设置 -->
     <div v-if="active === 'run'" class="st-stack">
       <!-- 上线阶段状态条 -->
-      <section class="ro-bar">
+      <section class="dx-card ro-bar">
         <div class="ro-head">
-          <span class="ro-ic"><RocketOutlined /></span>
+          <span class="dx-icon ro-ic"><RocketOutlined /></span>
           <span class="ro-label">上线阶段</span>
-          <a-tag v-if="store.rolloutNoSwitch()">未开启班组开关</a-tag>
+          <span v-if="store.rolloutNoSwitch()" class="dx-meta">未开启班组开关</span>
         </div>
         <ol class="ro-steps">
           <li v-for="(s, i) in ROLLOUT_STAGES" :key="s" :class="{ done: i < stageIdx, cur: i === stageIdx }">
@@ -226,9 +227,9 @@ watch(() => store.config, (c) => {
           <div class="dpf-item">
             <span class="dpf-label">全局形态</span>
             <div class="dpf-ctl">
-              <a-tag :color="MODE_TONE[store.globalEffectiveMode()]">{{ store.globalEffectiveMode() }}</a-tag>
-              <a-tag v-if="store.config.autoDegraded" color="orange">自动降级</a-tag>
-              <a-button size="small" @click="modeOpen = true">切换</a-button>
+              <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
+              <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
+              <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
             </div>
           </div>
         </div>
@@ -273,7 +274,7 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">1</span>
-          <div class="cs-ti"><div class="cs-name">门槛过滤<a-tag class="cs-lk">固定</a-tag></div><div class="cs-desc">任一不满足的坐席不进入候选集</div></div>
+          <div class="cs-ti"><div class="cs-name">门槛过滤<span class="cs-lk">固定</span></div><div class="cs-desc">任一不满足的坐席不进入候选集</div></div>
         </div>
         <div class="cs-bd gates">
           <span v-for="g in GATES" :key="g" class="gate"><CheckCircleFilled />{{ g }}</span>
@@ -433,75 +434,71 @@ watch(() => store.config, (c) => {
 <style scoped>
 .st { min-width: 0; }
 .st-tabs :deep(.ant-tabs-nav) { margin-bottom: 16px; }
-.st-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.st-stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 /* 底部保存栏：贴底常驻 */
 .st-foot {
-  position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 10px;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 20px; box-shadow: 0 -2px 8px rgba(17, 24, 39, 0.04);
+  position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 12px;
+  background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 12px 20px; box-shadow: 0 -4px 12px rgba(31, 35, 41, 0.04);
 }
 
-/* 上线阶段状态条 */
-.ro-bar {
-  display: flex; align-items: center; gap: 16px 28px; flex-wrap: wrap; padding: 16px 20px; border-radius: 10px;
-  background: linear-gradient(90deg, #eff6ff 0%, #f8fbff 100%); border: 1px solid #bfdbfe; position: relative; overflow: hidden;
-}
-.ro-bar::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #1a6fff; }
-.ro-head { display: flex; align-items: center; gap: 8px; flex: none; }
-.ro-head :deep(.ant-tag) { margin-inline-end: 0; }
-.ro-ic { width: 32px; height: 32px; border-radius: 8px; background: #1a6fff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-.ro-label { font-size: 14px; font-weight: 600; color: #111827; }
-.ro-steps { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; flex: 1; min-width: 260px; }
-.ro-steps li { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 13px; color: #9ca3af; white-space: nowrap; }
-.ro-steps li:not(:last-child)::after { content: ''; flex: 1; height: 2px; background: #dbe3ee; margin: 0 8px; min-width: 12px; }
+/* 上线阶段状态条（中性卡片） */
+.ro-bar { display: flex; align-items: center; gap: 16px 32px; flex-wrap: wrap; }
+.ro-head { display: flex; align-items: center; gap: 12px; flex: none; }
+.ro-ic { width: 32px; height: 32px; font-size: 15px; }
+.ro-label { font-size: 15px; font-weight: 600; color: #1f2329; }
+.ro-steps { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; flex: 1 1 320px; min-width: 0; }
+.ro-steps li { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 14px; color: #86909c; white-space: nowrap; }
+.ro-steps li:last-child { flex: none; }
+.ro-steps li:not(:last-child)::after { content: ''; flex: 1; height: 1px; background: #e5e6eb; margin: 0 12px; min-width: 8px; }
 .ro-steps li.done:not(:last-child)::after { background: #1a6fff; }
-.ro-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
-.ro-steps li.done { color: #374151; }
-.ro-steps li.done .ro-dot { background: #1a6fff; border-color: #1a6fff; color: #fff; }
-.ro-steps li.cur { color: #1a6fff; font-weight: 600; }
-.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; box-shadow: 0 0 0 4px rgba(26, 111, 255, 0.15); }
+.ro-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #c9cdd4; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
+.ro-steps li.done { color: #4e5969; }
+.ro-steps li.done .ro-dot { border-color: #1a6fff; color: #1a6fff; }
+.ro-steps li.cur { color: #1f2329; font-weight: 600; }
+.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; }
 .ro-ops { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 
-/* 出池规则 · 编号步骤卡 */
-.cs-list { display: flex; flex-direction: column; gap: 10px; }
-.cs { border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; padding: 12px 16px; }
+/* 出池规则 · 编号步骤：序号圆点 + 标题 + 灰色说明，步骤之间分隔线 */
+.cs-list { display: flex; flex-direction: column; }
+.cs { padding: 20px 0; border-top: 1px solid #f2f3f5; }
+.cs:first-child { padding-top: 4px; border-top: none; }
+.cs:last-child { padding-bottom: 0; }
 .cs.off .cs-bd { opacity: 0.55; }
 .cs-hd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cs-seq { width: 22px; height: 22px; border-radius: 50%; background: #1a6fff; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
-.cs.off .cs-seq { background: #9ca3af; }
+.cs-seq { width: 24px; height: 24px; border-radius: 50%; background: #f2f3f5; color: #4e5969; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
 .cs-ti { flex: 1; min-width: 200px; }
-.cs-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; }
-.cs-lk { transform: scale(0.85); margin-inline-end: 0; }
-.cs-desc { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.cs-name { font-size: 14px; font-weight: 600; color: #1f2329; display: flex; align-items: center; gap: 8px; line-height: 22px; }
+.cs-lk { font-size: 12px; font-weight: normal; color: #86909c; }
+.cs-desc { font-size: 13px; color: #86909c; line-height: 20px; }
 .cs-op { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.cs-bd { margin: 10px 0 0 34px; padding-top: 4px; border-top: 1px dashed #eef0f3; }
+.cs-bd { margin: 8px 0 0 36px; }
 .cs-bd .dpf-item.last, .cs-bd > .dpf-grid:last-child .dpf-item { border-bottom: none; }
-.gates { display: flex; flex-wrap: wrap; gap: 8px 20px; padding-top: 10px; }
-.gate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
-.gate :deep(.anticon) { color: #10b981; }
+.gates { display: flex; flex-wrap: wrap; gap: 8px 24px; padding-top: 8px; }
+.gate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4e5969; }
+.gate :deep(.anticon) { color: #86909c; }
 @media (max-width: 640px) { .cs-bd { margin-left: 0; } }
 
 /* 加权评分 */
-.wsum { font-size: 12px; color: #6b7280; }
-.fc-list { display: flex; flex-direction: column; gap: 8px; }
-.fc-row { display: flex; align-items: center; gap: 14px; padding: 8px 12px; border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; flex-wrap: wrap; }
+.wsum { font-size: 13px; color: #86909c; }
+.fc-list { display: flex; flex-direction: column; }
+.fc-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid #f2f3f5; flex-wrap: wrap; }
 .fc-row.off { opacity: 0.6; }
-.fc-name { width: 180px; flex: none; font-size: 13px; color: #111827; }
-.fc-bar { flex: 1; min-width: 80px; height: 6px; background: #eef2f7; border-radius: 3px; overflow: hidden; }
-.fc-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 3px; transition: width 0.2s; }
-.fc-share { width: 40px; text-align: right; font-size: 12px; color: #6b7280; }
+.fc-name { width: 180px; flex: none; font-size: 14px; color: #1f2329; }
+.fc-bar { flex: 1; min-width: 80px; height: 4px; background: #f2f3f5; border-radius: 2px; overflow: hidden; }
+.fc-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 2px; transition: width 0.2s; }
+.fc-share { width: 40px; text-align: right; font-size: 13px; color: #86909c; }
 .fc-w { display: flex; align-items: center; gap: 8px; }
-.fc-extra { margin-top: 8px; }
 .fc-extra .dpf-item { border-bottom: none; }
 
 /* 个人上限 */
 .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
-.cap-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
-.cap-form :deep(.dpf-label), .cap-form .dpf-label { width: 96px; }
+.cap-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); column-gap: 32px; }
+.cap-form :deep(.dpf-label), .cap-form .dpf-label { width: 112px; white-space: nowrap; }
 .cap-matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
-.cap-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; padding: 9px 10px; text-align: left; }
-.cap-matrix td { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; color: #374151; }
+.cap-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; padding: 10px 12px; text-align: left; }
+.cap-matrix td { padding: 12px; border-bottom: 1px solid #f2f3f5; color: #4e5969; }
 .cap-matrix td:not(:first-child), .cap-matrix th:not(:first-child) { text-align: center; }
-.cap-num { display: inline-block; min-width: 32px; padding: 0 6px; border-radius: 4px; background: #eff6ff; color: #1a6fff; font-weight: 600; line-height: 22px; }
+.cap-num { font-weight: 600; color: #1f2329; font-variant-numeric: tabular-nums; }
 
 .au-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }

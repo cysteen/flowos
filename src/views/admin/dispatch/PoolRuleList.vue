@@ -103,21 +103,21 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 </template>
 
 <style scoped>
-.pr-cond { display: flex; flex-wrap: wrap; gap: 4px 6px; }
-.pr-chip { font-size: 12px; color: #1e3a8a; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 4px; padding: 0 6px; line-height: 20px; }
-.pr-chip em { font-style: normal; color: #6b7280; margin-right: 4px; }
-.pr-muted { color: #9ca3af; font-size: 12px; }
-.pr-prio { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 6px; border-radius: 11px; background: #eff6ff; color: #1a6fff; font-size: 12px; font-weight: 600; }
-.pr-prio.dft { background: #f3f4f6; color: #9ca3af; }
-.pr-name { font-weight: 600; color: #111827; }
-.pr-pool { display: inline-flex; align-items: center; gap: 6px; color: #374151; }
-.pr-pool :deep(.anticon) { color: #1a6fff; }
-.pr-st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #9ca3af; }
-.pr-st i { width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; }
-.pr-st.on { color: #374151; }
+.pr-cond { display: flex; flex-wrap: wrap; gap: 2px 16px; line-height: 22px; }
+.pr-chip { font-size: 13px; color: #1f2329; }
+.pr-chip em { font-style: normal; color: #86909c; margin-right: 6px; }
+.pr-muted { color: #86909c; font-size: 13px; }
+.pr-prio { font-variant-numeric: tabular-nums; color: #1f2329; font-weight: 600; }
+.pr-prio.dft { color: #86909c; font-weight: normal; }
+.pr-name { font-weight: 500; color: #1f2329; }
+.pr-pool { display: inline-flex; align-items: center; gap: 6px; color: #1f2329; }
+.pr-pool :deep(.anticon) { color: #86909c; }
+.pr-st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #86909c; }
+.pr-st i { width: 6px; height: 6px; border-radius: 50%; background: #c9cdd4; }
+.pr-st.on { color: #4e5969; }
 .pr-st.on i { background: #10b981; }
-:deep(.pr-off td) { color: #9ca3af; }
-:deep(.pr-off .pr-name), :deep(.pr-off .pr-chip), :deep(.pr-off .pr-pool) { color: #9ca3af; }
+:deep(.pr-off td) { color: #86909c; }
+:deep(.pr-off .pr-name), :deep(.pr-off .pr-chip), :deep(.pr-off .pr-pool), :deep(.pr-off .pr-prio) { color: #86909c; }
 :deep(.pr-focus td) { background: #eff6ff !important; transition: background 0.3s; }
 :deep(.pr-default td) { background: #fafafa; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
