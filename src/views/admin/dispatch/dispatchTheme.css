@@ -130,7 +130,6 @@
 .text-muted { color: #6b7280; }
 .factor { font-weight: 600; }
 .factor-cell { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.full-tag { margin: 0; line-height: 18px; font-size: 11px; }
 .status-cell { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .monitor-table-row .ant-table-thead > tr > th,

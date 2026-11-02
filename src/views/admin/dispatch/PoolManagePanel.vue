@@ -137,33 +137,48 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
       </div>
     </div>
     <div class="pm-grid">
-      <div v-for="p in rows" :key="p.id" class="pm-card">
-        <div class="pm-card-hd">
-          <span class="dx-card-title" :title="p.poolLabel">{{ p.poolLabel }}</span>
-          <span class="dx-status" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
-          <span class="pm-sp" />
-          <a-tooltip :title="switchTip(p.id) ?? `班组开关：${p.switchOn ? '开启' : '关闭'}`">
-            <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
-          </a-tooltip>
-          <a-tooltip :title="globalStopped ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
-            <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
-              <template #icon><SwapOutlined /></template>
-            </a-button>
-          </a-tooltip>
-          <a-button type="link" size="small" class="pm-detail" @click="detailId = p.id">池详情</a-button>
-        </div>
-        <div class="pm-cond" :title="rulesOf(p.id)"><em>入池规则</em>{{ rulesOf(p.id) }}</div>
-        <div class="dx-metrics">
-          <div class="dx-metric"><b :class="backlogOf(p) ? 'is-warn' : 'is-primary'">{{ backlogOf(p) }}</b><span>池内待派</span></div>
-          <div class="dx-metric"><b>{{ p.memberCount }}</b><span>成员数</span></div>
-          <div class="dx-metric"><b>{{ p.memberCount ? `${Math.round((p.configuredCount / p.memberCount) * 100)}%` : '—' }}</b><span>画像配置率</span></div>
-        </div>
-        <div class="pm-sub">
-          <span v-if="!backlogOf(p)" class="pm-sub-st">等原处理人、排队中、派单失败回池均为 0</span>
-          <span v-else class="pm-sub-st">
-            <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template>
-          </span>
-          <span class="pm-sub-ld" :title="`班组长：${p.leaders.join('、') || '—'}`">班组长 {{ p.leaders.join('、') || '—' }}</span>
+      <div
+        v-for="p in rows"
+        :key="p.id"
+        class="pm-card"
+        :class="[`pm--${MODE_TONE[p.effectiveMode]}`, { 'pm--hot': backlogOf(p) > 0 }]"
+      >
+        <div class="pm-accent" aria-hidden="true" />
+        <div class="pm-inner">
+          <div class="pm-card-hd">
+            <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
+            <span class="pm-mode" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
+            <a-tooltip :title="switchTip(p.id) ?? `班组开关：${p.switchOn ? '开启' : '关闭'}`">
+              <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
+            </a-tooltip>
+            <a-tooltip :title="globalStopped ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
+              <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
+                <template #icon><SwapOutlined /></template>
+              </a-button>
+            </a-tooltip>
+            <a-button type="link" size="small" class="pm-detail" @click="detailId = p.id">池详情</a-button>
+          </div>
+          <div class="pm-cond" :title="rulesOf(p.id)"><em>入池</em>{{ rulesOf(p.id) }}</div>
+          <div class="pm-stats">
+            <div class="pm-stat pm-stat-lead">
+              <span class="pm-stat-val" :class="backlogOf(p) ? 'is-warn' : 'is-calm'">{{ backlogOf(p) }}</span>
+              <span class="pm-stat-lb">池内待派</span>
+            </div>
+            <div class="pm-stat">
+              <span class="pm-stat-val">{{ p.memberCount }}</span>
+              <span class="pm-stat-lb">成员</span>
+            </div>
+            <div class="pm-stat">
+              <span class="pm-stat-val">{{ p.memberCount ? `${Math.round((p.configuredCount / p.memberCount) * 100)}%` : '—' }}</span>
+              <span class="pm-stat-lb">画像配置</span>
+            </div>
+          </div>
+          <div class="pm-sub">
+            <span v-if="!backlogOf(p)" class="pm-sub-st muted">待派明细均为 0</span>
+            <span v-else class="pm-sub-st">
+              <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -211,24 +226,49 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 @container (max-width: 960px) { .pm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 600px) { .pm-grid { grid-template-columns: minmax(0, 1fr); } }
 .pm-card {
-  display: flex; flex-direction: column; gap: 10px;
-  padding: 14px 16px; background: #fff; border: 1px solid #eef0f3; border-radius: 8px;
+  position: relative; overflow: hidden;
+  background: #fff; border: 1px solid #eef0f3; border-radius: 8px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.pm-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 8px rgba(17, 24, 39, 0.05); }
-.pm-card-hd { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.pm-sp { flex: 1; min-width: 0; }
-.pm-detail { flex: none; padding: 0 2px; }
-.pm-card .dx-card-title { font-size: 14px; }
-.pm-cond { font-size: 12px; color: #4b5563; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pm-cond em { font-style: normal; color: #86909c; margin-right: 8px; }
-.pm-sub { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #6b7280; line-height: 18px; padding-top: 10px; border-top: 1px solid #f3f4f6; }
+.pm-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }
+.pm--hot { border-color: #fed7aa; }
+.pm-accent { height: 3px; background: #10b981; }
+.pm--orange .pm-accent { background: #ff7d00; }
+.pm--red .pm-accent { background: #f53f3f; }
+.pm-inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pm-card-hd { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.pm-name {
+  flex: 1; min-width: 120px; font-size: 14px; font-weight: 600; color: #111827;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pm-mode {
+  flex: none; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 4px;
+  background: #f2f3f5; color: #4e5969;
+}
+.pm-mode.is-green { background: #ecfdf5; color: #047857; }
+.pm-mode.is-orange { background: #fff7ed; color: #c2410c; }
+.pm-mode.is-red { background: #fef2f2; color: #dc2626; }
+.pm-detail { flex: none; padding: 0 2px; margin-left: auto; }
+.pm-cond { font-size: 11px; color: #6b7280; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-cond em { font-style: normal; color: #9ca3af; margin-right: 6px; }
+.pm-stats {
+  display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
+  margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
+}
+.pm-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 8px; }
+.pm-stat + .pm-stat { padding-left: 12px; border-left: 1px solid #f2f3f5; }
+.pm-stat-lead { padding-right: 12px; }
+.pm-stat-val { font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pm-stat-val.is-calm { color: #1a6fff; }
+.pm-stat-val.is-warn { color: #ff7d00; }
+.pm-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; }
+.pm-sub { font-size: 11px; color: #6b7280; line-height: 1.4; padding-top: 4px; }
+.pm-sub .muted { color: #9ca3af; }
 .pm-sub-st { min-width: 0; }
 .pm-sub-st .dx-meta-sep { font-style: normal; }
 .pm-sub b { font-weight: 600; color: #1f2329; }
 .pm-sub b.dx-warn { color: #ff7d00; }
 .pm-sub b.dx-bad { color: #f53f3f; }
-.pm-sub-ld { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .dt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 24px; border: 1px solid #eef0f3; border-radius: 8px; }
 .dt-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; font-size: 13px; border-left: 1px solid #f2f3f5; }
 .dt-item:first-child { border-left: none; }

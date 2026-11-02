@@ -35,18 +35,11 @@ const loadRows = computed(() => {
         inTransit: v.inTransit,
         cap: v.cap,
         ratio: v.cap ? v.inTransit / v.cap : 0,
-        overLimit: v.overLimit,
-        overAssigned: v.overAssigned,
       };
     })
     .sort((x, y) => y.ratio - x.ratio);
 });
 const top = computed(() => loadRows.value.slice(0, 10));
-const flagged = computed(() => ({
-  over: loadRows.value.filter((r) => r.overLimit).length,
-  assigned: loadRows.value.filter((r) => r.overAssigned).length,
-}));
-
 function loadFactorColor(f: number) {
   if (f >= 1) return '#ef4444';
   if (f >= 0.8) return '#f59e0b';
@@ -69,8 +62,8 @@ const loadCols = [
   { title: '姓名', key: 'name', width: 140 },
   { title: '所属组', dataIndex: 'groups', key: 'groups', ellipsis: true },
   { title: '签入状态', key: 'signIn', width: 100 },
-  { title: '在途 / 上限', key: 'load', width: 120 },
-  { title: '标记', key: 'flag', width: 120 },
+  { title: '在途 / 上限', key: 'load', width: 140 },
+  { title: '负载系数', key: 'factor', width: 96, align: 'right' as const },
 ];
 </script>
 
@@ -78,7 +71,7 @@ const loadCols = [
   <section class="block load-block">
     <div class="b-title inline">
       处理人负载
-      <span class="b-tip">前 10 · 超限 {{ flagged.over }} 人 · 超额指派 {{ flagged.assigned }} 人</span>
+      <span class="b-tip">按负载系数降序 · 前 10</span>
       <a-button type="link" size="small" class="hd-btn" @click="goProfile">查看全部处理人 →</a-button>
     </div>
     <div class="load-toolbar">
@@ -94,12 +87,7 @@ const loadCols = [
         </template>
         <span v-else-if="column.key === 'inTransit'" class="mono">{{ record.inTransit }}</span>
         <span v-else-if="column.key === 'cap'" class="mono text-muted">{{ record.cap }}</span>
-        <span v-else-if="column.key === 'factor'" class="factor-cell">
-          <span class="mono factor" :style="{ color: loadFactorColor(record.ratio) }">{{ record.ratio.toFixed(2) }}</span>
-          <a-tag v-if="record.overAssigned" color="red" class="full-tag">超额指派</a-tag>
-          <a-tag v-else-if="record.overLimit" color="orange" class="full-tag">超限</a-tag>
-          <a-tag v-else-if="record.ratio >= 1" color="red" class="full-tag">满载</a-tag>
-        </span>
+        <span v-else-if="column.key === 'factor'" class="mono factor" :style="{ color: loadFactorColor(record.ratio) }">{{ record.ratio.toFixed(2) }}</span>
         <span v-else-if="column.key === 'signIn'" class="status-cell">
           <span class="status-dot" :style="{ background: SIGN_COLOR[record.signIn] ?? '#9ca3af' }" />
           <span :style="{ color: SIGN_COLOR[record.signIn] ?? '#6b7280' }">{{ record.signIn }}</span>
@@ -113,11 +101,7 @@ const loadCols = [
           <template v-if="column.key === 'name'"><b>{{ record.name }}</b><span class="text-muted"> {{ record.staffNo }}</span></template>
           <span v-else-if="column.key === 'signIn'" class="dx-status" :class="`is-${SIGN_TONE[record.signIn]}`">{{ record.signIn }}</span>
           <span v-else-if="column.key === 'load'" :class="{ 'load-full': record.inTransit >= record.cap }">在途 {{ record.inTransit }} / 上限 {{ record.cap }}</span>
-          <template v-else-if="column.key === 'flag'">
-            <span v-if="record.overAssigned" class="dx-bad">超额指派</span>
-            <span v-else-if="record.overLimit" class="dx-warn">超限</span>
-            <span v-else class="text-muted">—</span>
-          </template>
+          <span v-else-if="column.key === 'factor'" class="mono" :style="{ color: loadFactorColor(record.ratio) }">{{ record.ratio.toFixed(2) }}</span>
         </template>
       </a-table>
     </a-modal>

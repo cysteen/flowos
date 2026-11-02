@@ -247,30 +247,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 <template>
   <div v-if="group" class="card dtp">
     <div class="card-hd">
-      <div class="hd-main">
-        <h3 class="hd-title">本组派单</h3>
-        <div class="dtp-groups" role="tablist">
-          <button
-            v-for="g in myGroups"
-            :key="g.id"
-            type="button"
-            class="dtp-group"
-            :class="{ on: g.id === groupId }"
-            @click="groupId = g.id"
-          >
-            {{ dispatch.poolLabel(g.id) }}
-            <span
-              v-if="modeTagOf(dispatch.effectiveModeOf(g.id))"
-              class="dtp-tag"
-              :style="{
-                color: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].color,
-                background: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].bg,
-                borderColor: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].border,
-              }"
-            >{{ modeTagOf(dispatch.effectiveModeOf(g.id)) }}</span>
-          </button>
-        </div>
-      </div>
+      <h3 class="hd-title">本组派单</h3>
       <div class="hd-actions">
         <div class="dtp-ctl">
           <span class="dtp-ctl-label">本组开关</span>
@@ -300,6 +277,31 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       </div>
     </div>
 
+    <nav v-if="myGroups.length" class="dtp-pool-nav" role="tablist" aria-label="组池">
+      <button
+        v-for="g in myGroups"
+        :key="g.id"
+        type="button"
+        role="tab"
+        class="dtp-pool-tab"
+        :class="{ on: g.id === groupId }"
+        :aria-selected="g.id === groupId"
+        @click="groupId = g.id"
+      >
+        <span class="dtp-pool-name">{{ dispatch.poolLabel(g.id) }}</span>
+        <span
+          v-if="g.id === groupId && modeTagOf(dispatch.effectiveModeOf(g.id))"
+          class="dtp-pool-badge"
+          :style="{
+            color: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].color,
+            background: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].bg,
+            borderColor: MODE_TAG_STYLE[modeTagOf(dispatch.effectiveModeOf(g.id))!].border,
+          }"
+        >{{ modeTagOf(dispatch.effectiveModeOf(g.id)) }}</span>
+      </button>
+    </nav>
+
+    <div class="dtp-body">
     <div v-if="poolView" class="dtp-stats">
       <span>派单方式 <b v-if="!effectiveTag">{{ poolView.effectiveMode }}</b>
         <span
@@ -419,6 +421,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       </div>
       <div v-if="!poolTickets.length" class="empty">本组池暂无待领工单</div>
     </div>
+    </div>
 
     <!-- 关闭班组开关 · 二次确认（8.2） -->
     <OpActionModal
@@ -525,21 +528,52 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid #eef2f7;
+  padding: 14px 16px 10px;
   flex-wrap: wrap;
 }
-.hd-main { display: flex; align-items: center; gap: 14px; min-width: 0; flex-wrap: wrap; }
-.hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; }
-.hd-actions { display: flex; align-items: center; gap: 16px; flex: none; flex-wrap: wrap; }
-.dtp-groups { display: flex; gap: 6px; flex-wrap: wrap; }
-.dtp-group {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 10px; font-size: 12px; color: #475569;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; white-space: nowrap;
+.hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; flex: none; }
+.hd-actions { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
+.dtp-pool-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fbfcfe;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
-.dtp-group:hover { background: #f9fafb; }
-.dtp-group.on { color: #1a6fff; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
+.dtp-pool-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin: 0;
+  padding: 11px 14px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.dtp-pool-tab:hover { color: #334155; background: rgba(255, 255, 255, 0.65); }
+.dtp-pool-tab.on {
+  color: #1a6fff;
+  font-weight: 600;
+  border-bottom-color: #1a6fff;
+  background: #fff;
+}
+.dtp-pool-name { max-width: 168px; overflow: hidden; text-overflow: ellipsis; }
+.dtp-pool-badge {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
+  font-size: 11px; font-weight: 500; border: 1px solid transparent; border-radius: 4px;
+}
+.dtp-body { display: flex; flex-direction: column; min-width: 0; background: #fff; }
 .dtp-tag {
   display: inline-flex; align-items: center; height: 18px; padding: 0 5px;
   font-size: 11px; font-weight: 500; border: 1px solid transparent; border-radius: 4px; white-space: nowrap;
@@ -554,12 +588,21 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 }
 .btn-ghost:hover:not(:disabled) { border-color: #1a6fff; color: #1a6fff; }
 .btn-ghost:disabled { color: #cbd5e1; cursor: not-allowed; }
-.tabs { display: flex; background: #f1f5f9; border-radius: 7px; padding: 2px; gap: 2px; }
-.tab { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; font-size: 12px; color: #64748b; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.tabs {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px; background: #f1f5f9; border-radius: 8px;
+}
+.tab {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 12px; font-size: 12px; color: #64748b;
+  border-radius: 6px; cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.tab:hover:not(.on) { color: #475569; }
 .tab.on { background: #fff; color: #1a6fff; font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }
 .dtp-stats {
   display: flex; flex-wrap: wrap; align-items: center; gap: 20px;
-  padding: 10px 16px; font-size: 12px; color: #64748b; border-bottom: 1px solid #eef2f7; background: #fbfcfe;
+  padding: 10px 16px; font-size: 12px; color: #64748b; border-bottom: 1px solid #eef2f7; background: #fff;
 }
 .dtp-stats b { margin-left: 4px; color: #0f172a; font-variant-numeric: tabular-nums; }
 .dtp-stats b.danger { color: #ef4444; }

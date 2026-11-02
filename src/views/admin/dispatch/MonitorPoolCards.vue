@@ -83,24 +83,45 @@ const recordCols = [
     </div>
 
     <div class="group-grid">
-      <div v-for="c in cards" :key="c.id" class="dx-card pc">
-        <div class="pc-hd">
-          <span class="dx-card-title" :title="c.poolLabel">{{ c.poolLabel }}</span>
-          <span class="dx-status" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
-          <span class="pc-sp" />
-          <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
-            <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
-              <template #icon><SwapOutlined /></template>
-            </a-button>
-          </a-tooltip>
-        </div>
-        <div class="dx-meta pc-meta" :title="`本组派单方式 ${c.groupMode} · 班组开关 ${c.switchOn ? '开启' : '关闭'} · ${store.config.runMode} · 班组长 ${c.leaders.join('、') || '—'}`">
-          本组{{ c.groupMode }}<i class="dx-meta-sep">·</i>班组开关 {{ c.switchOn ? '开启' : '关闭' }}<i class="dx-meta-sep">·</i>{{ store.config.runMode }}<i class="dx-meta-sep">·</i>{{ c.leaders.join('、') || '—' }}
-        </div>
-        <div class="dx-metrics">
-          <div class="dx-metric"><b :class="c.backlog ? 'is-warn' : 'is-primary'">{{ c.backlog }}</b><span>池内待派</span></div>
-          <div class="dx-metric"><b>{{ c.memberCount }}</b><span>成员数</span></div>
-          <div class="dx-metric"><b>{{ c.configRate == null ? '—' : `${c.configRate}%` }}</b><span>画像配置率</span></div>
+      <div
+        v-for="c in cards"
+        :key="c.id"
+        class="pc"
+        :class="[`pc--${MODE_TONE[c.effectiveMode]}`, { 'pc--hot': c.backlog > 0 }]"
+      >
+        <div class="pc-accent" aria-hidden="true" />
+        <div class="pc-inner">
+          <div class="pc-hd">
+            <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
+            <span class="pc-mode" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
+            <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
+              <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
+                <template #icon><SwapOutlined /></template>
+              </a-button>
+            </a-tooltip>
+          </div>
+          <div class="pc-tags">
+            <span class="pc-tag" :class="{ 'is-on': c.switchOn, 'is-off': !c.switchOn }">班组开关 {{ c.switchOn ? '开' : '关' }}</span>
+            <span class="pc-tag">本组 {{ c.groupMode }}</span>
+            <span class="pc-tag">{{ store.config.runMode }}</span>
+          </div>
+          <div class="pc-stats">
+            <div class="pc-stat pc-stat-lead">
+              <span class="pc-stat-val" :class="c.backlog ? 'is-warn' : 'is-calm'">{{ c.backlog }}</span>
+              <span class="pc-stat-lb">池内待派</span>
+            </div>
+            <div class="pc-stat">
+              <span class="pc-stat-val">{{ c.memberCount }}</span>
+              <span class="pc-stat-lb">成员</span>
+            </div>
+            <div class="pc-stat">
+              <span class="pc-stat-val" :class="c.configRate != null && c.configRate < 100 ? 'is-warn' : ''">{{ c.configRate == null ? '—' : `${c.configRate}%` }}</span>
+              <span class="pc-stat-lb">画像配置</span>
+            </div>
+          </div>
+          <div v-if="c.leaders.length" class="pc-foot" :title="c.leaders.join('、')">
+            <span class="pc-foot-k">班组长</span>{{ c.leaders.join('、') }}
+          </div>
         </div>
       </div>
     </div>
@@ -134,10 +155,59 @@ const recordCols = [
 @container (max-width: 1280px) { .group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container (max-width: 960px) { .group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 560px) { .group-grid { grid-template-columns: minmax(0, 1fr); } }
-.pc { display: flex; flex-direction: column; gap: 12px; }
-.pc-hd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -4px 0; }
-.pc-sp { flex: 1; min-width: 0; }
-.pc-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: -6px; }
-.pc-meta .dx-meta-sep { font-style: normal; }
+.pc {
+  position: relative;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  min-width: 0;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.pc:hover { border-color: #e5e7eb; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }
+.pc--hot { border-color: #fed7aa; }
+.pc-accent { height: 3px; background: #10b981; }
+.pc--orange .pc-accent { background: #ff7d00; }
+.pc--red .pc-accent { background: #f53f3f; }
+.pc-inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pc-hd { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pc-name {
+  flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: #111827; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pc-mode {
+  flex: none; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 4px;
+  background: #f2f3f5; color: #4e5969;
+}
+.pc-mode.is-green { background: #ecfdf5; color: #047857; }
+.pc-mode.is-orange { background: #fff7ed; color: #c2410c; }
+.pc-mode.is-red { background: #fef2f2; color: #dc2626; }
+.pc-op { flex: none; margin-right: -4px; }
+.pc-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pc-tag {
+  font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 4px;
+  background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6;
+}
+.pc-tag.is-on { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }
+.pc-tag.is-off { background: #f9fafb; color: #9ca3af; }
+.pc-stats {
+  display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
+  margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
+}
+.pc-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 8px; }
+.pc-stat + .pc-stat { padding-left: 12px; border-left: 1px solid #f2f3f5; }
+.pc-stat-lead { padding-right: 12px; }
+.pc-stat-val {
+  font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.pc-stat-val.is-calm { color: #1a6fff; }
+.pc-stat-val.is-warn { color: #ff7d00; }
+.pc-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
+.pc-foot {
+  font-size: 11px; color: #6b7280; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pc-foot-k { color: #9ca3af; margin-right: 6px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>
