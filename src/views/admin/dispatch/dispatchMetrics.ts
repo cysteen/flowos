@@ -29,6 +29,17 @@ export function rangeStart(r: RangeKey, now: number): number {
   return d.getTime() - days * 24 * 60 * MIN;
 }
 
+/**
+ * 试运行建议对应的实际处理人（第 17 章匹配率与派单日志同口径）：判定序号 `afterSeq` 之后首次人工拿单的坐席，
+ * 无人工拿单记录时取工单当前处理人；都没有为 null。
+ */
+export function trialActualOf(logs: DispatchLogEntry[], ticketNo: string, afterSeq: number): string | null {
+  const take = logs
+    .filter((l) => l.ticketNo === ticketNo && l.kind === '人工' && l.seq > afterSeq && !!l.manual?.target)
+    .sort((a, b) => a.seq - b.seq)[0];
+  return take?.manual?.target ?? TICKETS.find((t) => t.no === ticketNo)?.assignee ?? null;
+}
+
 /** 引擎派出：正式派单下的判定且中选坐席、派单状态为空 */
 export function isEngineAssign(l: DispatchLogEntry): boolean {
   return l.kind === '判定' && l.runMode === '正式派单' && !!l.chosen && !l.status && !l.trial;

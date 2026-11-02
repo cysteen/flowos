@@ -5,9 +5,8 @@ import { message } from 'ant-design-vue';
 import { RiseOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { TICKETS } from '@/mock/tickets';
 import { ROLLOUT_STAGES, isProfileConfigured, type DispatchLogEntry, type RolloutStage } from '@/views/tickets/types/dispatch';
-import { computeStats, minText, parseAt } from './dispatchMetrics';
+import { computeStats, minText, parseAt, trialActualOf } from './dispatchMetrics';
 
 const props = defineProps<{ open: boolean; direction: 'forward' | 'back' }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
@@ -99,10 +98,7 @@ function trialMatchOf(gid: string): { total: number; same: number } {
   }
   let same = 0;
   for (const [no, s] of suggested) {
-    const take = store.logs
-      .filter((l) => l.ticketNo === no && l.kind === '人工' && l.seq > s.seq && !!l.manual?.target)
-      .sort((a, b) => a.seq - b.seq)[0];
-    const actual = take?.manual?.target ?? TICKETS.find((t) => t.no === no)?.assignee ?? null;
+    const actual = trialActualOf(store.logs, no, s.seq);
     if (actual && actual === s.name) same += 1;
   }
   return { total: suggested.size, same };
