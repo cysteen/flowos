@@ -94,16 +94,16 @@
 .meta-hint { font-size: 12px; color: #9ca3af; }
 .meta-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .table-shell { border: 1px solid #eef0f3; border-radius: 8px; overflow: hidden; background: #fff; }
-.table-shell :deep(.ant-table) { font-size: 12px; }
-.table-shell :deep(.ant-table-thead > tr > th) {
+.table-shell .ant-table-wrapper .ant-table { font-size: 12px; }
+.table-shell .ant-table-thead > tr > th {
   background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
   padding: 8px 10px !important;
 }
-.table-shell :deep(.ant-table-tbody > tr > td),
-.table-shell :deep(.ant-table-summary > tr > td) {
+.table-shell .ant-table-tbody > tr > td,
+.table-shell .ant-table-summary > tr > td {
   padding: 8px 10px !important;
 }
-.table-shell :deep(.ant-pagination) { margin: 10px 12px !important; }
+.table-shell .ant-pagination { margin: 10px 12px !important; }
 .panel-foot {
   display: flex; justify-content: flex-end; gap: 12px;
   margin-top: 16px; padding-top: 16px; border-top: 1px solid #eef0f3;
@@ -117,11 +117,11 @@
 }
 .monitor-table-row .block { margin-bottom: 0; }
 
-.load-block :deep(.ant-table) { margin-top: 4px; }
-.load-block :deep(.ant-table table) { table-layout: fixed; }
-.load-block :deep(.ant-table-cell) { overflow: hidden; }
-.monitor-block :deep(.ant-table table) { table-layout: auto; }
-.monitor-block :deep(.ant-table-cell) { overflow: visible; }
+.load-block .ant-table { margin-top: 4px; }
+.load-block .ant-table table { table-layout: fixed; }
+.load-block .ant-table-cell { overflow: hidden; }
+.monitor-block .ant-table table { table-layout: auto; }
+.monitor-block .ant-table-cell { overflow: visible; }
 
 .load-toolbar { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
 .agent-nm { font-weight: 500; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -133,8 +133,8 @@
 .full-tag { margin: 0; line-height: 18px; font-size: 11px; }
 .status-cell { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.monitor-table-row :deep(.ant-table-thead > tr > th),
-.load-block :deep(.ant-table-thead > tr > th) {
+.monitor-table-row .ant-table-thead > tr > th,
+.load-block .ant-table-thead > tr > th {
   background: #f3f4f6;
   color: #6b7280;
   font-size: 12px;
