@@ -7,12 +7,13 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  GATE_ORDER, RELAX_LEVEL_LABEL, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type ScoreFactorKey,
+  GATE_ORDER, RELAX_LEVEL_LABEL, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type OriginalExclusion,
+  type ScoreFactorKey,
 } from '@/views/tickets/types/dispatch';
 import { PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
 import { MODE_TONE } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
-import { FACTOR_LABEL, GATE_LABEL, failLabel, pathLabel } from './dispatchLabels';
+import { EXCLUSION_LABEL, FACTOR_LABEL, GATE_LABEL, failLabel, pathLabel, pathWithRelation } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; ticketNo?: string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
@@ -103,7 +104,7 @@ function exportCsv() {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
-    l.globalMode, l.groupMode, pathLabel(l.path), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
+    l.globalMode, l.groupMode, pathWithRelation(l.path, l.originalRelation), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
     personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
@@ -151,7 +152,7 @@ function exportCsv() {
           <a-tag :color="MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]">{{ record.effectiveMode }}</a-tag>
         </template>
         <template v-else-if="column.key === 'path'">
-          <span v-if="record.path">{{ pathLabel(record.path) }}</span>
+          <span v-if="record.path">{{ pathWithRelation(record.path, record.originalRelation) }}</span>
           <span v-else class="lg-sub">—</span>
           <div v-if="record.relaxLevel" class="lg-sub">产品放宽：{{ RELAX_LEVEL_LABEL[record.relaxLevel as 0 | 1 | 2] }}</div>
         </template>
@@ -207,6 +208,17 @@ function exportCsv() {
               <div class="lg-kv"><span>全局</span><b>{{ record.globalMode }}</b></div>
               <div class="lg-kv"><span>归属池</span><b>{{ record.groupMode }}</b></div>
               <div v-if="record.manual?.reason" class="lg-kv"><span>原因</span><b>{{ record.manual.reason }}</b></div>
+            </div>
+          </div>
+          <div v-if="record.originalRelation || record.originalExcluded?.length" class="lg-sec lg-sec-wide">
+            <div class="lg-sec-t">原处理人</div>
+            <div class="lg-kvs lg-kvs-grid">
+              <div v-if="record.originalRelation" class="lg-kv">
+                <span>{{ record.path === '预留' ? '保留关系' : '命中关系' }}</span><b>{{ record.originalRelation }}</b>
+              </div>
+              <div v-for="x in record.originalExcluded ?? []" :key="`${x.relation}-${x.name}`" class="lg-kv">
+                <span>不派回 · {{ x.name }}（{{ x.relation }}）</span><b>{{ EXCLUSION_LABEL[x.reason as OriginalExclusion] }}</b>
+              </div>
             </div>
           </div>
           <div class="lg-sec lg-sec-wide">
