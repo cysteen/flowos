@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 批量设置画像（PRD 6.5）：每维另加「不修改」，默认「不修改」；保存后逐人写入并记审计
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { TeamOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
@@ -13,6 +13,8 @@ const props = defineProps<{ open: boolean; names: string[] }>();
 const emit = defineEmits<{ 'update:open': [v: boolean]; done: [] }>();
 const store = useDispatchStore();
 
+/** 所选坐席所属组的并集：问题分类「指定」范围取这些组在问题分类管理中处理的分类 */
+const groupIds = computed(() => [...new Set(props.names.flatMap((n) => store.agentOf(n)?.groupIds ?? []))]);
 const draft = ref<ProfileDraft>(keepDraft());
 const proficiency = ref<Proficiency | 'keep'>('keep');
 watch(() => props.open, (v) => { if (v) { draft.value = keepDraft(); proficiency.value = 'keep'; } });
@@ -38,7 +40,7 @@ function submit() {
     @ok="submit"
   >
     <div class="op-form">
-      <ProfileDimEditor v-model="draft" allow-keep />
+      <ProfileDimEditor v-model="draft" allow-keep :group-ids="groupIds" />
       <div class="bp-row">
         <span class="bp-k">熟练度</span>
         <a-radio-group v-model:value="proficiency">

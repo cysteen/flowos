@@ -103,7 +103,7 @@ function save() {
       <div class="ds-ro">{{ groupsText }}</div>
 
       <div class="ds-sec">人员画像</div>
-      <ProfileDimEditor v-model="draft" />
+      <ProfileDimEditor v-model="draft" :group-ids="agent.groupIds" />
 
       <div class="ds-sec">熟练度</div>
       <a-radio-group v-model:value="proficiency">
