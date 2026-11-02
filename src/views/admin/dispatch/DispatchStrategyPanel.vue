@@ -2,6 +2,7 @@
 // 派单策略（PRD 14.2）：运行设置 / 入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
+import { CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
 import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
@@ -16,6 +17,8 @@ import { parseAt } from './dispatchMetrics';
 import PoolRuleList from './PoolRuleList.vue';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import RolloutStageModal from './RolloutStageModal.vue';
+import DispatchCard from './DispatchCard.vue';
+import './dispatchForm.css';
 
 const props = defineProps<{ tab?: string; focusRuleId?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
@@ -25,6 +28,7 @@ const TABS = [
   { key: 'run', label: '运行设置' },
   { key: 'inpool', label: '入池规则' },
   { key: 'outpool', label: '出池规则' },
+  { key: 'score', label: '评分与阈值' },
   { key: 'cap', label: '个人上限' },
   { key: 'audit', label: '开关记录' },
 ];
@@ -56,6 +60,7 @@ const nextStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.val
 // 正式派单下未开启班组开关：阶段显示试运行，只出「推进至单组试点」
 const prevStage = computed(() => (store.rolloutNoSwitch() ? null : ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null));
 const stageTip = computed(() => (store.config.globalSwitch ? '' : '全局开关已关闭，请先在派单策略开启'));
+const stageIdx = computed(() => ROLLOUT_STAGES.indexOf(stage.value));
 const stageOpen = ref(false);
 const stageDir = ref<'forward' | 'back'>('forward');
 function openStage(dir: 'forward' | 'back') {
@@ -71,6 +76,8 @@ const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; un
   { key: 'resumeOkMinutes', label: '回切提示 · 指标连续达标', unit: '分钟', min: 1, max: 60 },
   { key: 'idleToBreakMinutes', label: '无操作转小休', unit: '分钟', min: 5, max: 240 },
 ];
+const AUTO_FIELDS = RUN_FIELDS.slice(0, 4);
+const RESUME_FIELDS = RUN_FIELDS.slice(4);
 function resetRun() { Object.assign(run, DEFAULT_RUN_THRESHOLDS); }
 function saveRun() {
   for (const fd of RUN_FIELDS) {
@@ -96,7 +103,16 @@ function pickOut(c: DispatchConfig): OutForm {
 const out = reactive<OutForm>(pickOut(store.config));
 const enabledFactorCount = computed(() => out.factors.filter((x) => x.enabled).length);
 const weightSum = computed(() => out.factors.filter((x) => x.enabled).reduce((s, x) => s + (x.weight || 0), 0));
-function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
+/* 出池规则页签：原处理人优先与投诉预留；评分与阈值页签：加权评分、放宽与兜底（两页签共用一份表单、一起保存） */
+const OUT_TAB_KEYS: (keyof OutForm)[] = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem', 'reserveMinutes', 'reserveSlaPercent'];
+const SCORE_TAB_KEYS = OUT_KEYS.filter((k) => !OUT_TAB_KEYS.includes(k));
+function resetOut(keys: (keyof OutForm)[]) {
+  const d = pickOut(defaultDispatchConfig());
+  keys.forEach((k) => { (out as Record<string, unknown>)[k] = d[k]; });
+}
+function factorShare(w: number | null | undefined) {
+  return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
+}
 function saveOut() {
   const checks: [unknown, number, number][] = [
     [out.windowConsultDays, 1, 30], [out.windowComplaintDays, 1, 30],
@@ -178,166 +194,217 @@ watch(() => store.config, (c) => {
     </a-tabs>
 
     <!-- 运行设置 -->
-    <section v-if="active === 'run'" class="block">
-      <div class="st-rows">
-        <div class="st-row">
-          <span class="st-k">全局开关</span>
-          <div class="st-v"><a-switch :checked="store.config.globalSwitch" @change="(v: unknown) => onGlobalSwitch(!!v)" /></div>
+    <div v-if="active === 'run'" class="st-stack">
+      <!-- 上线阶段状态条 -->
+      <section class="ro-bar">
+        <div class="ro-head">
+          <span class="ro-ic"><RocketOutlined /></span>
+          <span class="ro-label">上线阶段</span>
+          <a-tag v-if="store.rolloutNoSwitch()">未开启班组开关</a-tag>
         </div>
-        <div class="st-row">
-          <span class="st-k">运行方式</span>
-          <div class="st-v"><span class="st-readonly">{{ store.config.runMode }}</span></div>
+        <ol class="ro-steps">
+          <li v-for="(s, i) in ROLLOUT_STAGES" :key="s" :class="{ done: i < stageIdx, cur: i === stageIdx }">
+            <span class="ro-dot"><CheckOutlined v-if="i < stageIdx" /><template v-else>{{ i + 1 }}</template></span>
+            <span class="ro-name">{{ s }}</span>
+          </li>
+        </ol>
+        <div class="ro-ops">
+          <a-tooltip :title="stageTip || undefined">
+            <a-button v-if="prevStage" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
+          </a-tooltip>
+          <a-tooltip :title="stageTip || undefined">
+            <a-button v-if="nextStage" type="primary" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
+          </a-tooltip>
         </div>
-        <div class="st-row">
-          <span class="st-k">全局形态</span>
-          <div class="st-v">
-            <a-tag :color="MODE_TONE[store.globalEffectiveMode()]">{{ store.globalEffectiveMode() }}</a-tag>
-            <a-tag v-if="store.config.autoDegraded" color="orange">自动降级</a-tag>
-            <a-button size="small" @click="modeOpen = true">切换</a-button>
+      </section>
+
+      <DispatchCard title="开关与形态" sub="全局派单开关、运行方式与全局形态">
+        <div class="dpf-grid">
+          <div class="dpf-item">
+            <span class="dpf-label">全局开关</span>
+            <div class="dpf-ctl"><a-switch :checked="store.config.globalSwitch" @change="(v: unknown) => onGlobalSwitch(!!v)" /></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">运行方式</span>
+            <div class="dpf-ctl"><span class="dpf-val">{{ store.config.runMode }}</span></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">全局形态</span>
+            <div class="dpf-ctl">
+              <a-tag :color="MODE_TONE[store.globalEffectiveMode()]">{{ store.globalEffectiveMode() }}</a-tag>
+              <a-tag v-if="store.config.autoDegraded" color="orange">自动降级</a-tag>
+              <a-button size="small" @click="modeOpen = true">切换</a-button>
+            </div>
           </div>
         </div>
-        <div class="st-row">
-          <span class="st-k">上线阶段</span>
-          <div class="st-v">
-            <a-tag color="blue">{{ stage }}</a-tag>
-            <a-tag v-if="store.rolloutNoSwitch()">未开启班组开关</a-tag>
-            <a-tooltip :title="stageTip || undefined">
-              <a-button v-if="nextStage" size="small" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
-            </a-tooltip>
-            <a-tooltip :title="stageTip || undefined">
-              <a-button v-if="prevStage" size="small" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
-            </a-tooltip>
+      </DispatchCard>
+
+      <DispatchCard title="自动降级" sub="触发自动降级的指标阈值">
+        <div class="dpf-grid">
+          <div v-for="fd in AUTO_FIELDS" :key="fd.key" class="dpf-item">
+            <span class="dpf-label">{{ fd.label.replace('自动降级 · ', '') }}</span>
+            <div class="dpf-ctl">
+              <span v-if="fd.prefix" class="dpf-unit">{{ fd.prefix }}</span>
+              <a-input-number v-model:value="run[fd.key]" :precision="0" style="width: 100px" />
+              <span class="dpf-unit">{{ fd.unit }}</span>
+            </div>
           </div>
         </div>
-        <div v-for="fd in RUN_FIELDS" :key="fd.key" class="st-row">
-          <span class="st-k">{{ fd.label }}</span>
-          <div class="st-v">
-            <span v-if="fd.prefix" class="st-unit">{{ fd.prefix }}</span>
-            <a-input-number v-model:value="run[fd.key]" :precision="0" style="width: 100px" />
-            <span class="st-unit">{{ fd.unit }}</span>
+      </DispatchCard>
+
+      <DispatchCard title="回切与小休">
+        <div class="dpf-grid">
+          <div v-for="fd in RESUME_FIELDS" :key="fd.key" class="dpf-item">
+            <span class="dpf-label">{{ fd.label }}</span>
+            <div class="dpf-ctl">
+              <a-input-number v-model:value="run[fd.key]" :precision="0" style="width: 100px" />
+              <span class="dpf-unit">{{ fd.unit }}</span>
+            </div>
           </div>
         </div>
-      </div>
+      </DispatchCard>
       <div class="st-foot"><a-button @click="resetRun">重置</a-button><a-button type="primary" @click="saveRun">保存</a-button></div>
-    </section>
+    </div>
 
     <!-- 入池规则 -->
-    <section v-else-if="active === 'inpool'" class="block">
+    <div v-else-if="active === 'inpool'" class="st-stack">
       <PoolRuleList :focus-id="focusRuleId" />
-    </section>
+    </div>
 
     <!-- 出池规则 -->
-    <section v-else-if="active === 'outpool'" class="block">
-      <div class="st-rows">
-        <div class="st-sec">原处理人优先</div>
-        <div class="st-row"><span class="st-k">原处理人优先</span><div class="st-v"><a-switch v-model:checked="out.originalFirst" /></div></div>
-        <div class="st-row">
-          <span class="st-k">时间窗 · 咨询及其他</span>
-          <div class="st-v"><a-input-number v-model:value="out.windowConsultDays" :precision="0" style="width: 100px" /><span class="st-unit">天</span></div>
-        </div>
-        <div class="st-row">
-          <span class="st-k">时间窗 · 投诉</span>
-          <div class="st-v"><a-input-number v-model:value="out.windowComplaintDays" :precision="0" style="width: 100px" /><span class="st-unit">天</span></div>
-        </div>
-        <div class="st-row"><span class="st-k">附加条件</span><div class="st-v"><a-checkbox v-model:checked="out.originalSameProblem">同一问题分类</a-checkbox></div></div>
-        <div class="st-row">
-          <span class="st-k">投诉预留时长</span>
-          <div class="st-v">
-            <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="st-unit">分钟，且不超过首响 SLA 剩余的</span>
-            <a-input-number v-model:value="out.reserveSlaPercent" :precision="0" style="width: 100px" /><span class="st-unit">%</span>
+    <div v-else-if="active === 'outpool'" class="st-stack">
+      <DispatchCard title="原处理人优先" sub="原处理人优先的时间窗与附加条件">
+        <div class="dpf-grid">
+          <div class="dpf-item"><span class="dpf-label">原处理人优先</span><div class="dpf-ctl"><a-switch v-model:checked="out.originalFirst" /></div></div>
+          <div class="dpf-item"><span class="dpf-label">附加条件</span><div class="dpf-ctl"><a-checkbox v-model:checked="out.originalSameProblem">同一问题分类</a-checkbox></div></div>
+          <div class="dpf-item">
+            <span class="dpf-label">时间窗 · 咨询及其他</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.windowConsultDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">时间窗 · 投诉</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.windowComplaintDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
           </div>
         </div>
-
-        <div class="st-sec">加权评分<span class="st-sec-sub">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></div>
-        <div v-for="fc in out.factors" :key="fc.key" class="st-row">
-          <span class="st-k"><a-checkbox v-model:checked="fc.enabled">{{ fc.key === 'recent' ? `近 ${out.recentHours} 小时接单量` : fc.label }}</a-checkbox></span>
-          <div class="st-v"><a-input-number v-model:value="fc.weight" :precision="0" :disabled="!fc.enabled" style="width: 100px" /><span class="st-unit">权重</span></div>
-        </div>
-        <div class="st-row">
-          <span class="st-k">近 N 小时</span>
-          <div class="st-v"><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="st-unit">小时</span></div>
-        </div>
-
-        <div class="st-sec">放宽与兜底</div>
-        <div class="st-row">
-          <span class="st-k">产品逐级放宽</span>
-          <div class="st-v">
-            <a-switch v-model:checked="out.relaxEnabled" />
-            <span class="st-unit">最远层级</span>
-            <a-radio-group v-model:value="out.relaxMaxLevel" :disabled="!out.relaxEnabled">
-              <a-radio :value="1">同产品分类</a-radio>
-              <a-radio :value="2">不限</a-radio>
-            </a-radio-group>
+      </DispatchCard>
+      <DispatchCard title="投诉预留" sub="投诉单为原处理人预留的时长">
+        <div class="dpf-grid one">
+          <div class="dpf-item">
+            <span class="dpf-label">投诉预留时长</span>
+            <div class="dpf-ctl">
+              <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟，且不超过首响 SLA 剩余的</span>
+              <a-input-number v-model:value="out.reserveSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span>
+            </div>
           </div>
         </div>
-        <div class="st-row">
-          <span class="st-k">放宽 · 排队时长</span>
-          <div class="st-v"><a-input-number v-model:value="out.relaxQueueMinutes" :precision="0" style="width: 100px" /><span class="st-unit">分钟</span></div>
+      </DispatchCard>
+      <div class="st-foot"><a-button @click="resetOut(OUT_TAB_KEYS)">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
+    </div>
+
+    <!-- 评分与阈值 -->
+    <div v-else-if="active === 'score'" class="st-stack">
+      <DispatchCard title="加权评分" sub="参与评分的因子与权重">
+        <template #extra><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></template>
+        <div class="fc-list">
+          <div v-for="fc in out.factors" :key="fc.key" class="fc-row" :class="{ off: !fc.enabled }">
+            <a-checkbox v-model:checked="fc.enabled" class="fc-name">{{ fc.key === 'recent' ? `近 ${out.recentHours} 小时接单量` : fc.label }}</a-checkbox>
+            <div class="fc-bar"><i :style="{ width: `${fc.enabled ? factorShare(fc.weight) : 0}%` }" /></div>
+            <span class="fc-share">{{ fc.enabled ? `${factorShare(fc.weight)}%` : '—' }}</span>
+            <div class="fc-w"><a-input-number v-model:value="fc.weight" :precision="0" :disabled="!fc.enabled" style="width: 88px" /><span class="dpf-unit">权重</span></div>
+          </div>
         </div>
-        <div class="st-row">
-          <span class="st-k">放宽 · 首响剩余低于</span>
-          <div class="st-v"><a-input-number v-model:value="out.relaxSlaPercent" :precision="0" style="width: 100px" /><span class="st-unit">%</span></div>
+        <div class="dpf-grid one fc-extra">
+          <div class="dpf-item">
+            <span class="dpf-label">近 N 小时</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
+          </div>
         </div>
-        <div class="st-row">
-          <span class="st-k">兜底 · 首响剩余低于</span>
-          <div class="st-v"><a-input-number v-model:value="out.fallbackSlaPercent" :precision="0" style="width: 100px" /><span class="st-unit">%</span></div>
+      </DispatchCard>
+      <DispatchCard title="放宽与兜底" sub="产品逐级放宽与兜底回池的阈值">
+        <div class="dpf-grid">
+          <div class="dpf-item">
+            <span class="dpf-label">产品逐级放宽</span>
+            <div class="dpf-ctl"><a-switch v-model:checked="out.relaxEnabled" /></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">最远层级</span>
+            <div class="dpf-ctl">
+              <a-radio-group v-model:value="out.relaxMaxLevel" :disabled="!out.relaxEnabled">
+                <a-radio :value="1">同产品分类</a-radio>
+                <a-radio :value="2">不限</a-radio>
+              </a-radio-group>
+            </div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">放宽 · 排队时长</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.relaxQueueMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">放宽 · 首响剩余低于</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.relaxSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">兜底 · 首响剩余低于</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.fallbackSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
+          </div>
+          <div class="dpf-item">
+            <span class="dpf-label">无首响 SLA · 兜底排队时长</span>
+            <div class="dpf-ctl"><a-input-number v-model:value="out.noSlaFallbackMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
+          </div>
         </div>
-        <div class="st-row">
-          <span class="st-k">无首响 SLA · 兜底排队时长</span>
-          <div class="st-v"><a-input-number v-model:value="out.noSlaFallbackMinutes" :precision="0" style="width: 100px" /><span class="st-unit">分钟</span></div>
-        </div>
-      </div>
-      <div class="st-foot"><a-button @click="resetOut">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
-    </section>
+      </DispatchCard>
+      <div class="st-foot"><a-button @click="resetOut(SCORE_TAB_KEYS)">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
+    </div>
 
     <!-- 个人上限 -->
-    <section v-else-if="active === 'cap'" class="block">
+    <div v-else-if="active === 'cap'" class="st-stack">
       <div class="cap-grid">
-        <div>
-          <div class="st-sec">角色基准值</div>
-          <div class="st-rows">
-            <div v-for="r in DISPATCH_ROLES" :key="r" class="st-row">
-              <span class="st-k">{{ r }}</span>
-              <div class="st-v"><a-input-number v-model:value="cap.roleBase[r]" :precision="0" style="width: 100px" /></div>
+        <div class="st-stack">
+          <DispatchCard title="角色基准值" sub="各角色的默认个人上限">
+            <div class="dpf-grid cap-form">
+              <div v-for="r in DISPATCH_ROLES" :key="r" class="dpf-item">
+                <span class="dpf-label">{{ r }}</span>
+                <div class="dpf-ctl"><a-input-number v-model:value="cap.roleBase[r]" :precision="0" style="width: 100px" /></div>
+              </div>
             </div>
-          </div>
-          <div class="st-sec">熟练度系数</div>
-          <div class="st-rows">
-            <div v-for="p in PROFICIENCIES" :key="p" class="st-row">
-              <span class="st-k">{{ p }}</span>
-              <div class="st-v"><a-input-number v-model:value="cap.proficiencyCoef[p]" :step="0.1" :precision="1" style="width: 100px" /></div>
+          </DispatchCard>
+          <DispatchCard title="熟练度系数" sub="与角色基准值相乘得到默认值">
+            <div class="dpf-grid cap-form">
+              <div v-for="p in PROFICIENCIES" :key="p" class="dpf-item">
+                <span class="dpf-label">{{ p }}</span>
+                <div class="dpf-ctl"><a-input-number v-model:value="cap.proficiencyCoef[p]" :step="0.1" :precision="1" style="width: 100px" /></div>
+              </div>
             </div>
-          </div>
+          </DispatchCard>
         </div>
-        <div>
-          <div class="st-sec">默认值预览</div>
+        <DispatchCard title="默认值预览" sub="角色 × 熟练度">
           <table class="cap-matrix">
             <thead><tr><th>角色</th><th v-for="p in PROFICIENCIES" :key="p">{{ p }}</th></tr></thead>
             <tbody>
-              <tr v-for="r in DISPATCH_ROLES" :key="r"><td>{{ r }}</td><td v-for="p in PROFICIENCIES" :key="p">{{ previewOf(r, p) }}</td></tr>
+              <tr v-for="r in DISPATCH_ROLES" :key="r"><td>{{ r }}</td><td v-for="p in PROFICIENCIES" :key="p"><span class="cap-num">{{ previewOf(r, p) }}</span></td></tr>
             </tbody>
           </table>
-        </div>
+        </DispatchCard>
       </div>
       <div class="st-foot"><a-button @click="resetCap">重置</a-button><a-button type="primary" @click="saveCap">保存</a-button></div>
-    </section>
+    </div>
 
     <!-- 开关记录 -->
-    <section v-else-if="active === 'audit'" class="block">
+    <DispatchCard v-else-if="active === 'audit'" title="开关记录" :sub="`共 ${auditRows.length} 条`">
       <div class="au-bar">
-        <a-range-picker v-model:value="af.range" style="width: 260px" />
+        <a-range-picker v-model:value="af.range" style="width: 260px; max-width: 100%" />
         <a-select v-model:value="af.operator" :options="operatorOpts" placeholder="操作人" allow-clear style="width: 130px" />
         <a-input v-model:value="af.target" placeholder="对象" allow-clear style="width: 160px" />
         <a-select v-model:value="af.kind" :options="opts(auditKinds)" placeholder="类型" allow-clear style="width: 130px" />
       </div>
-      <a-table :columns="auditCols" :data-source="auditRows" row-key="id" size="middle" :pagination="stdPagination()" :locale="{ emptyText: '暂无记录' }">
+      <a-table :columns="auditCols" :data-source="auditRows" row-key="id" size="middle" :pagination="stdPagination()" :scroll="{ x: 960 }" :locale="{ emptyText: '暂无记录' }">
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'before'" :title="auditBefore(record as any)">{{ auditBefore(record as any) }}</span>
           <span v-else-if="column.key === 'after'" :title="record.after">{{ record.after }}</span>
           <span v-else-if="column.key === 'reason'">{{ record.reason || '—' }}</span>
         </template>
       </a-table>
-    </section>
+    </DispatchCard>
 
     <PoolModeSwitchModal v-model:open="modeOpen" scope="global" />
     <RolloutStageModal v-model:open="stageOpen" :direction="stageDir" />
@@ -345,23 +412,59 @@ watch(() => store.config, (c) => {
 </template>
 
 <style scoped>
-.st-tabs :deep(.ant-tabs-nav) { margin-bottom: 12px; }
-.block { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
-.st-rows { display: flex; flex-direction: column; max-width: 760px; }
-.st-row { display: flex; align-items: center; gap: 16px; min-height: 44px; border-bottom: 1px dashed #f0f0f0; }
-.st-k { width: 210px; flex: none; color: #374151; font-size: 13px; }
-.st-v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.st-unit { color: #6b7280; font-size: 13px; }
-.st-readonly { color: #111827; font-size: 13px; }
-.st-sec { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; margin: 18px 0 6px; display: flex; align-items: center; gap: 10px; }
-.st-sec:first-child { margin-top: 0; }
-.st-sec-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
-.st-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 14px; border-top: 1px solid #f0f0f0; }
-.cap-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
-.cap-matrix { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
-.cap-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; padding: 8px 10px; text-align: left; }
-.cap-matrix td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; color: #374151; }
+.st { min-width: 0; }
+.st-tabs :deep(.ant-tabs-nav) { margin-bottom: 16px; }
+.st-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* 底部保存栏：贴底常驻 */
+.st-foot {
+  position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 10px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 20px; box-shadow: 0 -2px 8px rgba(17, 24, 39, 0.04);
+}
+
+/* 上线阶段状态条 */
+.ro-bar {
+  display: flex; align-items: center; gap: 16px 28px; flex-wrap: wrap; padding: 16px 20px; border-radius: 10px;
+  background: linear-gradient(90deg, #eff6ff 0%, #f8fbff 100%); border: 1px solid #bfdbfe; position: relative; overflow: hidden;
+}
+.ro-bar::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #1a6fff; }
+.ro-head { display: flex; align-items: center; gap: 8px; flex: none; }
+.ro-head :deep(.ant-tag) { margin-inline-end: 0; }
+.ro-ic { width: 32px; height: 32px; border-radius: 8px; background: #1a6fff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.ro-label { font-size: 14px; font-weight: 600; color: #111827; }
+.ro-steps { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; flex: 1; min-width: 260px; }
+.ro-steps li { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 13px; color: #9ca3af; white-space: nowrap; }
+.ro-steps li:not(:last-child)::after { content: ''; flex: 1; height: 2px; background: #dbe3ee; margin: 0 8px; min-width: 12px; }
+.ro-steps li.done:not(:last-child)::after { background: #1a6fff; }
+.ro-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
+.ro-steps li.done { color: #374151; }
+.ro-steps li.done .ro-dot { background: #1a6fff; border-color: #1a6fff; color: #fff; }
+.ro-steps li.cur { color: #1a6fff; font-weight: 600; }
+.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; box-shadow: 0 0 0 4px rgba(26, 111, 255, 0.15); }
+.ro-ops { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* 加权评分 */
+.wsum { font-size: 12px; color: #6b7280; }
+.fc-list { display: flex; flex-direction: column; gap: 8px; }
+.fc-row { display: flex; align-items: center; gap: 14px; padding: 8px 12px; border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; flex-wrap: wrap; }
+.fc-row.off { opacity: 0.6; }
+.fc-name { width: 180px; flex: none; font-size: 13px; color: #111827; }
+.fc-bar { flex: 1; min-width: 80px; height: 6px; background: #eef2f7; border-radius: 3px; overflow: hidden; }
+.fc-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 3px; transition: width 0.2s; }
+.fc-share { width: 40px; text-align: right; font-size: 12px; color: #6b7280; }
+.fc-w { display: flex; align-items: center; gap: 8px; }
+.fc-extra { margin-top: 8px; }
+.fc-extra .dpf-item { border-bottom: none; }
+
+/* 个人上限 */
+.cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
+.cap-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.cap-form :deep(.dpf-label), .cap-form .dpf-label { width: 96px; }
+.cap-matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cap-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; padding: 9px 10px; text-align: left; }
+.cap-matrix td { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; color: #374151; }
 .cap-matrix td:not(:first-child), .cap-matrix th:not(:first-child) { text-align: center; }
-.au-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.cap-num { display: inline-block; min-width: 32px; padding: 0 6px; border-radius: 4px; background: #eff6ff; color: #1a6fff; font-weight: 600; line-height: 22px; }
+
+.au-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

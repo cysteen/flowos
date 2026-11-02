@@ -1,0 +1,9 @@
+/* 【1215】智能分派后台页表单栅格：标签左 · 控件右，两列自适应，窄屏自动单列 */
+.dpf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); column-gap: 40px; }
+.dpf-grid.one { grid-template-columns: minmax(0, 1fr); }
+.dpf-item { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 0; border-bottom: 1px dashed #f0f0f0; min-width: 0; flex-wrap: wrap; }
+.dpf-label { width: 176px; flex: none; color: #374151; font-size: 13px; line-height: 20px; }
+.dpf-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1; }
+.dpf-unit { color: #6b7280; font-size: 13px; }
+.dpf-val { color: #111827; font-size: 13px; }
+.dpf-ctl .ant-tag { margin-inline-end: 0; }
