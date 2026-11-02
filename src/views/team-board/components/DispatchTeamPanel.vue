@@ -21,10 +21,11 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
 import {
-  DISPATCH_STATUS_ORDER, DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
+  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
   groupModeDisabledTip, modeTagOf, reassignableTicketsOf, reserveTipOf,
-  waitMinutesOf, waitText,
+  waitText,
 } from '@/views/tickets/composables/dispatchUi';
+import { maxPoolWaitMinutes, poolTicketsOf, poolWaitMinutesOf } from './dispatchPoolTickets';
 
 const props = defineProps<{ groupId?: string | null }>();
 
@@ -176,13 +177,10 @@ function saveCap(force = false) {
 const reactiveTickets = reactive(TICKETS) as Ticket[];
 const poolTickets = computed(() => {
   void dispatch.ticketStates;
-  const gid = groupId.value;
-  if (!gid) return [];
-  const rankOf = (t: Ticket) => DISPATCH_STATUS_ORDER[dispatch.dispatchStatusOf(t.no) ?? ''] ?? 3;
-  return reactiveTickets
-    .filter((t) => t.groupId === gid && t.tab === 'pool' && t.assignee === null && !t.archived && !t.isDraft)
-    .sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
+  return poolTicketsOf(groupId.value, reactiveTickets);
 });
+/** 头部「最长等待」：与池列表「等待时长」列同口径（PRD「等待时长」行） */
+const poolMaxWait = computed(() => maxPoolWaitMinutes(poolTickets.value, nowMs.value));
 
 const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
@@ -253,7 +251,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <span>等原处理人 <b>{{ poolView.waitingOriginal }}</b></span>
       <span>排队中 <b>{{ poolView.queued }}</b></span>
       <span>派单失败回池 <b :class="{ danger: poolView.failed > 0 }">{{ poolView.failed }}</b></span>
-      <span>最长等待 <b>{{ waitText(poolView.maxWaitMin) }}</b></span>
+      <span>最长等待 <b>{{ waitText(poolMaxWait) }}</b></span>
       <span>已配置画像 <b>{{ poolView.configuredCount }} / {{ poolView.memberCount }}</b></span>
     </div>
 
@@ -352,7 +350,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           >{{ dispatch.dispatchStatusOf(t.no) }}</span>
           <span v-else class="muted">—</span>
         </div>
-        <div class="td">{{ waitText(waitMinutesOf(t, nowMs)) }}</div>
+        <div class="td">{{ waitText(poolWaitMinutesOf(t, nowMs)) }}</div>
         <div class="td" :class="{ danger: t.slaMinutes < 0 && !t.responded }">{{ slaText(t) }}</div>
         <div class="td"><span class="link" @click="openAssign(t)">指派</span></div>
       </div>
