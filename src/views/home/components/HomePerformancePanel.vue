@@ -4,6 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { RightOutlined, TrophyOutlined } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
+import { useCloseOnDeactivate } from '@/composables/useCloseOnDeactivate';
 import {
   getHomePerformanceByRange,
   getHomePerformanceRankBoard,
@@ -26,6 +27,7 @@ const rangeKey = ref<HomePerfRangeKey>('today');
 /** 空值用 undefined 而非 null：a-range-picker 的 value 只接受 [Dayjs, Dayjs] | undefined */
 const customRange = ref<[Dayjs, Dayjs] | undefined>(undefined);
 const pickerOpen = ref(false);
+useCloseOnDeactivate(pickerOpen);
 
 const rankOpen = ref(false);
 const activeBoard = ref<HomeRankBoard | null>(null);
