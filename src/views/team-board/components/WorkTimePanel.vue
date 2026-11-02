@@ -4,31 +4,28 @@
  *
  * 数据取话务条状态流水（stores/ctiFlow.ts）：本组各工作类型（就绪子状态）与外呼忙碌段的时长、占比；
  * 「状态存疑」＝线下类工作状态期间又有工单操作的时段，单独列示（已含在对应线下类型的时长里，不另加进合计）。
- * 只出组级，不出个人列表与排名。仅班组长 / 督导 / 管理员可见；组取本人任班组长的处理组，督导与管理员看全部有成员的组。
+ * 只出组级，不出个人列表与排名。可见性随「班组看板」菜单权限（config/roles.ts 各角色 menus 含 team-board，路由守卫按此放行），
+ * 块内不另设角色判断；班组长看本人任班组长的组，其余可进看板的角色看全部有成员的组。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { useUserStore } from '@/stores/user';
-import { flowMembers, SUSPECT_WINDOW_MIN, useCtiFlowStore } from '@/stores/ctiFlow';
-import type { RoleKey } from '@/config/roles';
+import { SUSPECT_WINDOW_MIN, useCtiFlowStore, workTimeGroups } from '@/stores/ctiFlow';
 
 const dispatch = useDispatchStore();
 const user = useUserStore();
 const flow = useCtiFlowStore();
 
-const VIEW_ROLES: RoleKey[] = ['team-leader', 'complaint-supervisor', 'system-admin', 'ops-admin', 'tenant-admin'];
-const canView = computed(() => VIEW_ROLES.includes(user.roleKey));
-
 const nowMs = ref(Date.now());
 const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 onBeforeUnmount(() => window.clearInterval(timer));
 
-/** 有流水成员的组 */
+/** 有流水成员的组：班组长看本人任班组长的组，其余可进班组看板的角色看全部 */
 const groups = computed(() => {
-  const withMembers = new Set(flowMembers().map((m) => m.groupId));
-  const all = dispatch.groups.filter((g) => withMembers.has(g.id));
+  void dispatch.groups;
+  const all = workTimeGroups();
   if (user.roleKey === 'team-leader') return all.filter((g) => g.leaders.includes(user.name));
   return all;
 });
@@ -97,7 +94,7 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 </script>
 
 <template>
-  <div v-if="canView && groups.length && dist" class="card wtp">
+  <div v-if="groups.length && dist" class="card wtp">
     <div class="card-hd">
       <div class="hd-main">
         <h3 class="hd-title">工作时长分布</h3>

@@ -114,11 +114,39 @@ export interface FlowMember {
   groupId: string | null;
 }
 
-/** 班组成员：智能派单坐席名册里的二线专员，所属班组取其首个处理组 */
+export interface WorkTimeGroup {
+  id: string;
+  label: string;
+  leaders: string[];
+}
+
+/**
+ * 不在工单处理组（POOL_GROUPS）与派单名册里的班组：只进工作时长统计的数据源，
+ * 不进工单池、派单配置、入池规则与派单名册。投诉风险组的工作类型取字典 complaint-risk 那一份。
+ */
+const WORK_TIME_EXTRA_GROUPS: (WorkTimeGroup & { members: string[] })[] = [
+  { id: 'complaint-risk', label: '投诉风险组', leaders: ['王组长'], members: ['罗坐席', '邓坐席', '姚坐席'] },
+];
+
+/** 班组成员：智能派单坐席名册里的二线专员（所属班组取其首个处理组）+ 上表各组成员 */
 export function flowMembers(): FlowMember[] {
-  return useDispatchStore().agents
-    .filter((a) => a.roles.includes('二线专员'))
-    .map((a) => ({ name: a.name, groupId: a.groupIds[0] ?? null }));
+  return [
+    ...useDispatchStore().agents
+      .filter((a) => a.roles.includes('二线专员'))
+      .map((a) => ({ name: a.name, groupId: a.groupIds[0] ?? null })),
+    ...WORK_TIME_EXTRA_GROUPS.flatMap((g) => g.members.map((name) => ({ name, groupId: g.id }))),
+  ];
+}
+
+/** 工作时长统计可选的班组：有成员的处理组（派单组）+ 上表各组 */
+export function workTimeGroups(): WorkTimeGroup[] {
+  const withMembers = new Set(flowMembers().map((m) => m.groupId));
+  return [
+    ...useDispatchStore().groups
+      .filter((g) => withMembers.has(g.id))
+      .map((g) => ({ id: g.id, label: g.label, leaders: g.leaders })),
+    ...WORK_TIME_EXTRA_GROUPS.map(({ id, label, leaders }) => ({ id, label, leaders })),
+  ];
 }
 
 function inProgressNos(name: string): string[] {
