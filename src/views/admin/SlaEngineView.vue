@@ -17,8 +17,8 @@ const activeKey = computed(() => adminNavActiveKey(route.path));
 
 // 平台固定「双层 SLA（整单 + 节点并行）」，不提供计时模式开关（伪动作，已移除）。
 // 节点级时限 = 轻量 OLA（P1），在 SLA 策略内配，不在此页。
-/** 本期不做挂起/停表配置与运行逻辑；置 false 隐藏「挂起 / 停表规则」区块 */
-const ENABLE_SUSPEND_RULES = false;
+/** 「挂起 / 停表规则」区块：只展示配置，运行时 SLA 仍不停表（1021）；置 false 隐藏 */
+const ENABLE_SUSPEND_RULES = true;
 
 // —— 挂起规则（参考 V1 A3#suspend：最长挂起防永久挂起 + 自动恢复条件 + 挂起审批）——
 let suspendSeq = 0;
@@ -359,7 +359,7 @@ function save() { message.success('已保存并生效'); }
     <div v-if="activeKey === 'sla-timing'" class="admin-page">
       <AdminPageHeader
         title="计时规则"
-        subtitle="计时规则 = 工作日历底座：定义工作时段、节假日/调休，供全部 SLA 策略共用。（挂起/停表本期不做）"
+        subtitle="计时规则 = 工作日历底座：定义工作时段、节假日/调休，供全部 SLA 策略共用。"
       >
         <template #actions>
           <a-button type="primary" @click="save">保存</a-button>
@@ -428,7 +428,7 @@ function save() { message.success('已保存并生效'); }
             </template>
           </a-table>
 
-          <!-- 本期不做挂起/停表逻辑，区块隐藏；恢复时打开 ENABLE_SUSPEND_RULES -->
+          <!-- 挂起 / 停表规则：只展示配置，ENABLE_SUSPEND_RULES 控制显隐 -->
           <template v-if="ENABLE_SUSPEND_RULES">
             <div class="sec-h mt2">挂起 / 停表规则
               <span class="hd-actions">
