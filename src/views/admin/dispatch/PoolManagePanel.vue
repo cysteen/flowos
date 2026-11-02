@@ -11,6 +11,8 @@ import PoolAssignModal from './PoolAssignModal.vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
 import './dispatchTheme.css';
 
+const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
+
 const store = useDispatchStore();
 const clock = useClock();
 
@@ -81,14 +83,14 @@ function fmt(ms: number) {
 }
 const STATUS_TONE: Record<string, string> = { 等原处理人: 'default', 排队中: 'orange', 派单失败回池: 'red' };
 const detailCols = [
-  { title: '工单号', dataIndex: 'no', key: 'no', width: 170 },
-  { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
-  { title: '优先级', dataIndex: 'priority', key: 'priority', width: 70 },
-  { title: '派单状态', key: 'status', width: 110 },
-  { title: '等原处理人', key: 'reserve', width: 170 },
-  { title: '进入派单时间', dataIndex: 'enteredAt', key: 'enteredAt', width: 150 },
-  { title: '首响 SLA 剩余', key: 'sla', width: 110 },
-  { title: '操作', key: 'op', width: 70 },
+  { title: '工单号', dataIndex: 'no', key: 'no', width: 148, fixed: 'left' as const },
+  { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 160 },
+  { title: '优先级', dataIndex: 'priority', key: 'priority', width: 64 },
+  { title: '派单状态', key: 'status', width: 96 },
+  { title: '等原处理人', key: 'reserve', width: 120, ellipsis: true },
+  { title: '入池时间', dataIndex: 'enteredAt', key: 'enteredAt', width: 128 },
+  { title: 'SLA', key: 'sla', width: 88 },
+  { title: '操作', key: 'op', width: 56, fixed: 'right' as const },
 ];
 
 const assignOpen = ref(false);
@@ -152,32 +154,68 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
       </div>
     </div>
 
-    <a-drawer v-model:open="detailOpen" :title="detailId ? store.poolLabel(detailId) : ''" width="min(1040px, 100vw)" placement="right">
-      <div v-if="detailPool" class="dt-sum">
-        <div class="dt-item"><span class="k">派单方式</span><span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span></div>
-        <div class="dt-item"><span class="k">待领工单</span><b>{{ detailRows.length }}</b></div>
-        <div class="dt-item"><span class="k">等原处理人</span><b :class="{ warn: detailPool.waitingOriginal }">{{ detailPool.waitingOriginal }}</b></div>
-        <div class="dt-item"><span class="k">排队中</span><b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b></div>
-        <div class="dt-item"><span class="k">派单失败回池</span><b :class="{ bad: detailPool.failed }">{{ detailPool.failed }}</b></div>
+    <a-drawer
+      v-model:open="detailOpen"
+      :title="detailId ? store.poolLabel(detailId) : ''"
+      width="720"
+      placement="right"
+      :body-style="poolDetailBodyStyle"
+      class="pool-detail-drawer"
+    >
+      <div v-if="detailPool" class="pd-body">
+        <div class="pd-overview">
+          <span class="pd-mode">
+            派单方式
+            <span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span>
+          </span>
+          <div class="pd-stats">
+            <div class="pd-stat">
+              <b>{{ detailRows.length }}</b><span>待领</span>
+            </div>
+            <div class="pd-stat">
+              <b :class="{ warn: detailPool.waitingOriginal }">{{ detailPool.waitingOriginal }}</b><span>等原</span>
+            </div>
+            <div class="pd-stat">
+              <b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b><span>排队</span>
+            </div>
+            <div class="pd-stat">
+              <b :class="{ bad: detailPool.failed }">{{ detailPool.failed }}</b><span>失败回池</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pd-table-hd">
+          <span>池内待领工单</span>
+          <span class="pd-table-sub">{{ detailRows.length }} 单</span>
+        </div>
+        <div class="table-shell pd-table">
+          <a-table
+            :columns="detailCols"
+            :data-source="detailRows"
+            row-key="no"
+            size="small"
+            :pagination="false"
+            :scroll="{ x: 860 }"
+            :locale="{ emptyText: '池内暂无待领工单' }"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'status'">
+                <span v-if="record.status" class="dx-status" :class="`is-${STATUS_TONE[record.status]}`">{{ record.status }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+              <template v-else-if="column.key === 'reserve'">
+                <span v-if="record.reserveFor" class="pd-ellipsis" :title="`${record.reserveFor} · ${record.reserveUntil} 到期`">{{ record.reserveFor }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+              <template v-else-if="column.key === 'sla'">
+                <span v-if="record.slaRemain == null" class="muted">—</span>
+                <span v-else :class="{ overdue: record.slaRemain <= 0 }">{{ record.slaRemain <= 0 ? '已超时' : `${record.slaRemain} 分` }}</span>
+              </template>
+              <a-button v-else-if="column.key === 'op'" type="link" size="small" class="pd-op" @click="openAssign(record.ticket)">指派</a-button>
+            </template>
+          </a-table>
+        </div>
       </div>
-      <div class="dx-sec-hd"><span class="dx-sec-title">池内待领工单</span></div>
-      <a-table :columns="detailCols" :data-source="detailRows" row-key="no" size="middle" :pagination="false" :scroll="{ x: 940 }" :locale="{ emptyText: '池内暂无待领工单' }">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <span v-if="record.status" class="dx-status" :class="`is-${STATUS_TONE[record.status]}`">{{ record.status }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-          <template v-else-if="column.key === 'reserve'">
-            <span v-if="record.reserveFor">{{ record.reserveFor }}<span class="muted"> · {{ record.reserveUntil }} 到期</span></span>
-            <span v-else class="muted">—</span>
-          </template>
-          <template v-else-if="column.key === 'sla'">
-            <span v-if="record.slaRemain == null" class="muted">—</span>
-            <span v-else :class="{ overdue: record.slaRemain <= 0 }">{{ record.slaRemain <= 0 ? '已超时' : `${record.slaRemain} 分钟` }}</span>
-          </template>
-          <a-button v-else-if="column.key === 'op'" type="link" size="small" @click="openAssign(record.ticket)">指派</a-button>
-        </template>
-      </a-table>
     </a-drawer>
 
     <PoolModeSwitchModal v-model:open="modeOpen" :scope="modeScope" />
@@ -237,15 +275,49 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 .pm-sub b { font-weight: 600; color: #1f2329; }
 .pm-sub b.dx-warn { color: #ff7d00; }
 .pm-sub b.dx-bad { color: #f53f3f; }
-.dt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 24px; border: 1px solid #eef0f3; border-radius: 8px; }
-.dt-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; font-size: 13px; border-left: 1px solid #f2f3f5; }
-.dt-item:first-child { border-left: none; }
-.dt-item .k { color: #86909c; }
-.dt-item b { font-size: 20px; font-weight: 600; color: #1f2329; line-height: 28px; }
-.dt-item .dx-status { line-height: 28px; font-size: 14px; }
-.dt-item b.warn { color: #ff7d00; }
-.dt-item b.bad { color: #f53f3f; }
-.muted { color: #86909c; font-size: 13px; }
-.overdue { color: #f53f3f; }
-:deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
+.pd-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pd-overview {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; background: #fafbfc; border: 1px solid #eef0f3; border-radius: 8px;
+}
+.pd-mode { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
+.pd-mode .dx-status { font-size: 12px; line-height: 20px; }
+.pd-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.pd-stat {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 4px 10px; background: #fff; border: 1px solid #eef0f3; border-radius: 6px;
+}
+.pd-stat b { font-size: 16px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.pd-stat b.warn { color: #ff7d00; }
+.pd-stat b.bad { color: #f53f3f; }
+.pd-stat span { font-size: 11px; color: #9ca3af; }
+.pd-table-hd {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 12px; font-weight: 600; color: #111827;
+}
+.pd-table-sub { font-size: 11px; font-weight: normal; color: #9ca3af; }
+.pd-table { min-width: 0; }
+.pd-table :deep(.ant-table) { font-size: 12px; color: #374151; }
+.pd-table :deep(.ant-table-tbody > tr > td),
+.pd-table :deep(.ant-table-thead > tr > th) {
+  font-size: 12px;
+  line-height: 1.45;
+  vertical-align: middle;
+}
+.pd-table :deep(.ant-table-tbody > tr > td) { color: #374151; }
+.pd-table :deep(.ant-table-tbody > tr:hover > td) { background: #f9fafb !important; }
+.pd-table :deep(.ant-table-cell-fix-left),
+.pd-table :deep(.ant-table-cell-fix-right) { background: #fff; }
+.pd-table :deep(.ant-table-tbody > tr:hover > .ant-table-cell-fix-left),
+.pd-table :deep(.ant-table-tbody > tr:hover > .ant-table-cell-fix-right) { background: #f9fafb !important; }
+.pd-table :deep(.ant-table-tbody > tr > td:first-child) {
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+  font-weight: 500;
+}
+.pd-ellipsis { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-op { padding: 0 4px; height: auto; font-size: 12px; }
+.pd-table .muted { color: #9ca3af; font-size: 12px; }
+.pd-table .overdue { color: #f53f3f; font-size: 12px; }
+.pd-table .dx-status { font-size: 12px; line-height: 20px; }
 </style>

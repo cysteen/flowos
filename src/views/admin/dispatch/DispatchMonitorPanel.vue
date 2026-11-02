@@ -128,9 +128,18 @@ const logOpen = ref(false);
   <div class="mon">
     <AdminPageHeader :title="title" :subtitle="subtitle">
       <template #actions>
-        <a-segmented v-model:value="range" :options="RANGE_OPTS" />
-        <a-select v-model:value="poolFilter" :options="poolFilterOpts" style="width: 168px" />
-        <a-button type="primary" @click="logOpen = true"><template #icon><FileSearchOutlined /></template>派单日志</a-button>
+        <div class="mon-filter-bar">
+          <div class="filter-item">
+            <span class="filter-label">时间</span>
+            <a-segmented v-model:value="range" size="small" class="dispatch-time-seg" :options="RANGE_OPTS" />
+          </div>
+          <span class="filter-divider" aria-hidden="true" />
+          <div class="filter-item">
+            <span class="filter-label">组池</span>
+            <a-select v-model:value="poolFilter" size="small" class="mon-pool-select" :options="poolFilterOpts" />
+          </div>
+          <a-button type="primary" size="small" @click="logOpen = true"><template #icon><FileSearchOutlined /></template>派单日志</a-button>
+        </div>
       </template>
     </AdminPageHeader>
 
@@ -186,7 +195,22 @@ const logOpen = ref(false);
 <style scoped>
 .mon { display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
 .mon :deep(.admin-page-header) { flex-wrap: wrap; margin-bottom: 2px; }
-.mon :deep(.aph-actions) { flex-shrink: 1; flex-wrap: wrap; align-items: center; }
+.mon :deep(.aph-actions) { flex-shrink: 1; flex-wrap: wrap; align-items: center; max-width: 100%; }
+.mon-filter-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px;
+  padding: 6px 10px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+}
+.mon-filter-bar .filter-item { display: inline-flex; align-items: center; gap: 8px; }
+.mon-filter-bar .filter-label { font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1; flex: none; }
+.mon-filter-bar .filter-divider { width: 1px; height: 16px; background: #e2e8f0; flex: none; }
+.mon-pool-select { width: 148px; }
+.mon-pool-select :deep(.ant-select-selector) {
+  border-radius: 8px !important; border-color: #e5e7eb !important; background: #fff !important;
+  height: 28px !important; padding-inline: 10px !important; align-items: center;
+}
+.mon-pool-select :deep(.ant-select-selection-item) {
+  font-size: 12px !important; font-weight: 500 !important; color: #374151 !important; line-height: 26px !important;
+}
 
 /* 与 dispatch-config 监控页一致的区块容器 */
 .stat-block { padding: 16px 20px; }

@@ -4,6 +4,9 @@ import { computed, ref } from 'vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { useClock } from './dispatchUi';
 import { buildTrend } from './dispatchMetrics';
+import './dispatchTheme.css';
+
+const TREND_RANGE_OPTS = [{ label: '7 天', value: 7 }, { label: '30 天', value: 30 }] as const;
 
 const props = defineProps<{ poolIds: string[] | null }>();
 const store = useDispatchStore();
@@ -76,10 +79,7 @@ function hitStyle(i: number) {
     <div class="dx-sec-hd">
       <span class="dx-sec-title">派单趋势</span>
       <span class="dx-sec-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }} · 兜底 {{ totals.fb }}</span>
-      <div class="range-toggle dx-sec-extra">
-        <button type="button" class="range-btn" :class="{ active: days === 7 }" @click="days = 7">7 天</button>
-        <button type="button" class="range-btn" :class="{ active: days === 30 }" @click="days = 30">30 天</button>
-      </div>
+      <a-segmented v-model:value="days" size="small" class="dispatch-time-seg dx-sec-extra" :options="[...TREND_RANGE_OPTS]" />
     </div>
     <div class="legend-line">
       <span class="lg"><i class="sw" style="background: #1a6fff" />派出量</span>
@@ -131,10 +131,6 @@ function hitStyle(i: number) {
 </template>
 
 <style scoped>
-.range-toggle { gap: 4px; flex: none; }
-.range-btn { border: none; background: transparent; padding: 2px 10px; border-radius: 4px; font-size: 13px; color: #86909c; cursor: pointer; line-height: 22px; }
-.range-btn.active { background: #eff6ff; color: #1a6fff; font-weight: 600; }
-.range-btn:hover:not(.active) { color: #1f2329; }
 .legend-line { display: flex; gap: 16px; font-size: 13px; color: #86909c; margin: 0 0 8px 46px; }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }

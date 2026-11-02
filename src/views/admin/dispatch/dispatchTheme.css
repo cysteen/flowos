@@ -138,3 +138,26 @@
   color: #6b7280;
   font-size: 12px;
 }
+
+/* 时间范围 segmented（与门户「我的效能」section-filters 同语汇） */
+.dispatch-time-seg.ant-segmented {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 2px;
+}
+.dispatch-time-seg .ant-segmented-item-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  line-height: 22px;
+  min-height: 22px;
+  padding: 0 10px;
+}
+.dispatch-time-seg .ant-segmented-item-selected .ant-segmented-item-label {
+  color: #1a6fff;
+  font-weight: 600;
+}
+.dispatch-time-seg .ant-segmented-item-selected {
+  box-shadow: 0 1px 2px rgba(26, 111, 255, 0.12);
+}
