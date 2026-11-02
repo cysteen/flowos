@@ -39,6 +39,7 @@ import AssignModal, {
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import ApproveDrillDrawer from './components/ApproveDrillDrawer.vue';
 import DispatchTeamPanel from './components/DispatchTeamPanel.vue';
+import WorkTimePanel from './components/WorkTimePanel.vue';
 import {
   LEADER_TEAMS,
   getTeamBoardSnapshot,
@@ -1057,6 +1058,9 @@ watch(teamId, () => {
     <div ref="dispatchAnchor">
       <DispatchTeamPanel ref="dispatchPanelRef" />
     </div>
+
+    <!-- 工作时长分布：本组各工作类型时长与占比（话务条状态流水，组级） -->
+    <WorkTimePanel />
 
     <!-- ③ 主体：组员明细全宽 -->
     <div class="body">

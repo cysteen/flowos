@@ -51,7 +51,15 @@ export function useCtiWorkReminders() {
       if (!type.offline) {
         notification.close(OFFLINE_KEY);
         const from = Math.max(cti.workStatusSince, flow.lastOpAt(user.name));
-        if (now - from < IDLE_TICKET_WORK_REMIND_MIN * MIN || idleAnchor === from) return;
+        if (now - from < IDLE_TICKET_WORK_REMIND_MIN * MIN) {
+          // 有了工单操作或已切换状态：撤下仍挂着的提醒
+          if (idleAnchor && idleAnchor !== from) {
+            notification.close(IDLE_KEY);
+            idleAnchor = 0;
+          }
+          return;
+        }
+        if (idleAnchor === from) return;
         idleAnchor = from;
         notification.warning({
           key: IDLE_KEY,
