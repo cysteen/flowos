@@ -1,14 +1,12 @@
 <script setup lang="ts">
-// 工单池管理（PRD 14.3）：一组一池；派单方式、班组开关、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
+// 工单池管理（PRD 14.3）：一组一池；派单方式、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
 import { computed, ref } from 'vue';
-import { message } from 'ant-design-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
-import DispatchConfirmModal from './DispatchConfirmModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
 import './dispatchTheme.css';
@@ -40,32 +38,6 @@ function waitItems(p: { waitingOriginal: number; queued: number; failed: number;
 const totalBacklog = computed(() => rows.value.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0));
 
 const globalStopped = computed(() => store.globalEffectiveMode() === '人工派单');
-function switchTip(id: string): string | undefined {
-  if (!store.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (store.groupOf(id)?.mode === '人工派单') return '本组已由管理员切为人工派单';
-  return undefined;
-}
-function onSwitch(id: string, on: boolean) {
-  const g = store.groupOf(id);
-  if (!g) return;
-  if (!on) {
-    switchOffId.value = id;
-    return;
-  }
-  applySwitch(id, on);
-}
-function applySwitch(id: string, on: boolean) {
-  const r = store.setGroupSwitch(id, on);
-  if (r.ok) message.success(r.message); else message.error(r.message);
-}
-/** 关闭班组开关 · 二次确认（8.2） */
-const switchOffId = ref<string | null>(null);
-const switchOffOpen = computed({ get: () => !!switchOffId.value, set: (v: boolean) => { if (!v) switchOffId.value = null; } });
-const switchOffTip = computed(() => (switchOffId.value ? `关闭后${store.poolLabel(switchOffId.value)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？` : ''));
-function onSwitchOffOk() {
-  const id = switchOffId.value;
-  if (id) applySwitch(id, false);
-}
 
 const modeOpen = ref(false);
 const modeScope = ref('');
@@ -148,9 +120,6 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
           <div class="pm-card-hd">
             <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
             <span class="pm-mode" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
-            <a-tooltip :title="switchTip(p.id) ?? `班组开关：${p.switchOn ? '开启' : '关闭'}`">
-              <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
-            </a-tooltip>
             <a-tooltip :title="globalStopped ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
                 <template #icon><SwapOutlined /></template>
@@ -212,7 +181,6 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
     </a-drawer>
 
     <PoolModeSwitchModal v-model:open="modeOpen" :scope="modeScope" />
-    <DispatchConfirmModal v-model:open="switchOffOpen" title="关闭班组开关" :tip="switchOffTip" ok-text="确定关闭" danger @ok="onSwitchOffOk" />
     <PoolAssignModal v-model:open="assignOpen" :ticket="assignTicket" :pool-id="detailId ?? ''" @done="refresh++" />
   </section>
 </template>

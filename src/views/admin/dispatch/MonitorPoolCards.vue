@@ -38,7 +38,7 @@ const cards = computed(() => {
 });
 
 const recordOpen = ref(false);
-const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '派单方式' || a.kind === '全局开关' || a.kind === '班组开关').reverse());
+const modeRecords = computed<DispatchAuditEntry[]>(() => [...store.audits].filter((a) => a.kind === '派单方式' || a.kind === '全局开关').reverse());
 const recordCols = [
   { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
   { title: '操作方', dataIndex: 'operator', key: 'operator', width: 90 },
@@ -60,7 +60,7 @@ const recordCols = [
       </span>
     </div>
 
-    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、开启班组；右侧切换派单方式 / 确认恢复 -->
+    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、自动派单组；右侧切换派单方式 / 确认恢复 -->
     <div class="dx-card gs">
       <div class="gs-main">
         <span class="dx-icon gs-ic"><GlobalOutlined /></span>
@@ -72,7 +72,7 @@ const recordCols = [
         <span class="gs-kv"><em>全局开关</em>{{ store.config.globalSwitch ? '开启' : '关闭' }}</span>
         <span class="gs-kv"><em>运行方式</em>{{ store.config.runMode }}</span>
         <span class="gs-kv"><em>上线阶段</em>{{ stage }}</span>
-        <span class="gs-kv"><em>开启班组</em>{{ store.groups.filter((g) => g.switchOn).length }} / {{ store.groups.length }}</span>
+        <span class="gs-kv"><em>自动派单组</em>{{ store.groups.filter((g) => g.mode === '自动派单').length }} / {{ store.groups.length }}</span>
       </div>
       <div class="gs-ops">
         <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可恢复`">
@@ -101,7 +101,6 @@ const recordCols = [
             </a-tooltip>
           </div>
           <div class="pc-tags">
-            <span class="pc-tag" :class="{ 'is-on': c.switchOn, 'is-off': !c.switchOn }">班组开关 {{ c.switchOn ? '开' : '关' }}</span>
             <span class="pc-tag">本组 {{ c.groupMode }}</span>
             <span class="pc-tag">{{ store.config.runMode }}</span>
           </div>
@@ -188,8 +187,6 @@ const recordCols = [
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 4px;
   background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6;
 }
-.pc-tag.is-on { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }
-.pc-tag.is-off { background: #f9fafb; color: #9ca3af; }
 .pc-stats {
   display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;

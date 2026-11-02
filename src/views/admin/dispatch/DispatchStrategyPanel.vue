@@ -55,8 +55,8 @@ const modeOpen = ref(false);
 /* 上线阶段（第 17 章）：试运行 → 单组试点 → 多组 → 全量，每步由管理员确认；可退回上一步 */
 const stage = computed(() => store.rolloutStage());
 const nextStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) + 1] ?? null);
-// 正式派单下未开启班组开关：阶段显示试运行，只出「推进至单组试点」
-const prevStage = computed(() => (store.rolloutNoSwitch() ? null : ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null));
+// 正式派单下没有自动派单的组：阶段显示试运行，只出「推进至单组试点」
+const prevStage = computed(() => (store.rolloutNoAutoGroup() ? null : ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null));
 const stageTip = computed(() => (store.config.globalSwitch ? '' : '全局开关已关闭，请先在派单策略开启'));
 const stageIdx = computed(() => ROLLOUT_STAGES.indexOf(stage.value));
 const stageOpen = ref(false);
@@ -102,7 +102,7 @@ const out = reactive<OutForm>(pickOut(store.config));
 const enabledFactorCount = computed(() => out.factors.filter((x) => x.enabled).length);
 const weightSum = computed(() => out.factors.filter((x) => x.enabled).reduce((s, x) => s + (x.weight || 0), 0));
 /** 门槛过滤（PRD 4.1，P0 项）：引擎固定判定，此处只展示 */
-const GATES = ['候选范围', '三级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+const GATES = ['候选范围', '两级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
 function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
 function factorShare(w: number | null | undefined) {
   return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
@@ -149,7 +149,7 @@ function saveCap() {
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
-const auditKinds = ['全局开关', '班组开关', '个人开关', '派单方式', '运行方式', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
+const auditKinds = ['全局开关', '个人开关', '派单方式', '运行方式', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
 const operatorOpts = computed(() => opts([...new Set(store.audits.map((a) => a.operator))]));
 const auditRows = computed(() => [...store.audits].reverse().filter((a) => {
   if (af.kind && a.kind !== af.kind) return false;
@@ -197,7 +197,7 @@ watch(() => store.config, (c) => {
               <span class="run-top-ic"><RocketOutlined /></span>
               <div class="run-top-tx">
                 <span class="run-top-title">上线阶段</span>
-                <span v-if="store.rolloutNoSwitch()" class="run-top-note">未开启班组开关</span>
+                <span v-if="store.rolloutNoAutoGroup()" class="run-top-note">无自动派单组</span>
               </div>
             </div>
             <ol class="ro-steps">
@@ -510,7 +510,7 @@ watch(() => store.config, (c) => {
     <DispatchConfirmModal
       v-model:open="globalSwitchOpen"
       :title="globalSwitchTo ? '开启全局开关' : '关闭全局开关'"
-      :tip="globalSwitchTo ? '开启后各组按班组开关接入自动派单。确定开启？' : '关闭后全部组池停止自动派单，已派出工单不收回。确定关闭？'"
+      :tip="globalSwitchTo ? '开启后各组按本组派单方式接入自动派单。确定开启？' : '关闭后全部组池停止自动派单，已派出工单不收回。确定关闭？'"
       :danger="globalSwitchTo === false"
       @ok="onGlobalSwitchOk"
     />

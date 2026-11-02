@@ -40,11 +40,6 @@ const defaultCapText = computed(() => {
   const coef = store.config.proficiencyCoef[proficiency.value];
   return `${Math.round(base[role] * coef)}（${role}基准 ${base[role]} × ${proficiency.value} ${coef}）`;
 });
-const personalTip = computed(() => {
-  const a = agent.value;
-  if (!a || !a.groupIds.length) return undefined;
-  return a.groupIds.every((g) => store.groupOf(g)?.switchOn === false) ? '所在组均已退出自动派单，个人开关暂不生效' : undefined;
-});
 
 const drawerBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 
@@ -155,9 +150,7 @@ function save() {
 
           <div class="da-cap-foot">
             <span class="da-cap-foot-lb">个人开关</span>
-            <a-tooltip :title="personalTip">
-              <a-switch v-model:checked="personal" size="small" :disabled="!!personalTip" />
-            </a-tooltip>
+            <a-switch v-model:checked="personal" size="small" />
           </div>
         </div>
       </section>

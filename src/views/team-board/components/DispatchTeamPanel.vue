@@ -2,14 +2,14 @@
 /**
  * 【1215】班组看板 · 本组派单（PRD 5.4 / 6.5 / 7.5 / 8 / 9.3）。
  *
- * 班组长视角：本组开关、本组派单方式（自动派单 ⇄ 混合派单；人工派单由管理员控制）、
+ * 班组长视角：本组派单方式（自动派单 / 混合派单 / 人工派单三档切换）、
  * 本组成员（签入状态、在途 / 上限、超限 / 超额指派、熟练度、画像配置、个人开关）及其维护，
  * 本组池待领工单与组内指派。组取当前登录人任班组长的派单组。
  */
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import { PoweroffOutlined, SwapOutlined, ControlOutlined } from '@ant-design/icons-vue';
+import { SwapOutlined, ControlOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import DispatchAssignModal from './DispatchAssignModal.vue';
 import DispatchProfileDrawer from './DispatchProfileDrawer.vue';
@@ -18,10 +18,10 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { useUserStore } from '@/stores/user';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
-import type { PoolMode } from '@/views/tickets/types/dispatch';
+import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
 import {
   DISPATCH_STATUS_ORDER, DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
-  groupModeDisabledTip, groupSwitchDisabledTip, modeTagOf, personalSwitchDisabledTip, reassignableTicketsOf, reserveTipOf,
+  groupModeDisabledTip, modeTagOf, reassignableTicketsOf, reserveTipOf,
   waitMinutesOf, waitText,
 } from '@/views/tickets/composables/dispatchUi';
 
@@ -57,43 +57,16 @@ function showPool() {
 }
 defineExpose({ showPool });
 
-/* ---------------- 班组开关（8.2） ---------------- */
-
-const switchTip = computed(() => (groupId.value ? groupSwitchDisabledTip(groupId.value) : ''));
-const switchConfirmOpen = ref(false);
-
-function onSwitchChange(on: boolean) {
-  const g = group.value;
-  if (!g) return;
-  if (!on) {
-    switchConfirmOpen.value = true;
-    return;
-  }
-  const res = dispatch.setGroupSwitch(g.id, true, user.name);
-  if (res.ok) message.success(res.message);
-  else if (res.message) message.warning(res.message);
-}
-function onSwitchOffConfirm() {
-  const g = group.value;
-  if (!g) return;
-  const res = dispatch.setGroupSwitch(g.id, false, user.name);
-  switchConfirmOpen.value = false;
-  if (res.ok) message.success(res.message);
-  else if (res.message) message.warning(res.message);
-}
-
 /* ---------------- 本组派单方式（5.4） ---------------- */
 
 const modeTip = computed(() => (groupId.value ? groupModeDisabledTip(groupId.value) : ''));
 const modeOpen = ref(false);
 const modeTarget = ref<PoolMode | undefined>(undefined);
 const modeReason = ref('');
-/** 班组长只出自动派单、混合派单，不含当前派单方式 */
-const modeOptions = computed(() => (['自动派单', '混合派单'] as PoolMode[]).filter((m) => m !== group.value?.mode));
 
 function openMode() {
   if (modeTip.value) return;
-  modeTarget.value = modeOptions.value.length === 1 ? modeOptions.value[0] : undefined;
+  modeTarget.value = undefined;
   modeReason.value = '';
   modeOpen.value = true;
 }
@@ -250,17 +223,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <h3 class="hd-title">本组派单</h3>
       <div class="hd-actions">
         <div class="dtp-ctl">
-          <span class="dtp-ctl-label">本组开关</span>
-          <a-tooltip :title="switchTip || undefined">
-            <a-switch
-              :checked="group.switchOn"
-              :disabled="!!switchTip"
-              size="small"
-              @update:checked="(v: unknown) => onSwitchChange(v === true)"
-            />
-          </a-tooltip>
-        </div>
-        <div class="dtp-ctl">
           <span class="dtp-ctl-label">本组派单方式</span>
           <span class="dtp-mode">{{ group.mode }}</span>
           <a-tooltip :title="modeTip || undefined">
@@ -347,14 +309,11 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           <span v-else class="pf" :title="profileSummary(m.agent.name)">{{ profileSummary(m.agent.name) }}</span>
         </div>
         <div class="td">
-          <a-tooltip :title="personalSwitchDisabledTip(m.agent) || undefined">
-            <a-switch
-              :checked="m.agent.personalSwitch"
-              :disabled="!!personalSwitchDisabledTip(m.agent)"
-              size="small"
-              @update:checked="(v: unknown) => onPersonalSwitch(m.agent.name, v === true)"
-            />
-          </a-tooltip>
+          <a-switch
+            :checked="m.agent.personalSwitch"
+            size="small"
+            @update:checked="(v: unknown) => onPersonalSwitch(m.agent.name, v === true)"
+          />
         </div>
         <div class="td acts">
           <span class="link" @click="openProfile(m.agent.name)">编辑画像</span>
@@ -423,23 +382,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     </div>
     </div>
 
-    <!-- 关闭班组开关 · 二次确认（8.2） -->
-    <OpActionModal
-      v-model:open="switchConfirmOpen"
-      title="关闭班组开关"
-      :icon="PoweroffOutlined"
-      tone="warn"
-      ok-tone="danger"
-      :width="440"
-      ok-text="确定关闭"
-      cancel-text="取消"
-      @ok="onSwitchOffConfirm"
-    >
-      <div class="op-form">
-        <div class="op-tip op-tip-warn">关闭后{{ group.label }}池转为混合派单，本组成员不再接本组池的自动派单。确定关闭？</div>
-      </div>
-    </OpActionModal>
-
     <!-- 切换派单方式（5.4） -->
     <OpActionModal
       v-model:open="modeOpen"
@@ -465,7 +407,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         <div class="dtp-frow">
           <div class="op-label req">切换为</div>
           <a-radio-group v-model:value="modeTarget">
-            <a-radio v-for="m in modeOptions" :key="m" :value="m">{{ m }}</a-radio>
+            <a-radio v-for="m in POOL_MODES" :key="m" :value="m" :disabled="m === group.mode">{{ m }}</a-radio>
           </a-radio-group>
         </div>
         <div class="dtp-frow top">

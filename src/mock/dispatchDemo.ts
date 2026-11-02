@@ -151,7 +151,7 @@ const FORMAL: Mode = { runMode: '正式派单', globalMode: '自动派单', grou
 const TRIAL: Mode = { runMode: '试运行', globalMode: '自动派单', groupMode: '自动派单', effectiveMode: '自动派单' };
 const HW_DEGRADED: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
 const GLOBAL_DEGRADED: Mode = { runMode: '正式派单', globalMode: '混合派单', groupMode: '自动派单', effectiveMode: '混合派单' };
-/** 未开启班组开关的组（专属工单线）：本组混合派单，组内领取 */
+/** 专属工单线的组：本组混合派单，组内领取 */
 const OFF_GROUP: Mode = { runMode: '正式派单', globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
 
 interface Tk {
@@ -234,7 +234,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     const outside = agents.length - m.length;
     if (outside) d['候选范围'] = outside;
     const off = m.filter((a) => !a.personalSwitch).length;
-    if (off) d['三级开关'] = off;
+    if (off) d['两级开关'] = off;
     const unconf = m.filter((a) => a.personalSwitch && !isProfileConfigured(a.profile)).length;
     let rest = m.length - off - unconf - keep - capBlocked;
     if (rest > 0) {
@@ -514,7 +514,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       }
     }
 
-    // 未开启班组开关的组：组内领取
+    // 专属工单线的组（混合派单）：组内领取
     const offCount = weekend ? 3 : 5;
     for (let i = 0; i < offCount; i += 1) {
       const pool = (['xiaozhi', 'edu-flash', 'edu'] as const)[i % 3];
@@ -790,22 +790,22 @@ function buildPool(b: Builder, now: number) {
 /* 审计（近两周）                                                        */
 /* ------------------------------------------------------------------ */
 
-function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now: number }): DispatchAuditEntry[] {
+function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now: number }, groups: DispatchGroup[]): DispatchAuditEntry[] {
   let n = 0;
   const a = (ms: number, operator: string, kind: DispatchAuditKind, target: string, before: string, after: string, reason?: string): DispatchAuditEntry => ({
     id: `da-seed-${(n += 1)}`, at: stamp(ms), operator, kind, target, before, after, ...(reason ? { reason } : {}),
   });
   const E = today.now - today.t0;
+  const pl = (id: string) => `${groups.find((g) => g.id === id)?.label ?? id}池`;
+  // 单组试点：二线技术支持组为试点组，其余组切为混合派单；多组：硬件、综合、技术支持切为自动派单
+  const toMixed = ['hardware', 'general', 'tech', 'xiaozhi', 'edu-flash', 'edu'].filter((id) => groups.some((g) => g.id === id));
+  const toAuto = ['hardware', 'general', 'tech'];
   return [
     a(tl.trialStart, ADMIN, '全局开关', '全局', '关闭', '开启'),
     a(tl.singleStart, ADMIN, '运行方式', '全局', '试运行', '正式派单'),
-    a(tl.singleStart, ADMIN, '班组开关', '硬件缺陷组', '开启', '关闭'),
-    a(tl.singleStart, ADMIN, '班组开关', '综合处理组', '开启', '关闭'),
-    a(tl.singleStart, ADMIN, '班组开关', '技术支持组', '开启', '关闭'),
+    ...toMixed.map((id) => a(tl.singleStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '上线阶段推进至单组试点')),
     a(tl.singleStart, ADMIN, '运行方式', '上线阶段', '试运行', '单组试点'),
-    a(tl.multiStart, ADMIN, '班组开关', '硬件缺陷组', '关闭', '开启'),
-    a(tl.multiStart, ADMIN, '班组开关', '综合处理组', '关闭', '开启'),
-    a(tl.multiStart, ADMIN, '班组开关', '技术支持组', '关闭', '开启'),
+    ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单', '上线阶段推进至多组')),
     a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单组试点', '多组'),
     a(tl.degradeStart, SYSTEM, '派单方式', '全局', '自动派单', '混合派单', '5 分钟内派单失败率 ≥ 20%'),
     a(tl.degradeEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单', '派单服务已恢复，各项指标连续 10 分钟达标'),
@@ -863,7 +863,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
 
   return {
     logs,
-    audits: buildAudits(tl, { hwDegradeAt, t0, now }),
+    audits: buildAudits(tl, { hwDegradeAt, t0, now }, groups),
     ticketStates: pool.states,
     overAssigned: { 王坐席: true },
     rows: pool.rows,

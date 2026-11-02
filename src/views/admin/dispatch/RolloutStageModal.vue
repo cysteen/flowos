@@ -21,11 +21,12 @@ const isForward = computed(() => props.direction === 'forward');
 
 /* ---------------- 组选择 ---------------- */
 
-const onGroups = computed(() => store.groups.filter((g) => g.switchOn));
-const offGroups = computed(() => store.groups.filter((g) => !g.switchOn));
+/** 本组派单方式为自动派单的组 / 其余组 */
+const onGroups = computed(() => store.groups.filter((g) => g.mode === '自动派单'));
+const offGroups = computed(() => store.groups.filter((g) => g.mode !== '自动派单'));
 /** 单选：试点组（推进至单组试点 / 退回至单组试点时保留的组） */
 const single = ref<string | undefined>(undefined);
-/** 多选：推进至多组时开启的组 / 退回至多组时关闭的组 */
+/** 多选：推进至多组时切为自动派单的组 / 退回至多组时切为混合派单的组 */
 const multi = ref<string[]>([]);
 
 const pickKind = computed<'single' | 'multi' | null>(() => {
@@ -37,7 +38,7 @@ const singleOpts = computed(() => (isForward.value ? store.groups : onGroups.val
 const multiOpts = computed(() => (isForward.value ? offGroups.value : onGroups.value).map((g) => ({ value: g.id, label: store.poolLabel(g.id) })));
 const pickLabel = computed(() => {
   if (pickKind.value === 'single') return isForward.value ? '试点组' : '保留试点组';
-  return isForward.value ? '开启的组' : '关闭的组';
+  return isForward.value ? '切为自动派单的组' : '切为混合派单的组';
 });
 
 /* ---------------- 进入条件（推进时） ---------------- */
@@ -145,14 +146,14 @@ const conditions = computed<CondRow[]>(() => {
       respRow,
     ];
   }
-  // 推进至全量：已开启各组连续 N 个工作日满足多组进入条件中的指标
+  // 推进至全量：自动派单各组连续 N 个工作日满足多组进入条件中的指标
   const per = pools.map((id) => ({ id, s: statsOf(afterLogs, [id], now) }));
   const succVals = per.map((x) => x.s.successRate).filter((v): v is number => v != null);
   const fbVals = per.map((x) => x.s.fallbackRate).filter((v): v is number => v != null);
   const minSucc = succVals.length === per.length && per.length ? Math.min(...succVals) : null;
   const maxFb = fbVals.length === per.length && per.length ? Math.max(...fbVals) : null;
   return [
-    { key: 'fullDays', label: '已开启各组连续运行时长', value: `${days} 个工作日`, th: { key: 'fullDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.fullDays },
+    { key: 'fullDays', label: '自动派单各组连续运行时长', value: `${days} 个工作日`, th: { key: 'fullDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.fullDays },
     { key: 'successRate', label: '各组自动派单成功率（最低）', value: pct(minSucc), th: { key: 'successRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: minSucc != null && minSucc >= th.successRate },
     { key: 'fallbackRate', label: '各组兜底回池率（最高）', value: pct(maxFb), th: { key: 'fallbackRate', prefix: '≤', unit: '%', min: 0, max: 100 }, ok: maxFb != null && maxFb <= th.fallbackRate },
     respRow,
@@ -164,10 +165,10 @@ const conditions = computed<CondRow[]>(() => {
 const effectText = computed(() => {
   switch (to.value) {
     case '单组试点':
-      if (!isForward.value) return '只保留试点组开启班组开关，其余组关闭班组开关';
-      return `${store.rolloutNoSwitch() ? '运行方式保持正式派单' : '运行方式切为正式派单'}；只开启试点组的班组开关，其余组关闭班组开关、保持混合派单`;
-    case '多组': return isForward.value ? '开启所选组的班组开关' : '关闭所选组的班组开关';
-    case '全量': return '开启全部组的班组开关';
+      if (!isForward.value) return '只保留试点组为自动派单，其余组切为混合派单';
+      return `${store.rolloutNoAutoGroup() ? '运行方式保持正式派单' : '运行方式切为正式派单'}；试点组切为自动派单，其余组切为混合派单`;
+    case '多组': return isForward.value ? '所选组切为自动派单' : '所选组切为混合派单';
+    case '全量': return '全部组切为自动派单';
     case '试运行': return '运行方式切回试运行，引擎只出派单建议、不实际派单';
     default: return '';
   }
@@ -180,7 +181,7 @@ function submit() {
     if (!single.value) { message.error(isForward.value ? '请选择试点组' : '请选择保留的试点组'); return; }
     ids = [single.value];
   } else if (pickKind.value === 'multi') {
-    if (!multi.value.length) { message.error(isForward.value ? '请选择开启的组' : '请选择关闭的组'); return; }
+    if (!multi.value.length) { message.error(isForward.value ? '请选择切为自动派单的组' : '请选择切为混合派单的组'); return; }
     ids = [...multi.value];
   }
   const r = store.setRolloutStage(to.value, ids);

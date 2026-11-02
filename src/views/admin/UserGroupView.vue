@@ -6,14 +6,12 @@ import {
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { useUserStore } from '@/stores/user';
 import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
-import DispatchConfirmModal from '@/views/admin/dispatch/DispatchConfirmModal.vue';
 import type { DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
 // 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组（一组一池），成员取派单坐席；
-// 组编辑增班组开关（关闭走二次确认）、本组派单方式只读；组级技能移除，处理能力由成员人员画像表达。
+// 本组派单方式只读；组级技能移除，处理能力由成员人员画像表达。
 interface Group {
   key: string; name: string; type: '业务班组' | '审批组' | '虚拟组';
   leader: string; shift: string;
@@ -21,7 +19,6 @@ interface Group {
 interface Member { id: string; name: string; role: string; ext: string; status: string; tickets: number; }
 
 const dispatch = useDispatchStore();
-const user = useUserStore();
 
 /** 本地维护的分组（不进入派单的一线客服组、审批组、虚拟组）；派单组取派单 store */
 const localGroups = ref<Group[]>([
@@ -89,43 +86,20 @@ const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
 // 角色下拉取 0830 九角色（基线 §3.0）
 const ROLE_OPTS = ['一线坐席', '二线专员', '技术支持', '二线班组长', '客诉专员', '投诉督导', '工单运营', '质检', '管理员'];
 
-/* —— 班组开关（8.1 / 8.2）· 本组派单方式（5.4 只读） —— */
-function switchTip(key: string): string | undefined {
-  if (!dispatch.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (dispatch.groupOf(key)?.mode === '人工派单') return '本组已由管理员切为人工派单';
-  return undefined;
-}
-function applySwitch(key: string, on: boolean, after?: () => void) {
-  const g = dispatch.groupOf(key);
-  if (!g || g.switchOn === on) { after?.(); return; }
-  const apply = () => {
-    const r = dispatch.setGroupSwitch(key, on, user.name);
-    if (r.ok) message.success(r.message); else if (r.message) message.error(r.message);
-    after?.();
-  };
-  if (!on) switchOff.value = { key, apply };
-  else apply();
-}
-/** 关闭班组开关 · 二次确认（8.2） */
-const switchOff = ref<{ key: string; apply: () => void } | null>(null);
-const switchOffOpen = computed({ get: () => !!switchOff.value, set: (v: boolean) => { if (!v) switchOff.value = null; } });
-const switchOffTip = computed(() => (switchOff.value ? `关闭后${dispatch.poolLabel(switchOff.value.key)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？` : ''));
-function onSwitchOffOk() { switchOff.value?.apply(); }
-
 // —— 分组 新建/编辑（含排班）——
 let gSeq = 7;
 const groupModalOpen = ref(false);
 const gMode = ref<'create' | 'edit'>('create');
-const gf = reactive<Group & { switchOn: boolean }>({ key: '', name: '', type: '业务班组', leader: '', shift: '白班', switchOn: true });
+const gf = reactive<Group>({ key: '', name: '', type: '业务班组', leader: '', shift: '白班' });
 const gfDispatch = computed(() => gMode.value === 'edit' && isDispatchGroup(gf.key));
 function openCreateGroup() {
   gMode.value = 'create';
-  Object.assign(gf, { key: '', name: '', type: '业务班组', leader: '', shift: '白班', switchOn: true });
+  Object.assign(gf, { key: '', name: '', type: '业务班组', leader: '', shift: '白班' });
   groupModalOpen.value = true;
 }
 function openEditGroup() {
   gMode.value = 'edit';
-  Object.assign(gf, { ...sel.value, switchOn: dispatch.groupOf(sel.value.key)?.switchOn ?? true });
+  Object.assign(gf, { ...sel.value });
   groupModalOpen.value = true;
 }
 function saveGroup() {
@@ -141,8 +115,7 @@ function saveGroup() {
       if (g) Object.assign(g, { name: gf.name, type: gf.type, leader: gf.leader, shift: gf.shift });
     }
     groupModalOpen.value = false;
-    if (dg && dg.switchOn !== gf.switchOn) applySwitch(gf.key, gf.switchOn, () => message.success('分组已更新'));
-    else message.success('分组已更新');
+    message.success('分组已更新');
     return;
   }
   const key = 'g' + gSeq++;
@@ -255,25 +228,10 @@ function removeMember(m: Member) {
                 <span class="gd-label">成员数</span>
                 <span class="gd-val">{{ members.length }} 人</span>
               </div>
-              <template v-if="selGroup">
-                <div class="gd-kv">
-                  <span class="gd-label">班组开关</span>
-                  <span class="gd-val">
-                    <a-tooltip :title="switchTip(selGroup.id)">
-                      <a-switch
-                        size="small"
-                        :checked="selGroup.switchOn"
-                        :disabled="!!switchTip(selGroup.id)"
-                        @change="(v: unknown) => applySwitch(selGroup!.id, !!v)"
-                      />
-                    </a-tooltip>
-                  </span>
-                </div>
-                <div class="gd-kv">
-                  <span class="gd-label">本组派单方式</span>
-                  <span class="gd-val"><a-tag :color="MODE_TONE[dispatch.groupModeOf(selGroup.id)]">{{ dispatch.groupModeOf(selGroup.id) }}</a-tag></span>
-                </div>
-              </template>
+              <div v-if="selGroup" class="gd-kv">
+                <span class="gd-label">本组派单方式</span>
+                <span class="gd-val"><a-tag :color="MODE_TONE[dispatch.groupModeOf(selGroup.id)]">{{ dispatch.groupModeOf(selGroup.id) }}</a-tag></span>
+              </div>
             </div>
           </div>
         </div>
@@ -303,16 +261,9 @@ function removeMember(m: Member) {
         <a-form-item label="分组类型" class="half"><a-select v-model:value="gf.type" :disabled="gfDispatch" :options="TYPE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
         <a-form-item label="负责人" class="half"><a-input v-model:value="gf.leader" placeholder="组长姓名" /></a-form-item>
         <a-form-item label="排班" class="half"><a-select v-model:value="gf.shift" :options="SHIFT_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
-        <template v-if="gfDispatch">
-          <a-form-item label="班组开关" class="half">
-            <a-tooltip :title="switchTip(gf.key)">
-              <a-switch v-model:checked="gf.switchOn" :disabled="!!switchTip(gf.key)" />
-            </a-tooltip>
-          </a-form-item>
-          <a-form-item label="本组派单方式" class="half">
-            <a-tag :color="MODE_TONE[dispatch.groupModeOf(gf.key)]">{{ dispatch.groupModeOf(gf.key) }}</a-tag>
-          </a-form-item>
-        </template>
+        <a-form-item v-if="gfDispatch" label="本组派单方式" class="half">
+          <a-tag :color="MODE_TONE[dispatch.groupModeOf(gf.key)]">{{ dispatch.groupModeOf(gf.key) }}</a-tag>
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -325,8 +276,6 @@ function removeMember(m: Member) {
         <a-form-item label="状态" class="half"><a-select v-model:value="mf.status" :options="['在线','小休','离线'].map((v)=>({value:v,label:v}))" /></a-form-item>
       </a-form>
     </a-modal>
-
-    <DispatchConfirmModal v-model:open="switchOffOpen" title="关闭班组开关" :tip="switchOffTip" ok-text="确定关闭" danger @ok="onSwitchOffOk" />
   </div>
 </template>
 

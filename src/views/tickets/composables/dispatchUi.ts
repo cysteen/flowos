@@ -15,7 +15,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
-import { IN_TRANSIT_COUNT_RULE, type DispatchAgent, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
+import { IN_TRANSIT_COUNT_RULE, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
 
@@ -109,30 +109,13 @@ export function waitText(min: number | null): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* 置灰判据（5.4 / 8.2）                                                 */
+/* 置灰判据（5.4）                                                       */
 /* ------------------------------------------------------------------ */
 
-/** 班组开关置灰提示；可操作返回空串 */
-export function groupSwitchDisabledTip(groupId: string): string {
-  const dispatch = useDispatchStore();
-  if (!dispatch.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
-  if (dispatch.groupOf(groupId)?.mode === '人工派单') return '本组已由管理员切为人工派单';
-  return '';
-}
-
-/** 本组派单方式切换置灰提示；可操作返回空串（人工派单由管理员恢复） */
-export function groupModeDisabledTip(groupId: string): string {
+/** 本组派单方式切换置灰提示；可操作返回空串 */
+export function groupModeDisabledTip(_groupId?: string): string {
   const dispatch = useDispatchStore();
   if (dispatch.globalEffectiveMode() === '人工派单') return '全局为人工派单，本组派单方式不可切换';
-  if (dispatch.groupOf(groupId)?.mode === '人工派单') return '本组已由管理员切为人工派单';
-  return '';
-}
-
-/** 个人开关置灰提示：所在全部组的班组开关均关闭 */
-export function personalSwitchDisabledTip(a: DispatchAgent): string {
-  const dispatch = useDispatchStore();
-  const gs = a.groupIds.map((id) => dispatch.groupOf(id)).filter((g) => !!g);
-  if (gs.length && gs.every((g) => !g!.switchOn)) return '所在组均已退出自动派单，个人开关暂不生效';
   return '';
 }
 

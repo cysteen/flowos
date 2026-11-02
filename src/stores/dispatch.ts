@@ -30,7 +30,7 @@ import { useXiaozhiStore } from './xiaozhi';
 import { useRefundStore } from './refund';
 
 /**
- * 智能派单（【1215】PRD P0）：入池规则、人员画像 / 熟练度 / 个人上限 / 三级开关、池三态、派单引擎、派单日志与审计。
+ * 智能派单（【1215】PRD P0）：入池规则、人员画像 / 熟练度 / 个人上限 / 两级开关、池三态、派单引擎、派单日志与审计。
  *
  * 【数据】坐席、组、入池规则、配置、工单派单状态、派单日志、审计都在本 store；工单行只改处理人 / 子状态 / 归属组 / 履历，
  * 派单状态（等原处理人 / 排队中 / 派单失败回池）按工单号存在 `ticketStates`，不写进工单行。
@@ -43,7 +43,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 10;
+export const DISPATCH_CACHE_VERSION = 11;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -90,16 +90,16 @@ const NON_DISPATCH_GROUP_IDS = new Set(['line1']);
 const LEADER = '王组长';
 
 /**
- * 运行中种子（上线阶段「多组」）：二线、硬件、综合、技术支持四组开启班组开关；小智、教育刷机、教育支持三组（专属工单线）
- * 未开启，本组混合派单、组内领取。硬件缺陷组由管理员切为混合派单（原因见审计种子）。
+ * 运行中种子（上线阶段「多组」）：二线、综合、技术支持三组为自动派单；硬件缺陷组由管理员切为混合派单（原因见审计种子）；
+ * 小智、教育刷机、教育支持三组（专属工单线）为混合派单、组内领取。
  */
-const SWITCH_OFF_GROUP_IDS = new Set(['xiaozhi', 'edu-flash', 'edu']);
+const MIXED_SEED_GROUP_IDS = new Set(['hardware', 'xiaozhi', 'edu-flash', 'edu']);
 function seedGroups(): DispatchGroup[] {
   return POOL_GROUPS
     .filter((g) => !NON_DISPATCH_GROUP_IDS.has(g.id))
     .map((g) => ({
-      id: g.id, label: g.label, switchOn: !SWITCH_OFF_GROUP_IDS.has(g.id),
-      mode: (g.id === 'hardware' ? '混合派单' : '自动派单') as PoolMode, leaders: [LEADER],
+      id: g.id, label: g.label,
+      mode: (MIXED_SEED_GROUP_IDS.has(g.id) ? '混合派单' : '自动派单') as PoolMode, leaders: [LEADER],
     }));
 }
 
@@ -299,7 +299,6 @@ export interface DispatchPoolView {
   poolLabel: string;
   effectiveMode: PoolMode;
   groupMode: PoolMode;
-  switchOn: boolean;
   leaders: string[];
   waitingOriginal: number;
   queued: number;
@@ -375,7 +374,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   // 默认池（综合处理组）不在旧缓存里时补上
   if (!groups.value.some((g) => g.id === DEFAULT_POOL_ID)) {
-    groups.value.push({ id: DEFAULT_POOL_ID, label: DEFAULT_POOL_LABEL, switchOn: true, mode: '自动派单', leaders: [LEADER] });
+    groups.value.push({ id: DEFAULT_POOL_ID, label: DEFAULT_POOL_LABEL, mode: '自动派单', leaders: [LEADER] });
   }
 
   /* ---------------- 工单行快照（刷新前后一致） ---------------- */
@@ -527,11 +526,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function globalEffectiveMode(): PoolMode {
     return config.value.globalSwitch ? config.value.globalMode : '人工派单';
   }
-  /** 本组派单方式：本组派单方式与班组开关（关＝混合派单）取较严者 */
+  /** 本组派单方式（5.4） */
   function groupModeOf(id: string): PoolMode {
-    const g = groupOf(id);
-    if (!g) return '人工派单';
-    return stricterMode(g.mode, g.switchOn ? '自动派单' : '混合派单');
+    return groupOf(id)?.mode ?? '人工派单';
   }
   /** 作用于本组池的派单方式：全局与本组取较严者（5.1） */
   function effectiveModeOf(id: string): PoolMode {
@@ -726,7 +723,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   function gates(t: Ticket, st: TicketDispatchState, level: RelaxLevel, opts: { only?: string } = {}): GateOutcome {
     const drops: Partial<Record<GateKey, number>> = {};
-    const g = groupOf(st.poolId);
     let list = agents.value.filter((a) => !opts.only || a.name === opts.only);
     const step = (key: GateKey, keep: (a: DispatchAgent) => boolean) => {
       const next = list.filter(keep);
@@ -735,7 +731,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       list = next;
     };
     step('候选范围', (a) => a.groupIds.includes(st.poolId));
-    step('三级开关', (a) => config.value.globalSwitch && !!g?.switchOn && a.personalSwitch);
+    step('两级开关', (a) => config.value.globalSwitch && a.personalSwitch);
     step('角色', (a) => !a.disabled && a.roles.length > 0);
     step('在班', (a) => a.signIn === '签入');
     const onDuty = list.length;
@@ -1615,7 +1611,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     config.value.globalSwitch = on;
     if (!on) clearStatuses(groups.value.map((g) => g.id), false);
     notifyAdmins('全局开关变更', groups.value.map((g) => g.id),
-      on ? `${operator ?? operatorName()}已开启智能派单全局开关，各组按班组开关接入自动派单。`
+      on ? `${operator ?? operatorName()}已开启智能派单全局开关，各组按本组派单方式接入自动派单。`
         : `${operator ?? operatorName()}已关闭智能派单全局开关，全部组池为人工派单，工单按入池规则留组池，请组内领取或指派。`);
     persist();
     if (on) resumePools(groups.value.map((g) => g.id));
@@ -1641,24 +1637,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     persist();
     if (mode === '自动派单') resumePools(groups.value.map((g) => g.id));
     return { ok: true, message: `已切换为${mode}` };
-  }
-
-  function setGroupSwitch(groupId: string, on: boolean, operator?: string): OccupyResult {
-    const g = groupOf(groupId);
-    if (!g) return { ok: false, message: '' };
-    if (!config.value.globalSwitch) return { ok: false, message: '全局开关已关闭，班组开关暂不生效' };
-    if (g.mode === '人工派单') return { ok: false, message: '本组已由管理员切为人工派单' };
-    if (g.switchOn === on) return { ok: true, message: '' };
-    audit('班组开关', g.label, g.switchOn ? '开启' : '关闭', on ? '开启' : '关闭', operator);
-    g.switchOn = on;
-    // 关闭班组开关＝本组混合派单：清空排队中、派单失败回池，保留等原处理人（5.2 / 8.2）
-    if (!on) clearStatuses([groupId], true);
-    notifyAdmins('班组开关变更', [groupId],
-      on ? `${operator ?? operatorName()}已开启${g.label}班组开关，${g.label}已接入自动派单。`
-        : `${operator ?? operatorName()}已关闭${g.label}班组开关，${poolLabel(groupId)}转为混合派单，本组成员不再接本组池的自动派单。`);
-    persist();
-    if (on) resumePools([groupId]);
-    return { ok: true, message: on ? `${g.label}已接入自动派单` : `${g.label}已退出自动派单` };
   }
 
   function setGroupMode(groupId: string, mode: PoolMode, reason = '', operator?: string): OccupyResult {
@@ -1693,20 +1671,20 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const ROLLOUT_TARGET = '上线阶段';
 
   /**
-   * 当前上线阶段（第 17 章）：运行方式为试运行即试运行；正式派单下按开启班组开关的组数判定 ——
-   * 0 个组视同未上线、显示「试运行」（见 `rolloutNoSwitch`），1 个组单组试点，全部组全量，其余多组。
+   * 当前上线阶段（第 17 章）：运行方式为试运行即试运行；正式派单下按本组派单方式为自动派单的组数判定 ——
+   * 0 个组视同未上线、显示「试运行」（见 `rolloutNoAutoGroup`），1 个组单组试点，全部组全量，其余多组。
    */
   function rolloutStage(): RolloutStage {
     if (config.value.runMode === '试运行') return '试运行';
-    const on = groups.value.filter((g) => g.switchOn).length;
+    const on = groups.value.filter((g) => g.mode === '自动派单').length;
     if (on === 0) return '试运行';
     if (on >= groups.value.length) return '全量';
     return on === 1 ? '单组试点' : '多组';
   }
 
-  /** 正式派单下未开启任何班组开关（阶段显示「试运行」，行内标「未开启班组开关」，只能推进至单组试点） */
-  function rolloutNoSwitch(): boolean {
-    return config.value.runMode === '正式派单' && !groups.value.some((g) => g.switchOn);
+  /** 正式派单下没有自动派单的组（阶段显示「试运行」，行内标「无自动派单组」，只能推进至单组试点） */
+  function rolloutNoAutoGroup(): boolean {
+    return config.value.runMode === '正式派单' && !groups.value.some((g) => g.mode === '自动派单');
   }
 
   /** 进入某阶段的时刻（取最近一次推进 / 退回到该阶段的审计；试运行另认全局开关开启） */
@@ -1719,9 +1697,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /**
    * 推进 / 退回上线阶段（第 17 章）：由管理员在运行设置确认，记审计并通知全部管理员及受影响班组长。
-   * - 试运行 → 单组试点：切正式派单，只开启试点组的班组开关（`groupIds` 一个），其余组关闭；
-   * - 单组试点 → 多组：逐组开启（`groupIds` 为本次开启的组）；多组 → 全量：全部组开启；
-   * - 退回：单组试点 → 试运行切回试运行；多组 → 单组试点只保留 `groupIds` 一个组开启；全量 → 多组关闭 `groupIds`。
+   * - 试运行 → 单组试点：切正式派单，试点组（`groupIds` 一个）切为自动派单，其余组切为混合派单；
+   * - 单组试点 → 多组：`groupIds` 为本次切为自动派单的组；多组 → 全量：全部组切为自动派单；
+   * - 退回：单组试点 → 试运行切回试运行；多组 → 单组试点只保留 `groupIds` 一个组为自动派单；全量 → 多组把 `groupIds` 切为混合派单。
    */
   function setRolloutStage(to: RolloutStage, groupIds: string[] = [], operator?: string): OccupyResult {
     const from = rolloutStage();
@@ -1732,48 +1710,51 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (Math.abs(fromIdx - toIdx) !== 1) return { ok: false, message: '' };
     const forward = toIdx > fromIdx;
     const valid = groupIds.filter((id) => !!groupOf(id));
-    // 各组目标开关
-    const target = new Map(groups.value.map((g) => [g.id, g.switchOn]));
+    // 各组目标：是否为自动派单
+    const isAuto = (g: DispatchGroup) => g.mode === '自动派单';
+    const target = new Map(groups.value.map((g) => [g.id, isAuto(g)]));
     if (to === '单组试点') {
       if (valid.length !== 1) return { ok: false, message: '请选择试点组' };
       groups.value.forEach((g) => target.set(g.id, g.id === valid[0]));
     } else if (to === '多组') {
-      if (!valid.length) return { ok: false, message: forward ? '请选择开启的组' : '请选择关闭的组' };
+      const tip = forward ? '请选择切为自动派单的组' : '请选择切为混合派单的组';
+      if (!valid.length) return { ok: false, message: tip };
       valid.forEach((id) => target.set(id, forward));
       const onCount = [...target.values()].filter(Boolean).length;
-      if (onCount <= 1 || onCount >= groups.value.length) return { ok: false, message: forward ? '请选择开启的组' : '请选择关闭的组' };
+      if (onCount <= 1 || onCount >= groups.value.length) return { ok: false, message: tip };
     } else if (to === '全量') {
       groups.value.forEach((g) => target.set(g.id, true));
     }
-    const affected = groups.value.filter((g) => target.get(g.id) !== g.switchOn).map((g) => g.id);
-    const opened = groups.value.filter((g) => target.get(g.id) && !g.switchOn).map((g) => g.label);
-    const closed = groups.value.filter((g) => !target.get(g.id) && g.switchOn).map((g) => g.label);
+    const affected = groups.value.filter((g) => target.get(g.id) !== isAuto(g)).map((g) => g.id);
+    const opened = groups.value.filter((g) => target.get(g.id) && !isAuto(g)).map((g) => g.label);
+    const closed = groups.value.filter((g) => !target.get(g.id) && isAuto(g)).map((g) => g.label);
     if (to === '试运行') {
       audit('运行方式', '全局', config.value.runMode, '试运行', operator);
       config.value.runMode = '试运行';
     } else {
-      // 正式派单下未开启班组开关时推进：运行方式保持正式派单，只开启试点组
+      // 正式派单下没有自动派单的组时推进：运行方式保持正式派单，只把试点组切为自动派单
       if (from === '试运行' && config.value.runMode !== '正式派单') {
         audit('运行方式', '全局', config.value.runMode, '正式派单', operator);
         config.value.runMode = '正式派单';
       }
       for (const g of groups.value) {
         const on = target.get(g.id)!;
-        if (on === g.switchOn) continue;
-        audit('班组开关', g.label, g.switchOn ? '开启' : '关闭', on ? '开启' : '关闭', operator);
-        g.switchOn = on;
+        if (on === isAuto(g)) continue;
+        const mode: PoolMode = on ? '自动派单' : '混合派单';
+        audit('派单方式', poolLabel(g.id), g.mode, mode, operator, `上线阶段${forward ? '推进至' : '退回至'}${to}`);
+        g.mode = mode;
         if (!on) clearStatuses([g.id], true);
       }
     }
     audit('运行方式', ROLLOUT_TARGET, from, to, operator);
     const detail = [
-      ...(opened.length ? [`开启班组开关：${opened.join('、')}`] : []),
-      ...(closed.length ? [`关闭班组开关：${closed.join('、')}`] : []),
+      ...(opened.length ? [`切为自动派单：${opened.join('、')}`] : []),
+      ...(closed.length ? [`切为混合派单：${closed.join('、')}`] : []),
     ].join('；');
     notifyAdmins(forward ? '上线阶段推进' : '上线阶段退回', to === '试运行' || from === '试运行' ? groups.value.map((g) => g.id) : affected,
       `${operator ?? operatorName()}已将智能派单上线阶段由${from}${forward ? '推进至' : '退回至'}${to}${detail ? `，${detail}` : ''}。`);
     persist();
-    if (to !== '试运行') resumePools(groups.value.filter((g) => g.switchOn).map((g) => g.id));
+    if (to !== '试运行') resumePools(groups.value.filter(isAuto).map((g) => g.id));
     return { ok: true, message: forward ? `已推进至${to}` : `已退回至${to}` };
   }
 
@@ -2033,7 +2014,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
         poolLabel: poolLabelOf(g.label),
         effectiveMode: effectiveModeOf(g.id),
         groupMode: groupModeOf(g.id),
-        switchOn: g.switchOn,
         leaders: g.leaders,
         waitingOriginal: st.filter((x) => x.status === '等原处理人').length,
         queued: st.filter((x) => x.status === '排队中').length,
@@ -2089,8 +2069,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 先到先得 · 人工动作
     checkOccupy, checkClaim, recordManualTake, withdrawTicket,
     // 派单方式 · 开关 · 运行方式 · 上线阶段
-    setGlobalSwitch, setGlobalMode, setGroupSwitch, setGroupMode, setRunMode,
-    rolloutStage, rolloutNoSwitch, rolloutStageSince, setRolloutStage, onDutyHoursOf,
+    setGlobalSwitch, setGlobalMode, setGroupMode, setRunMode,
+    rolloutStage, rolloutNoAutoGroup, rolloutStageSince, setRolloutStage, onDutyHoursOf,
     // 入池规则
     addPoolRule, updatePoolRule, setPoolRuleEnabled, removePoolRule,
     // 坐席

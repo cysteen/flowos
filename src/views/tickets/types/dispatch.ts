@@ -168,9 +168,7 @@ export const DEFAULT_POOL_LABEL = '综合处理组';
 export interface DispatchGroup {
   id: string;
   label: string;
-  /** 班组开关（8.1），默认开；关闭即本组池转混合派单 */
-  switchOn: boolean;
-  /** 本组派单方式（管理员切换，5.4）；与全局派单方式、班组开关取较严者 */
+  /** 本组派单方式（管理员 / 班组长切换，5.4）；作用于本组池时与全局派单方式取较严者 */
   mode: PoolMode;
   /** 班组长姓名（兜底回池通知、指派权限） */
   leaders: string[];
@@ -378,8 +376,8 @@ export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '�
 export type DispatchFailReason = '无画像匹配成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
-export type GateKey = '候选范围' | '三级开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
-export const GATE_ORDER: GateKey[] = ['候选范围', '三级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+export type GateKey = '候选范围' | '两级开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
+export const GATE_ORDER: GateKey[] = ['候选范围', '两级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
 
 /** 单个候选的评分明细（4.3） */
 export interface ScoreDetail {
@@ -497,7 +495,7 @@ export interface TicketDispatchState {
 /* 审计（3.1 / 5.4 / 6.5 / 7.5 / 8.3）                                   */
 /* ------------------------------------------------------------------ */
 
-export type DispatchAuditKind = '全局开关' | '班组开关' | '个人开关' | '派单方式' | '运行方式' | '入池规则' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
+export type DispatchAuditKind = '全局开关' | '个人开关' | '派单方式' | '运行方式' | '入池规则' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
 export interface DispatchAuditEntry {
   id: string;
   at: string;

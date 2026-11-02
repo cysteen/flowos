@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 切换派单方式弹窗（PRD 5.4）：全局或某组池；管理员视角，三种派单方式均可选（不含当前派单方式）
+// 切换派单方式弹窗（PRD 5.4）：全局或某组池；「切换为」固定列出三种派单方式，当前派单方式置灰
 import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
@@ -20,9 +20,10 @@ const currentRaw = computed<PoolMode>(() => {
   if (isGlobal.value) return store.config.globalSwitch ? store.config.globalMode : '人工派单';
   return store.groupOf(props.scope)?.mode ?? '自动派单';
 });
-const choices = computed(() => POOL_MODES.filter((m) => m !== currentRaw.value).map((m) => ({
+const choices = computed(() => POOL_MODES.map((m) => ({
   mode: m,
-  disabled: isGlobal.value && !store.config.globalSwitch && m !== '人工派单',
+  current: m === currentRaw.value,
+  switchOff: m !== currentRaw.value && isGlobal.value && !store.config.globalSwitch && m !== '人工派单',
 })));
 
 const target = ref<PoolMode | undefined>(undefined);
@@ -70,10 +71,10 @@ function submit() {
         <span class="op-label req">切换为</span>
         <a-radio-group v-model:value="target">
           <template v-for="c in choices" :key="c.mode">
-            <a-tooltip v-if="c.disabled" title="全局开关已关闭，请先在派单策略开启">
+            <a-tooltip v-if="c.switchOff" title="全局开关已关闭，请先在派单策略开启">
               <a-radio :value="c.mode" disabled>{{ c.mode }}</a-radio>
             </a-tooltip>
-            <a-radio v-else :value="c.mode">{{ c.mode }}</a-radio>
+            <a-radio v-else :value="c.mode" :disabled="c.current">{{ c.mode }}</a-radio>
           </template>
         </a-radio-group>
       </div>
