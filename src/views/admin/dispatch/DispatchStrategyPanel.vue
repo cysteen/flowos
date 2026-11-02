@@ -17,7 +17,6 @@ import { parseAt } from './dispatchMetrics';
 import PoolRuleList from './PoolRuleList.vue';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import RolloutStageModal from './RolloutStageModal.vue';
-import DispatchCard from './DispatchCard.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
 
@@ -185,91 +184,113 @@ watch(() => store.config, (c) => {
 
 <template>
   <div class="st">
-    <a-tabs v-model:active-key="active" class="st-tabs">
-      <a-tab-pane v-for="t in TABS" :key="t.key" :tab="t.label" />
-    </a-tabs>
+    <section class="block st-shell">
+      <a-tabs v-model:active-key="active" class="st-tabs">
+        <a-tab-pane v-for="t in TABS" :key="t.key" :tab="t.label" />
+      </a-tabs>
 
-    <!-- 运行设置 -->
-    <div v-if="active === 'run'" class="st-stack">
-      <!-- 上线阶段状态条 -->
-      <section class="dx-card ro-bar">
-        <div class="ro-head">
-          <span class="dx-icon ro-ic"><RocketOutlined /></span>
-          <span class="ro-label">上线阶段</span>
-          <span v-if="store.rolloutNoSwitch()" class="dx-meta">未开启班组开关</span>
-        </div>
-        <ol class="ro-steps">
-          <li v-for="(s, i) in ROLLOUT_STAGES" :key="s" :class="{ done: i < stageIdx, cur: i === stageIdx }">
-            <span class="ro-dot"><CheckOutlined v-if="i < stageIdx" /><template v-else>{{ i + 1 }}</template></span>
-            <span class="ro-name">{{ s }}</span>
-          </li>
-        </ol>
-        <div class="ro-ops">
-          <a-tooltip :title="stageTip || undefined">
-            <a-button v-if="prevStage" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
-          </a-tooltip>
-          <a-tooltip :title="stageTip || undefined">
-            <a-button v-if="nextStage" type="primary" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
-          </a-tooltip>
-        </div>
-      </section>
+      <!-- 运行设置 -->
+      <div v-if="active === 'run'" class="st-tab-pane run-tab">
+        <section class="run-panel">
+        <div class="run-card">
+          <header class="run-top">
+            <div class="run-top-id">
+              <span class="run-top-ic"><RocketOutlined /></span>
+              <div class="run-top-tx">
+                <span class="run-top-title">上线阶段</span>
+                <span v-if="store.rolloutNoSwitch()" class="run-top-note">未开启班组开关</span>
+              </div>
+            </div>
+            <ol class="ro-steps">
+              <li v-for="(s, i) in ROLLOUT_STAGES" :key="s" :class="{ done: i < stageIdx, cur: i === stageIdx }">
+                <span class="ro-dot"><CheckOutlined v-if="i < stageIdx" /><template v-else>{{ i + 1 }}</template></span>
+                <span class="ro-name">{{ s }}</span>
+              </li>
+            </ol>
+            <div class="ro-ops">
+              <a-tooltip :title="stageTip || undefined">
+                <a-button v-if="prevStage" size="small" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
+              </a-tooltip>
+              <a-tooltip :title="stageTip || undefined">
+                <a-button v-if="nextStage" type="primary" size="small" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
+              </a-tooltip>
+            </div>
+          </header>
 
-      <DispatchCard title="开关与形态" sub="全局派单开关、运行方式与全局形态">
-        <div class="dpf-grid">
-          <div class="dpf-item">
-            <span class="dpf-label">全局开关</span>
-            <div class="dpf-ctl"><a-switch :checked="store.config.globalSwitch" @change="(v: unknown) => onGlobalSwitch(!!v)" /></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">运行方式</span>
-            <div class="dpf-ctl"><span class="dpf-val">{{ store.config.runMode }}</span></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">全局形态</span>
-            <div class="dpf-ctl">
-              <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
-              <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
-              <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
+          <div class="run-body">
+            <div class="run-col">
+              <div class="run-block-hd">
+                <span class="run-block-title">开关与形态</span>
+                <span class="run-block-tip">全局派单开关、运行方式与全局形态</span>
+              </div>
+              <div class="run-kv">
+                <div class="run-kv-row">
+                  <span class="run-kv-label">全局开关</span>
+                  <span class="run-kv-ctl"><a-switch :checked="store.config.globalSwitch" @change="(v: unknown) => onGlobalSwitch(!!v)" /></span>
+                </div>
+                <div class="run-kv-row">
+                  <span class="run-kv-label">运行方式</span>
+                  <span class="run-kv-ctl"><span class="dpf-val">{{ store.config.runMode }}</span></span>
+                </div>
+                <div class="run-kv-row">
+                  <span class="run-kv-label">全局形态</span>
+                  <span class="run-kv-ctl">
+                    <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
+                    <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
+                    <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="run-col">
+              <div class="run-block-hd">
+                <span class="run-block-title">自动降级</span>
+                <span class="run-block-tip">触发自动降级的指标阈值</span>
+              </div>
+              <div class="run-kv run-kv-grid">
+                <div v-for="fd in AUTO_FIELDS" :key="fd.key" class="run-kv-row">
+                  <span class="run-kv-label">{{ fd.label.replace('自动降级 · ', '') }}</span>
+                  <span class="run-kv-ctl">
+                    <span v-if="fd.prefix" class="dpf-unit">{{ fd.prefix }}</span>
+                    <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
+                    <span class="dpf-unit">{{ fd.unit }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="run-block-hd run-block-hd-sub">
+                <span class="run-block-title">回切与小休</span>
+              </div>
+              <div class="run-kv run-kv-grid run-kv-grid-2">
+                <div v-for="fd in RESUME_FIELDS" :key="fd.key" class="run-kv-row">
+                  <span class="run-kv-label">{{ fd.label }}</span>
+                  <span class="run-kv-ctl">
+                    <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
+                    <span class="dpf-unit">{{ fd.unit }}</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </DispatchCard>
 
-      <DispatchCard title="自动降级" sub="触发自动降级的指标阈值">
-        <div class="dpf-grid">
-          <div v-for="fd in AUTO_FIELDS" :key="fd.key" class="dpf-item">
-            <span class="dpf-label">{{ fd.label.replace('自动降级 · ', '') }}</span>
-            <div class="dpf-ctl">
-              <span v-if="fd.prefix" class="dpf-unit">{{ fd.prefix }}</span>
-              <a-input-number v-model:value="run[fd.key]" :precision="0" style="width: 100px" />
-              <span class="dpf-unit">{{ fd.unit }}</span>
-            </div>
-          </div>
+        <div class="panel-foot">
+          <a-button @click="resetRun">重置</a-button>
+          <a-button type="primary" @click="saveRun">保存</a-button>
         </div>
-      </DispatchCard>
+        </section>
+      </div>
 
-      <DispatchCard title="回切与小休">
-        <div class="dpf-grid">
-          <div v-for="fd in RESUME_FIELDS" :key="fd.key" class="dpf-item">
-            <span class="dpf-label">{{ fd.label }}</span>
-            <div class="dpf-ctl">
-              <a-input-number v-model:value="run[fd.key]" :precision="0" style="width: 100px" />
-              <span class="dpf-unit">{{ fd.unit }}</span>
-            </div>
-          </div>
-        </div>
-      </DispatchCard>
-      <div class="st-foot"><a-button @click="resetRun">重置</a-button><a-button type="primary" @click="saveRun">保存</a-button></div>
-    </div>
+      <!-- 入池规则 -->
+      <div v-else-if="active === 'inpool'" class="st-tab-pane">
+        <PoolRuleList :focus-id="focusRuleId" />
+      </div>
 
-    <!-- 入池规则 -->
-    <div v-else-if="active === 'inpool'" class="st-stack">
-      <PoolRuleList :focus-id="focusRuleId" />
-    </div>
-
-    <!-- 出池规则 -->
-    <div v-else-if="active === 'outpool'" class="st-stack">
-      <DispatchCard title="出池规则" sub="在归属组成员中按以下步骤选处理人">
+      <!-- 出池规则 -->
+      <div v-else-if="active === 'outpool'" class="st-tab-pane">
+        <section class="outpool-panel">
+      <p class="outpool-lead">在归属组成员中按以下步骤选处理人</p>
       <div class="cs-list">
       <div class="cs">
         <div class="cs-hd">
@@ -372,59 +393,119 @@ watch(() => store.config, (c) => {
         </div>
       </div>
       </div>
-      </DispatchCard>
-      <div class="st-foot"><a-button @click="resetOut()">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
-    </div>
+      <div class="panel-foot">
+        <a-button @click="resetOut()">重置</a-button>
+        <a-button type="primary" @click="saveOut">保存</a-button>
+      </div>
+        </section>
+      </div>
 
-    <!-- 个人上限 -->
-    <div v-else-if="active === 'cap'" class="st-stack">
-      <div class="cap-grid">
-        <div class="st-stack">
-          <DispatchCard title="角色基准值" sub="各角色的默认个人上限">
-            <div class="dpf-grid cap-form">
-              <div v-for="r in DISPATCH_ROLES" :key="r" class="dpf-item">
-                <span class="dpf-label">{{ r }}</span>
-                <div class="dpf-ctl"><a-input-number v-model:value="cap.roleBase[r]" :precision="0" style="width: 100px" /></div>
+      <!-- 个人上限 -->
+      <div v-else-if="active === 'cap'" class="st-tab-pane">
+        <section class="cap-panel">
+        <div class="cap-layout">
+          <div class="cap-inputs">
+            <div class="cap-sect">
+              <h3 class="run-sect-title">角色基准值</h3>
+              <p class="run-sect-sub">各角色的默认个人上限</p>
+              <div class="cap-edit-wrap">
+                <table class="cap-edit-table">
+                  <thead>
+                    <tr><th>角色</th><th class="is-num">基准值</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in DISPATCH_ROLES" :key="r">
+                      <td class="cap-role">{{ r }}</td>
+                      <td class="is-num">
+                        <a-input-number v-model:value="cap.roleBase[r]" :precision="0" size="small" class="cap-num-input" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
-          </DispatchCard>
-          <DispatchCard title="熟练度系数" sub="与角色基准值相乘得到默认值">
-            <div class="dpf-grid cap-form">
-              <div v-for="p in PROFICIENCIES" :key="p" class="dpf-item">
-                <span class="dpf-label">{{ p }}</span>
-                <div class="dpf-ctl"><a-input-number v-model:value="cap.proficiencyCoef[p]" :step="0.1" :precision="1" style="width: 100px" /></div>
+            <div class="cap-sect cap-sect-prof">
+              <h3 class="run-sect-title">熟练度系数</h3>
+              <p class="run-sect-sub">与角色基准值相乘得到默认值</p>
+              <div class="cap-edit-wrap">
+                <table class="cap-edit-table cap-edit-table-prof">
+                  <thead>
+                    <tr>
+                      <th v-for="p in PROFICIENCIES" :key="p" class="is-num">{{ p }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td v-for="p in PROFICIENCIES" :key="p" class="is-num">
+                        <a-input-number v-model:value="cap.proficiencyCoef[p]" :step="0.1" :precision="1" size="small" class="cap-num-input" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
-          </DispatchCard>
+          </div>
+
+          <div class="cap-preview">
+            <h3 class="run-sect-title">默认值预览</h3>
+            <p class="run-sect-sub">角色 × 熟练度</p>
+            <div class="cap-matrix-wrap">
+              <table class="cap-matrix">
+                <thead><tr><th>角色</th><th v-for="p in PROFICIENCIES" :key="p">{{ p }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="r in DISPATCH_ROLES" :key="r">
+                    <td class="cap-role">{{ r }}</td>
+                    <td v-for="p in PROFICIENCIES" :key="p"><span class="cap-num">{{ previewOf(r, p) }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-        <DispatchCard title="默认值预览" sub="角色 × 熟练度">
-          <table class="cap-matrix">
-            <thead><tr><th>角色</th><th v-for="p in PROFICIENCIES" :key="p">{{ p }}</th></tr></thead>
-            <tbody>
-              <tr v-for="r in DISPATCH_ROLES" :key="r"><td>{{ r }}</td><td v-for="p in PROFICIENCIES" :key="p"><span class="cap-num">{{ previewOf(r, p) }}</span></td></tr>
-            </tbody>
-          </table>
-        </DispatchCard>
-      </div>
-      <div class="st-foot"><a-button @click="resetCap">重置</a-button><a-button type="primary" @click="saveCap">保存</a-button></div>
-    </div>
 
-    <!-- 开关记录 -->
-    <DispatchCard v-else-if="active === 'audit'" title="开关记录" :sub="`共 ${auditRows.length} 条`">
-      <div class="au-bar">
-        <a-range-picker v-model:value="af.range" style="width: 260px; max-width: 100%" />
-        <a-select v-model:value="af.operator" :options="operatorOpts" placeholder="操作人" allow-clear style="width: 130px" />
-        <a-input v-model:value="af.target" placeholder="对象" allow-clear style="width: 160px" />
-        <a-select v-model:value="af.kind" :options="opts(auditKinds)" placeholder="类型" allow-clear style="width: 130px" />
+        <div class="panel-foot">
+          <a-button @click="resetCap">重置</a-button>
+          <a-button type="primary" @click="saveCap">保存</a-button>
+        </div>
+        </section>
       </div>
-      <a-table :columns="auditCols" :data-source="auditRows" row-key="id" size="middle" :pagination="stdPagination()" :scroll="{ x: 960 }" :locale="{ emptyText: '暂无记录' }">
-        <template #bodyCell="{ column, record }">
-          <span v-if="column.key === 'before'" :title="auditBefore(record as any)">{{ auditBefore(record as any) }}</span>
-          <span v-else-if="column.key === 'after'" :title="record.after">{{ record.after }}</span>
-          <span v-else-if="column.key === 'reason'">{{ record.reason || '—' }}</span>
-        </template>
-      </a-table>
-    </DispatchCard>
+
+      <!-- 开关记录 -->
+      <div v-else-if="active === 'audit'" class="st-tab-pane">
+        <section class="audit-panel">
+      <div class="meta-strip">
+        <div class="meta-chip">
+          <span class="meta-chip-val">{{ auditRows.length }}</span>
+          <span class="meta-chip-lb">条记录</span>
+        </div>
+        <span class="meta-hint">全局 / 班组 / 个人开关、池形态、运行方式等变更审计</span>
+      </div>
+      <div class="audit-toolbar">
+        <a-range-picker v-model:value="af.range" size="small" class="audit-range" />
+        <a-select v-model:value="af.operator" size="small" :options="operatorOpts" placeholder="操作人" allow-clear class="audit-f" />
+        <a-input v-model:value="af.target" size="small" placeholder="对象" allow-clear class="audit-f audit-f-wide" />
+        <a-select v-model:value="af.kind" size="small" :options="opts(auditKinds)" placeholder="类型" allow-clear class="audit-f" />
+      </div>
+      <div class="table-shell audit-table-wrap">
+        <a-table
+          :columns="auditCols"
+          :data-source="auditRows"
+          row-key="id"
+          size="small"
+          :pagination="stdPagination()"
+          :scroll="{ x: 960 }"
+          :locale="{ emptyText: '暂无记录' }"
+        >
+          <template #bodyCell="{ column, record }">
+            <span v-if="column.key === 'before'" class="audit-cell" :title="auditBefore(record as any)">{{ auditBefore(record as any) }}</span>
+            <span v-else-if="column.key === 'after'" class="audit-cell" :title="record.after">{{ record.after }}</span>
+            <span v-else-if="column.key === 'reason'" class="audit-cell muted">{{ record.reason || '—' }}</span>
+          </template>
+        </a-table>
+        </div>
+        </section>
+      </div>
+    </section>
 
     <PoolModeSwitchModal v-model:open="modeOpen" scope="global" />
     <RolloutStageModal v-model:open="stageOpen" :direction="stageDir" />
@@ -433,56 +514,135 @@ watch(() => store.config, (c) => {
 
 <style scoped>
 .st { min-width: 0; }
-.st-tabs :deep(.ant-tabs-nav) { margin-bottom: 16px; }
-.st-stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
-/* 底部保存栏：贴底常驻 */
-.st-foot {
-  position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 12px;
-  background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 12px 20px; box-shadow: 0 -4px 12px rgba(31, 35, 41, 0.04);
+/* 白框从页签顶缘开始，与工单池等单 block 子页对齐 */
+.st-shell { padding: 12px 20px 20px; margin-bottom: 0; }
+.st-tab-pane { min-width: 0; }
+.st-tabs :deep(.ant-tabs-nav) { margin: 0 0 14px; }
+.st-tabs :deep(.ant-tabs-tab) { padding: 6px 0; font-size: 13px; line-height: 20px; }
+.st-tabs :deep(.ant-tabs-tab + .ant-tabs-tab) { margin-left: 24px; }
+.st-tabs :deep(.ant-tabs-ink-bar) { height: 2px; }
+.st-tab-pane.run-tab { gap: 0; }
+.run-panel, .outpool-panel, .cap-panel, .audit-panel { padding: 0; border: none; background: transparent; border-radius: 0; }
+.outpool-panel { padding: 0; }
+.outpool-lead { margin: 0 0 14px; font-size: 12px; color: #9ca3af; line-height: 1.45; }
+
+/* 运行设置 · 单卡片聚合（阶段 + 表单同一外框） */
+.run-card {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.run-top {
+  display: flex;
+  align-items: center;
+  gap: 16px 20px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+  border-bottom: 1px solid #eef0f3;
+}
+.run-top-id { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; }
+.run-top-ic {
+  width: 32px; height: 32px; border-radius: 8px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; color: #1a6fff; background: #eff6ff;
+}
+.run-top-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.run-top-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.35; }
+.run-top-note { font-size: 12px; color: #9ca3af; line-height: 1.35; }
+.ro-steps {
+  display: flex; align-items: center; list-style: none; margin: 0; padding: 0;
+  flex: 1; min-width: min(100%, 520px);
+}
+.ro-steps li { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 12px; color: #6b7280; white-space: nowrap; }
+.ro-steps li:last-child { flex: none; }
+.ro-steps li:not(:last-child)::after {
+  content: ''; flex: 1; height: 2px; background: #e5e7eb; margin: 0 8px; min-width: 4px; border-radius: 1px;
+}
+.ro-steps li.done:not(:last-child)::after { background: #93c5fd; }
+.ro-dot {
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid #d1d5db; background: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 10px; flex: none;
+}
+.ro-steps li.done { color: #374151; }
+.ro-steps li.done .ro-dot { border-color: #1a6fff; color: #1a6fff; background: #eff6ff; }
+.ro-steps li.cur { color: #111827; font-weight: 600; }
+.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; }
+.ro-ops { display: flex; gap: 8px; flex-wrap: wrap; flex: none; margin-left: auto; }
+
+.run-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.92fr) minmax(340px, 1.08fr);
+  gap: 0;
+  align-items: stretch;
+}
+.run-col { padding: 16px 18px 18px; min-width: 0; }
+.run-col + .run-col { border-left: 1px solid #eef0f3; }
+.run-block-hd { margin-bottom: 10px; min-width: 0; }
+.run-block-hd-sub { margin-top: 18px; padding-top: 14px; border-top: 1px solid #f2f3f5; }
+.run-block-title { font-size: 13px; font-weight: 600; color: #111827; margin-right: 8px; }
+.run-block-tip { font-size: 12px; color: #9ca3af; font-weight: normal; }
+.run-kv { display: flex; flex-direction: column; }
+.run-kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.run-kv-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.run-kv-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 44px; padding: 6px 0; border-bottom: 1px solid #f2f3f5;
+}
+.run-kv-row:last-child { border-bottom: none; }
+.run-kv-grid .run-kv-row:nth-last-child(-n + 2) { border-bottom: none; }
+.run-kv-label { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.4; }
+.run-kv-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; max-width: 58%; }
+.run-num { width: 88px !important; }
+
+@media (max-width: 960px) {
+  .run-top { flex-direction: column; align-items: stretch; }
+  .ro-steps { min-width: 0; width: 100%; order: 2; }
+  .ro-ops { margin-left: 0; width: 100%; justify-content: flex-end; order: 3; }
+  .run-top-id { order: 1; }
+  .run-body { grid-template-columns: minmax(0, 1fr); }
+  .run-col + .run-col { border-left: none; border-top: 1px solid #eef0f3; }
+  .run-kv-grid, .run-kv-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .run-kv-grid .run-kv-row:nth-last-child(-n + 2) { border-bottom: 1px solid #f2f3f5; }
+  .run-kv-grid .run-kv-row:last-child { border-bottom: none; }
+  .run-kv-ctl { max-width: none; flex: 1; justify-content: flex-start; }
 }
 
-/* 上线阶段状态条（中性卡片） */
-.ro-bar { display: flex; align-items: center; gap: 16px 32px; flex-wrap: wrap; }
-.ro-head { display: flex; align-items: center; gap: 12px; flex: none; }
-.ro-ic { width: 32px; height: 32px; font-size: 15px; }
-.ro-label { font-size: 15px; font-weight: 600; color: #1f2329; }
-.ro-steps { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; flex: 1 1 320px; min-width: 0; }
-.ro-steps li { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 14px; color: #86909c; white-space: nowrap; }
-.ro-steps li:last-child { flex: none; }
-.ro-steps li:not(:last-child)::after { content: ''; flex: 1; height: 1px; background: #e5e6eb; margin: 0 12px; min-width: 8px; }
-.ro-steps li.done:not(:last-child)::after { background: #1a6fff; }
-.ro-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #c9cdd4; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
-.ro-steps li.done { color: #4e5969; }
-.ro-steps li.done .ro-dot { border-color: #1a6fff; color: #1a6fff; }
-.ro-steps li.cur { color: #1f2329; font-weight: 600; }
-.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; }
-.ro-ops { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
-
-/* 出池规则 · 编号步骤：序号圆点 + 标题 + 灰色说明，步骤之间分隔线 */
-.cs-list { display: flex; flex-direction: column; }
-.cs { padding: 20px 0; border-top: 1px solid #f2f3f5; }
-.cs:first-child { padding-top: 4px; border-top: none; }
-.cs:last-child { padding-bottom: 0; }
+/* 出池规则 · 链式步骤卡（对齐 dispatch-config chain-row） */
+.cs-list { display: flex; flex-direction: column; gap: 8px; }
+.cs {
+  padding: 10px 12px;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  background: #fcfcfd;
+}
 .cs.off .cs-bd { opacity: 0.55; }
 .cs-hd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cs-seq { width: 24px; height: 24px; border-radius: 50%; background: #f2f3f5; color: #4e5969; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
+.cs-seq {
+  width: 22px; height: 22px; border-radius: 50%; background: #1a6fff; color: #fff;
+  font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none;
+}
 .cs-ti { flex: 1; min-width: 200px; }
-.cs-name { font-size: 14px; font-weight: 600; color: #1f2329; display: flex; align-items: center; gap: 8px; line-height: 22px; }
-.cs-lk { font-size: 12px; font-weight: normal; color: #86909c; }
-.cs-desc { font-size: 13px; color: #86909c; line-height: 20px; }
+.cs-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; line-height: 1.4; }
+.cs-lk { font-size: 12px; font-weight: normal; color: #9ca3af; }
+.cs-desc { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.45; }
 .cs-op { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.cs-bd { margin: 8px 0 0 36px; }
+.cs-bd { margin: 10px 0 0 34px; }
 .cs-bd .dpf-item.last, .cs-bd > .dpf-grid:last-child .dpf-item { border-bottom: none; }
-.gates { display: flex; flex-wrap: wrap; gap: 8px 24px; padding-top: 8px; }
-.gate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4e5969; }
-.gate :deep(.anticon) { color: #86909c; }
+.gates { display: flex; flex-wrap: wrap; gap: 24px; padding-top: 4px; }
+.gate { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; }
+.gate :deep(.anticon) { color: #10b981; }
 @media (max-width: 640px) { .cs-bd { margin-left: 0; } }
 
-/* 加权评分 */
-.wsum { font-size: 13px; color: #86909c; }
-.fc-list { display: flex; flex-direction: column; }
-.fc-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid #f2f3f5; flex-wrap: wrap; }
-.fc-row.off { opacity: 0.6; }
+/* 加权评分（对齐 factor-row） */
+.wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
+.fc-list { display: flex; flex-direction: column; gap: 8px; }
+.fc-row {
+  display: flex; align-items: center; gap: 14px; padding: 8px 12px;
+  border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; flex-wrap: wrap;
+}
+.fc-row.off { opacity: 0.55; }
 .fc-name { width: 180px; flex: none; font-size: 14px; color: #1f2329; }
 .fc-bar { flex: 1; min-width: 80px; height: 4px; background: #f2f3f5; border-radius: 2px; overflow: hidden; }
 .fc-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 2px; transition: width 0.2s; }
@@ -490,16 +650,74 @@ watch(() => store.config, (c) => {
 .fc-w { display: flex; align-items: center; gap: 8px; }
 .fc-extra .dpf-item { border-bottom: none; }
 
-/* 个人上限 */
-.cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
-.cap-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); column-gap: 32px; }
-.cap-form :deep(.dpf-label), .cap-form .dpf-label { width: 112px; white-space: nowrap; }
-.cap-matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
-.cap-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; padding: 10px 12px; text-align: left; }
-.cap-matrix td { padding: 12px; border-bottom: 1px solid #f2f3f5; color: #4e5969; }
+/* 个人上限 · 单页聚合 */
+.cap-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.82fr) minmax(320px, 1.18fr);
+  gap: 0;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  overflow: hidden;
+  align-items: stretch;
+}
+.cap-inputs { padding: 16px 18px; background: #fff; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.cap-sect-prof { padding-top: 2px; border-top: 1px solid #f3f4f6; }
+.cap-edit-wrap {
+  border: 1px solid #eef0f3; border-radius: 6px; overflow: hidden; background: #fff;
+}
+.cap-edit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cap-edit-table:not(.cap-edit-table-prof) { table-layout: auto; }
+.cap-edit-table-prof { table-layout: fixed; }
+.cap-edit-table th {
+  background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid #eef0f3;
+}
+.cap-edit-table td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.cap-edit-table tbody tr:last-child td { border-bottom: none; }
+.cap-edit-table .is-num { width: 96px; text-align: center; }
+.cap-edit-table th.is-num { text-align: center; }
+.cap-edit-table-prof .is-num { width: 33.33%; }
+.cap-edit-table .cap-role { font-weight: 500; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap-num-input { width: 72px !important; }
+.cap-edit-table :deep(.ant-input-number) { margin: 0 auto; }
+.cap-preview {
+  padding: 16px 18px;
+  border-left: 1px solid #eef0f3;
+  background: #fafbfc;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cap-matrix-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid #eef0f3; border-radius: 6px; background: #fff; }
+.cap-matrix { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cap-matrix th {
+  position: sticky; top: 0; z-index: 1;
+  background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
+  padding: 8px 10px; text-align: left; border-bottom: 1px solid #eef0f3;
+}
+.cap-matrix td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; color: #4b5563; }
+.cap-matrix tbody tr:last-child td { border-bottom: none; }
 .cap-matrix td:not(:first-child), .cap-matrix th:not(:first-child) { text-align: center; }
-.cap-num { font-weight: 600; color: #1f2329; font-variant-numeric: tabular-nums; }
+.cap-role { font-weight: 500; color: #374151; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.cap-num { font-weight: 600; color: #111827; font-variant-numeric: tabular-nums; }
 
-.au-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+@media (max-width: 960px) {
+  .cap-layout { grid-template-columns: minmax(0, 1fr); }
+  .cap-preview { border-left: none; border-top: 1px solid #eef0f3; }
+}
+
+/* 开关记录 */
+.audit-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 12px;
+  background: #fafbfc; border: 1px solid #eef0f3; border-radius: 8px;
+}
+.audit-table-wrap { margin-top: 0; }
+.audit-range { width: 260px; max-width: 100%; flex: none; }
+.audit-f { width: 130px; flex: none; }
+.audit-f-wide { width: 160px; }
+.audit-cell { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.audit-cell.muted { color: #9ca3af; }
+
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

@@ -118,14 +118,20 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 </script>
 
 <template>
-  <div class="pm">
-    <div class="dx-sec-hd">
-      <span class="dx-sec-title">组池</span>
-      <span class="dx-sec-sub">共 {{ rows.length }} 个 · 池内待派 {{ totalBacklog }} 单</span>
+  <section class="block pool-panel pm">
+    <div class="meta-strip">
+      <div class="meta-chip">
+        <span class="meta-chip-val">{{ rows.length }}</span>
+        <span class="meta-chip-lb">个组池</span>
+      </div>
+      <div class="meta-chip" :class="{ 'is-warn': totalBacklog > 0 }">
+        <span class="meta-chip-val">{{ totalBacklog }}</span>
+        <span class="meta-chip-lb">池内待派（单）</span>
+      </div>
     </div>
     <div class="pm-grid">
-      <div v-for="p in rows" :key="p.id" class="dx-card pm-card">
-        <div class="pm-hd">
+      <div v-for="p in rows" :key="p.id" class="pm-card">
+        <div class="pm-card-hd">
           <span class="dx-card-title" :title="p.poolLabel">{{ p.poolLabel }}</span>
           <span class="dx-status" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
           <span class="pm-sp" />
@@ -185,24 +191,30 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 
     <PoolModeSwitchModal v-model:open="modeOpen" :scope="modeScope" />
     <PoolAssignModal v-model:open="assignOpen" :ticket="assignTicket" :pool-id="detailId ?? ''" @done="refresh++" />
-  </div>
+  </section>
 </template>
 
 <style scoped>
+.pool-panel { padding: 16px 20px 20px; }
 .pm { min-width: 0; container-type: inline-size; }
 /* 宽屏最多 4 列 */
-.pm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.pm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @container (min-width: 1680px) { .pm-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @container (max-width: 960px) { .pm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 600px) { .pm-grid { grid-template-columns: minmax(0, 1fr); } }
-.pm-card { display: flex; flex-direction: column; gap: 12px; transition: box-shadow 0.2s; }
-.pm-card:hover { box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06); }
-.pm-hd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -4px 0; }
+.pm-card {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; background: #fff; border: 1px solid #eef0f3; border-radius: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.pm-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 8px rgba(17, 24, 39, 0.05); }
+.pm-card-hd { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pm-sp { flex: 1; min-width: 0; }
 .pm-detail { flex: none; padding: 0 2px; }
-.pm-cond { font-size: 13px; color: #4e5969; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: -4px; }
+.pm-card .dx-card-title { font-size: 14px; }
+.pm-cond { font-size: 12px; color: #4b5563; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-cond em { font-style: normal; color: #86909c; margin-right: 8px; }
-.pm-sub { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: #86909c; line-height: 20px; padding-top: 12px; border-top: 1px solid #f2f3f5; }
+.pm-sub { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #6b7280; line-height: 18px; padding-top: 10px; border-top: 1px solid #f3f4f6; }
 .pm-sub-st { min-width: 0; }
 .pm-sub-st .dx-meta-sep { font-style: normal; }
 .pm-sub b { font-weight: 600; color: #1f2329; }

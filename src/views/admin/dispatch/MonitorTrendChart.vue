@@ -133,7 +133,7 @@ function hitStyle(i: number) {
 <style scoped>
 .range-toggle { gap: 4px; flex: none; }
 .range-btn { border: none; background: transparent; padding: 2px 10px; border-radius: 4px; font-size: 13px; color: #86909c; cursor: pointer; line-height: 22px; }
-.range-btn.active { background: #f2f3f5; color: #1a6fff; font-weight: 600; }
+.range-btn.active { background: #eff6ff; color: #1a6fff; font-weight: 600; }
 .range-btn:hover:not(.active) { color: #1f2329; }
 .legend-line { display: flex; gap: 16px; font-size: 13px; color: #86909c; margin: 0 0 8px 46px; }
 .lg { display: inline-flex; align-items: center; gap: 6px; }

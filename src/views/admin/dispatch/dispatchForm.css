@@ -2,8 +2,8 @@
 .dpf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); column-gap: 48px; }
 .dpf-grid.one { grid-template-columns: minmax(0, 1fr); }
 .dpf-item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; border-bottom: 1px solid #f2f3f5; min-width: 0; flex-wrap: wrap; }
-.dpf-label { width: 176px; flex: none; color: #4e5969; font-size: 14px; line-height: 22px; }
+.dpf-label { width: 176px; flex: none; color: #374151; font-size: 13px; line-height: 22px; }
 .dpf-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1; }
-.dpf-unit { color: #86909c; font-size: 13px; }
-.dpf-val { color: #1f2329; font-size: 14px; }
+.dpf-unit { color: #9ca3af; font-size: 12px; }
+.dpf-val { color: #111827; font-size: 13px; }
 .dpf-ctl .ant-tag { margin-inline-end: 0; }

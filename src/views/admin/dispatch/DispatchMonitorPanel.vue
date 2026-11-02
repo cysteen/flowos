@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 分派监控（PRD 14.1）：页头统一筛选与派单日志入口；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 组池卡）→ 池积压与处理人负载
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
   CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, FileSearchOutlined, InboxOutlined, RollbackOutlined, SlidersOutlined,
 } from '@ant-design/icons-vue';
@@ -17,8 +18,11 @@ import './dispatchTheme.css';
 
 defineProps<{ title: string; subtitle?: string }>();
 
+const router = useRouter();
 const store = useDispatchStore();
 const clock = useClock();
+
+function goPoolManage() { router.push('/admin/dispatch-pool'); }
 
 const range = ref<RangeKey>('today');
 const RANGE_OPTS = [{ value: 'today', label: '今日' }, { value: '7d', label: '近 7 日' }, { value: '30d', label: '近 30 日' }];
@@ -63,11 +67,20 @@ function minDelta(d: number | null): Delta {
 }
 const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
 
+const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
+  succ: { accent: '#1a6fff', iconBg: '#eff6ff' },
+  fb: { accent: '#0ea5e9', iconBg: '#f0f9ff' },
+  wait: { accent: '#8b5cf6', iconBg: '#ede9fe' },
+  resp: { accent: '#10b981', iconBg: '#ecfdf5' },
+  bal: { accent: '#f59e0b', iconBg: '#fffbeb' },
+  bk: { accent: '#6366f1', iconBg: '#eef2ff' },
+};
+
 /** 统计卡：数字默认中性，只有真正异常（低于降级线、超出目标、有积压）的数字标橙 */
 const cards = computed(() => {
   const s = stats.value;
   const succLine = store.config.autoSuccessRate;
-  return [
+  const items = [
     {
       key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined,
       warn: s.successRate != null && s.successRate < succLine,
@@ -95,6 +108,7 @@ const cards = computed(() => {
       delta: { text: `最长等待 ${waitText(backlog.value.maxWait)}`, tone: 'muted' } as Delta,
     },
   ];
+  return items.map((c) => ({ ...c, ...CARD_ACCENT[c.key] }));
 });
 
 /* ---------------- 池积压 ---------------- */
@@ -120,16 +134,24 @@ const logOpen = ref(false);
       </template>
     </AdminPageHeader>
 
-    <div class="stat-row">
-      <div v-for="c in cards" :key="c.key" class="dx-card stat-card">
-        <div class="stat-top">
-          <span class="s-label">{{ c.label }}</span>
-          <span class="dx-icon stat-icon"><component :is="c.icon" /></span>
+    <section class="block stat-block">
+      <div class="stat-row">
+        <div v-for="c in cards" :key="c.key" class="stat-card" :style="{ '--accent': c.accent }">
+          <div class="stat-card-inner">
+            <div class="stat-main">
+              <div class="s-label">{{ c.label }}</div>
+              <div class="s-value-row">
+                <div class="s-value" :class="{ 'is-warn': c.warn }">{{ c.value }}</div>
+                <div class="s-delta" :class="`t-${c.delta.tone}`">{{ c.delta.text }}</div>
+              </div>
+            </div>
+            <div class="stat-icon" :style="{ background: c.iconBg, color: c.accent }">
+              <component :is="c.icon" />
+            </div>
+          </div>
         </div>
-        <div class="dx-num" :class="{ 'is-warn': c.warn }">{{ c.value }}</div>
-        <div class="s-delta" :class="`t-${c.delta.tone}`">{{ c.delta.text }}</div>
       </div>
-    </div>
+    </section>
 
     <div class="chart-row">
       <MonitorTrendChart :pool-ids="poolScope" />
@@ -138,15 +160,17 @@ const logOpen = ref(false);
 
     <MonitorPoolCards :pool-ids="poolScope" />
 
-    <div class="table-row">
-      <section class="dx-card">
-        <div class="dx-sec-hd">
-          <span class="dx-sec-title">池积压</span>
-          <span class="dx-sec-sub">当前 {{ backlog.count }} 单 · 最长等待 {{ waitText(backlog.maxWait) }}</span>
+    <div class="monitor-table-row">
+      <section class="block monitor-block">
+        <div class="b-title inline">
+          池积压
+          <span class="b-tip">当前 {{ backlog.count }} 单 · 最长等待 {{ waitText(backlog.maxWait) }}</span>
+          <a-button type="link" size="small" class="hd-btn" @click="goPoolManage">查看全部工单池 →</a-button>
         </div>
         <a-table :columns="backlogCols" :data-source="backlogTableRows" row-key="id" size="middle" :pagination="false" :scroll="{ x: 560 }">
           <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
+            <span v-if="column.key === 'poolLabel'" class="pool-name">{{ record.poolLabel }}</span>
+            <span v-else-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
             <span v-else-if="column.key === 'waitingOriginal' || column.key === 'queued' || column.key === 'failed'" :class="{ 'n-hot': record[column.key] > 0, 'n-zero': !record[column.key] }">{{ record[column.key] }}</span>
             <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued + record.failed ? record.maxWaitMin : 0) }}</span>
           </template>
@@ -160,33 +184,78 @@ const logOpen = ref(false);
 </template>
 
 <style scoped>
-.mon { display: flex; flex-direction: column; container-type: inline-size; }
-.mon :deep(.admin-page-header) { flex-wrap: wrap; }
+.mon { display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
+.mon :deep(.admin-page-header) { flex-wrap: wrap; margin-bottom: 2px; }
 .mon :deep(.aph-actions) { flex-shrink: 1; flex-wrap: wrap; align-items: center; }
-/* 区块之间 24 */
-.mon > .stat-row ~ * { margin-top: 24px; }
 
-/* 统计卡：直接平铺在页面上，中性白卡 */
+/* 与 dispatch-config 监控页一致的区块容器 */
+.stat-block { padding: 16px 20px; }
+
+/* 统计卡：顶色条 + 右侧彩色图标 */
 .stat-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
-.stat-card { min-width: 0; }
-.stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.stat-icon { width: 32px; height: 32px; font-size: 15px; }
-.s-label { font-size: 13px; color: #86909c; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.s-delta { font-size: 13px; margin-top: 6px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.t-muted, .t-good { color: #86909c; }
-.t-bad { color: #ff7d00; }
+.stat-card {
+  min-width: 0;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  min-height: 96px;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent, #1a6fff);
+}
+.stat-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-top: 2px; }
+.stat-main { flex: 1; min-width: 0; }
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex: none;
+}
+.s-label { font-size: 12px; color: #6b7280; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-value-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; min-width: 0; }
+.s-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s-value.is-warn { color: #ff7d00; }
+.s-delta { font-size: 12px; line-height: 1.2; padding-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-muted, .t-good { color: #6b7280; }
+.t-bad { color: #f59e0b; }
 
 .chart-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; }
-.table-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.chart-row :deep(.dx-card) { border-color: #e5e7eb; padding: 16px 20px; }
+.mon :deep(.ps) {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.mon :deep(.ps .dx-card) { border-color: #eef0f3; }
 .n-hot { color: #ff7d00; font-weight: 600; }
 .n-zero { color: #86909c; }
-:deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 
 @container (max-width: 1080px) {
   .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @container (max-width: 1100px) {
-  .table-row { grid-template-columns: minmax(0, 1fr); }
+  .monitor-table-row { grid-template-columns: minmax(0, 1fr); }
 }
 @container (max-width: 900px) {
   .chart-row { grid-template-columns: minmax(0, 1fr); }

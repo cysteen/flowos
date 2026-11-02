@@ -17,7 +17,7 @@ const DISPATCH_PAGE_META: Record<string, { title: string; subtitle: string }> = 
   'dispatch-monitor': { title: '分派监控', subtitle: '派单效果、池形态、池积压与处理人负载；派单日志查询。' },
   'dispatch-strategy': { title: '派单策略', subtitle: '运行设置、入池规则、出池规则与个人上限；保存即生效。' },
   'dispatch-pool': { title: '工单池管理', subtitle: '各组池的形态、派单状态与成员画像配置，池内待领工单可指派。' },
-  'dispatch-routing': { title: '路由规则', subtitle: '入池规则汇总。' },
+  'dispatch-routing': { title: '路由规则', subtitle: '入池规则只读一览；新增与编辑在派单策略 · 入池规则。' },
   'dispatch-profile': { title: '坐席画像', subtitle: '坐席的人员画像、熟练度、个人上限与个人开关。' },
 };
 const routeKey = computed(() => adminNavActiveKey(route.path));
@@ -35,7 +35,7 @@ const focusRuleId = computed(() => (typeof route.query.rule === 'string' ? route
 </script>
 
 <template>
-  <div class="dispatch-config">
+  <div class="dispatch-config" :class="{ 'is-compact-header': pageKey !== 'dispatch-monitor' }">
     <!-- 分派监控的页头带筛选与派单日志入口，由面板自行渲染 -->
     <AdminPageHeader v-if="pageKey !== 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
     <DispatchMonitorPanel v-if="pageKey === 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
@@ -47,5 +47,8 @@ const focusRuleId = computed(() => (typeof route.query.rule === 'string' ? route
 </template>
 
 <style scoped>
-.dispatch-config { display: flex; flex-direction: column; padding: 16px 24px; }
+.dispatch-config { display: flex; flex-direction: column; gap: 8px; padding: 16px 24px; }
+/* 分派监控外各子页：页头与正文紧挨（监控页头在面板内单独控距） */
+.dispatch-config.is-compact-header { gap: 0; }
+.dispatch-config.is-compact-header :deep(.admin-page-header) { margin-bottom: 8px; }
 </style>
