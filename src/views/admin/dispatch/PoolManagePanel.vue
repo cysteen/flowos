@@ -9,8 +9,8 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
-import DispatchCard from './DispatchCard.vue';
-import { InboxOutlined } from '@ant-design/icons-vue';
+import { SwapOutlined } from '@ant-design/icons-vue';
+import './dispatchTheme.css';
 
 const store = useDispatchStore();
 const clock = useClock();
@@ -26,6 +26,15 @@ function rulesOf(poolId: string): string {
   const names = [...store.rules].filter((r) => r.enabled && r.poolId === poolId).sort((a, b) => a.priority - b.priority).map((r) => r.name);
   if (poolId === DEFAULT_POOL_ID) names.push('未命中任何规则');
   return names.join('、') || '—';
+}
+/** 次要派单计数：只列非 0 项并标色，另附最长等待 */
+function waitItems(p: { waitingOriginal: number; queued: number; failed: number; maxWaitMin: number }) {
+  const xs: { label: string; value: string | number; tone: string }[] = [];
+  if (p.waitingOriginal) xs.push({ label: '等原处理人', value: p.waitingOriginal, tone: 'dx-warn' });
+  if (p.queued) xs.push({ label: '排队中', value: p.queued, tone: 'dx-warn' });
+  if (p.failed) xs.push({ label: '派单失败回池', value: p.failed, tone: 'dx-bad' });
+  xs.push({ label: '最长等待', value: waitText(p.maxWaitMin), tone: '' });
+  return xs;
 }
 const totalBacklog = computed(() => rows.value.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0));
 
@@ -91,7 +100,7 @@ function fmt(ms: number) {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-const STATUS_TONE: Record<string, string> = { 等原处理人: 'blue', 排队中: 'orange', 派单失败回池: 'red' };
+const STATUS_TONE: Record<string, string> = { 等原处理人: 'default', 排队中: 'orange', 派单失败回池: 'red' };
 const detailCols = [
   { title: '工单号', dataIndex: 'no', key: 'no', width: 170 },
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
@@ -110,68 +119,55 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 
 <template>
   <div class="pm">
-    <DispatchCard title="组池" :sub="`共 ${rows.length} 个 · 池内待派 ${totalBacklog} 单`">
-      <div class="pm-grid">
-        <div v-for="p in rows" :key="p.id" class="pm-card" :class="`tone-${MODE_TONE[p.effectiveMode]}`">
-          <div class="pm-hd">
-            <span class="pm-ic"><InboxOutlined /></span>
-            <div class="pm-tt">
-              <div class="pm-name-row">
-                <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
-                <span class="pm-status" :class="`t-${MODE_TONE[p.effectiveMode]}`"><i />{{ p.effectiveMode }}</span>
-              </div>
-              <div class="pm-grp" :title="`班组长：${p.leaders.join('、') || '—'}`">{{ p.label }} · 班组长 {{ p.leaders.join('、') || '—' }}</div>
-            </div>
-            <a-button type="link" size="small" class="pm-detail" @click="detailId = p.id">池详情</a-button>
-          </div>
-          <div class="pm-cond">
-            <span class="pm-cond-lb">入池规则</span>
-            <span class="pm-cond-tx" :title="rulesOf(p.id)">{{ rulesOf(p.id) }}</span>
-          </div>
-          <div class="pm-metrics">
-            <div class="pm-m"><b class="primary" :class="{ hot: backlogOf(p) }">{{ backlogOf(p) }}</b><span>池内待派</span></div>
-            <div class="pm-m"><b>{{ p.memberCount }}</b><span>成员数</span></div>
-            <div class="pm-m"><b>{{ p.memberCount ? `${Math.round((p.configuredCount / p.memberCount) * 100)}%` : '—' }}</b><span>画像配置率</span></div>
-          </div>
-          <div class="pm-sub">
-            <span>等原处理人 <b :class="{ hot: p.waitingOriginal }">{{ p.waitingOriginal }}</b></span>
-            <span>排队中 <b :class="{ hot: p.queued }">{{ p.queued }}</b></span>
-            <span>派单失败回池 <b :class="{ bad: p.failed }">{{ p.failed }}</b></span>
-            <span>最长等待 <b>{{ waitText(backlogOf(p) ? p.maxWaitMin : 0) }}</b></span>
-          </div>
-          <div class="pm-ft">
-            <div class="pm-ft-row">
-              <span class="pm-ft-lb">形态：</span>
-              <a-tag :color="MODE_TONE[p.effectiveMode]">{{ p.effectiveMode }}</a-tag>
-              <a-tooltip :title="globalStopped ? '全局已停派，本组形态不可切换' : undefined">
-                <a-button size="small" class="pm-ft-op" :disabled="globalStopped" @click="openMode(p.id)">切换形态</a-button>
-              </a-tooltip>
-            </div>
-            <div class="pm-ft-row">
-              <span class="pm-ft-lb">班组开关：</span>
-              <a-tooltip :title="switchTip(p.id)">
-                <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
-              </a-tooltip>
-              <span class="pm-ft-v">{{ p.switchOn ? '开启' : '关闭' }}</span>
-            </div>
-          </div>
+    <div class="dx-sec-hd">
+      <span class="dx-sec-title">组池</span>
+      <span class="dx-sec-sub">共 {{ rows.length }} 个 · 池内待派 {{ totalBacklog }} 单</span>
+    </div>
+    <div class="pm-grid">
+      <div v-for="p in rows" :key="p.id" class="dx-card pm-card">
+        <div class="pm-hd">
+          <span class="dx-card-title" :title="p.poolLabel">{{ p.poolLabel }}</span>
+          <span class="dx-status" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
+          <span class="pm-sp" />
+          <a-tooltip :title="switchTip(p.id) ?? `班组开关：${p.switchOn ? '开启' : '关闭'}`">
+            <a-switch size="small" :checked="p.switchOn" :disabled="!!switchTip(p.id)" @change="(v: unknown) => onSwitch(p.id, !!v)" />
+          </a-tooltip>
+          <a-tooltip :title="globalStopped ? '全局已停派，本组形态不可切换' : '切换形态'">
+            <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
+              <template #icon><SwapOutlined /></template>
+            </a-button>
+          </a-tooltip>
+          <a-button type="link" size="small" class="pm-detail" @click="detailId = p.id">池详情</a-button>
+        </div>
+        <div class="pm-cond" :title="rulesOf(p.id)"><em>入池规则</em>{{ rulesOf(p.id) }}</div>
+        <div class="dx-metrics">
+          <div class="dx-metric"><b :class="backlogOf(p) ? 'is-warn' : 'is-primary'">{{ backlogOf(p) }}</b><span>池内待派</span></div>
+          <div class="dx-metric"><b>{{ p.memberCount }}</b><span>成员数</span></div>
+          <div class="dx-metric"><b>{{ p.memberCount ? `${Math.round((p.configuredCount / p.memberCount) * 100)}%` : '—' }}</b><span>画像配置率</span></div>
+        </div>
+        <div class="pm-sub">
+          <span v-if="!backlogOf(p)" class="pm-sub-st">等原处理人、排队中、派单失败回池均为 0</span>
+          <span v-else class="pm-sub-st">
+            <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template>
+          </span>
+          <span class="pm-sub-ld" :title="`班组长：${p.leaders.join('、') || '—'}`">班组长 {{ p.leaders.join('、') || '—' }}</span>
         </div>
       </div>
-    </DispatchCard>
+    </div>
 
     <a-drawer v-model:open="detailOpen" :title="detailId ? store.poolLabel(detailId) : ''" width="min(1040px, 100vw)" placement="right">
       <div v-if="detailPool" class="dt-sum">
-        <div class="dt-item"><span class="k">池形态</span><a-tag :color="MODE_TONE[detailPool.effectiveMode]">{{ detailPool.effectiveMode }}</a-tag></div>
+        <div class="dt-item"><span class="k">池形态</span><span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span></div>
         <div class="dt-item"><span class="k">待领工单</span><b>{{ detailRows.length }}</b></div>
-        <div class="dt-item"><span class="k">等原处理人</span><b>{{ detailPool.waitingOriginal }}</b></div>
-        <div class="dt-item"><span class="k">排队中</span><b>{{ detailPool.queued }}</b></div>
+        <div class="dt-item"><span class="k">等原处理人</span><b :class="{ warn: detailPool.waitingOriginal }">{{ detailPool.waitingOriginal }}</b></div>
+        <div class="dt-item"><span class="k">排队中</span><b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b></div>
         <div class="dt-item"><span class="k">派单失败回池</span><b :class="{ bad: detailPool.failed }">{{ detailPool.failed }}</b></div>
       </div>
-      <div class="dt-title">池内待领工单</div>
+      <div class="dx-sec-hd"><span class="dx-sec-title">池内待领工单</span></div>
       <a-table :columns="detailCols" :data-source="detailRows" row-key="no" size="middle" :pagination="false" :scroll="{ x: 940 }" :locale="{ emptyText: '池内暂无待领工单' }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-tag v-if="record.status" :color="STATUS_TONE[record.status]">{{ record.status }}</a-tag>
+            <span v-if="record.status" class="dx-status" :class="`is-${STATUS_TONE[record.status]}`">{{ record.status }}</span>
             <span v-else class="muted">—</span>
           </template>
           <template v-else-if="column.key === 'reserve'">
@@ -193,50 +189,35 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 </template>
 
 <style scoped>
-.pm { min-width: 0; }
-.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
-.pm-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; min-width: 0; transition: box-shadow 0.2s, border-color 0.2s; }
-.pm-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border-color: #93c5fd; }
-.pm-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #10b981; }
-.pm-card.tone-orange::before { background: #f59e0b; }
-.pm-card.tone-red::before { background: #ef4444; }
-.pm-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; min-width: 0; }
-.pm-ic { width: 34px; height: 34px; border-radius: 8px; background: #eff6ff; color: #1a6fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex: none; }
-.pm-tt { flex: 1; min-width: 0; }
-.pm-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.pm-name { font-size: 14px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.pm-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; flex: none; }
-.pm-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.pm-status.t-orange { color: #f59e0b; }
-.pm-status.t-red { color: #ef4444; }
-.pm-grp { font-size: 11px; color: #9ca3af; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pm-detail { flex: none; padding: 0 4px; }
-.pm-cond { display: flex; align-items: center; gap: 6px; background: #f9fafb; border-radius: 6px; padding: 6px 10px; min-width: 0; }
-.pm-cond-lb { font-size: 11px; color: #9ca3af; flex: none; }
-.pm-cond-tx { font-size: 12px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.pm-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
-.pm-m { text-align: center; padding: 8px 4px; background: #f9fafb; border-radius: 6px; min-width: 0; }
-.pm-m b { display: block; font-size: 17px; font-weight: 700; color: #374151; line-height: 1.2; }
-.pm-m b.primary { color: #1a6fff; }
-.pm-m b.hot { color: #ea580c; }
-.pm-m span { display: block; font-size: 11px; color: #9ca3af; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pm-sub { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11px; color: #9ca3af; }
-.pm-sub b { font-weight: 600; color: #374151; }
-.pm-sub b.hot { color: #ea580c; }
-.pm-sub b.bad { color: #ef4444; }
-.pm-ft { display: flex; flex-direction: column; gap: 6px; margin-top: auto; padding-top: 10px; border-top: 1px solid #f3f4f6; }
-.pm-ft-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; min-height: 24px; }
-.pm-ft-row :deep(.ant-tag) { margin-inline-end: 0; }
-.pm-ft-lb { color: #9ca3af; }
-.pm-ft-op { margin-left: auto; }
-.pm-ft-v { color: #374151; }
-.dt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.dt-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #f9fafb; border: 1px solid #eef0f3; border-radius: 8px; font-size: 13px; }
-.dt-item :deep(.ant-tag) { margin-inline-end: 0; }
-.dt-item b { font-size: 16px; color: #111827; }
-.dt-item b.bad { color: #ef4444; }
-.dt-title { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; margin-bottom: 12px; line-height: 16px; }
-.muted { color: #9ca3af; font-size: 12px; }
-.overdue { color: #ef4444; }
+.pm { min-width: 0; container-type: inline-size; }
+/* 宽屏最多 4 列 */
+.pm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@container (min-width: 1680px) { .pm-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (max-width: 960px) { .pm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 600px) { .pm-grid { grid-template-columns: minmax(0, 1fr); } }
+.pm-card { display: flex; flex-direction: column; gap: 12px; transition: box-shadow 0.2s; }
+.pm-card:hover { box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06); }
+.pm-hd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -4px 0; }
+.pm-sp { flex: 1; min-width: 0; }
+.pm-detail { flex: none; padding: 0 2px; }
+.pm-cond { font-size: 13px; color: #4e5969; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: -4px; }
+.pm-cond em { font-style: normal; color: #86909c; margin-right: 8px; }
+.pm-sub { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: #86909c; line-height: 20px; padding-top: 12px; border-top: 1px solid #f2f3f5; }
+.pm-sub-st { min-width: 0; }
+.pm-sub-st .dx-meta-sep { font-style: normal; }
+.pm-sub b { font-weight: 600; color: #1f2329; }
+.pm-sub b.dx-warn { color: #ff7d00; }
+.pm-sub b.dx-bad { color: #f53f3f; }
+.pm-sub-ld { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 24px; border: 1px solid #eef0f3; border-radius: 8px; }
+.dt-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; font-size: 13px; border-left: 1px solid #f2f3f5; }
+.dt-item:first-child { border-left: none; }
+.dt-item .k { color: #86909c; }
+.dt-item b { font-size: 20px; font-weight: 600; color: #1f2329; line-height: 28px; }
+.dt-item .dx-status { line-height: 28px; font-size: 14px; }
+.dt-item b.warn { color: #ff7d00; }
+.dt-item b.bad { color: #f53f3f; }
+.muted { color: #86909c; font-size: 13px; }
+.overdue { color: #f53f3f; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>
