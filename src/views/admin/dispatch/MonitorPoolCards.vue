@@ -77,6 +77,7 @@ const recordCols = [
         </div>
       </div>
 
+      <div class="group-grid">
       <div v-for="c in cards" :key="c.id" class="pc" :class="`tone-${MODE_TONE[c.effectiveMode]}`">
         <div class="pc-hd">
           <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
@@ -94,6 +95,7 @@ const recordCols = [
             <a-button size="small" :disabled="globalMode === '停派态'" @click="openMode(c.id)">切换形态</a-button>
           </a-tooltip>
         </div>
+      </div>
       </div>
     </div>
 
@@ -113,7 +115,13 @@ const recordCols = [
 .b-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; min-height: 24px; }
 .b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
 .hd-btn { margin-left: auto; }
-.pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.pool-grid { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; min-width: 0; }
+.pc-global { align-self: start; }
+/* 外层分派监控根节点为尺寸容器 */
+@container (max-width: 720px) {
+  .pool-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .pc { border: 1px solid #eef0f3; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; min-width: 0; }
 .pc::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #10b981; }
 .pc.tone-orange::before { background: #f59e0b; }

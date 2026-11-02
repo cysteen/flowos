@@ -39,20 +39,15 @@ const chart = computed(() => {
   const outPts = pts.map((p, i) => ({ x: x(i), y: y(p.out) }));
   const fbPts = pts.map((p, i) => ({ x: x(i), y: y(p.fallback) }));
   const line = (ps: { x: number; y: number }[]) => ps.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  // 今日未满一天：最后一段虚线
-  const solidOut = outPts.slice(0, -1);
-  const solidFb = fbPts.slice(0, -1);
-  const tailOut = outPts.slice(-2);
-  const tailFb = fbPts.slice(-2);
-  const area = solidOut.length > 1
-    ? `${line(solidOut)} L ${solidOut[solidOut.length - 1].x.toFixed(1)} ${H} L ${solidOut[0].x.toFixed(1)} ${H} Z`
+  const area = outPts.length > 1
+    ? `${line(outPts)} L ${outPts[outPts.length - 1].x.toFixed(1)} ${H} L ${outPts[0].x.toFixed(1)} ${H} Z`
     : '';
   const long = pts.length > 7;
   const xIdx = long ? [0, 5, 10, 15, 20, 25, pts.length - 1] : pts.map((_, i) => i);
   return {
     yTicks, outPts, fbPts, area,
-    outLine: line(solidOut), fbLine: line(solidFb), outTail: line(tailOut), fbTail: line(tailFb),
-    xLabels: xIdx.map((i) => ({ i, text: pts[i].today ? '今日' : pts[i].label })),
+    outLine: line(outPts), fbLine: line(fbPts),
+    xLabels: xIdx.map((i) => ({ i, text: pts[i].label })),
     showDots: !long,
   };
 });
@@ -103,9 +98,7 @@ function hitStyle(i: number) {
             <line v-for="(t, i) in chart.yTicks" :key="`g${t}`" x1="0" :x2="W" :y1="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" :y2="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" class="grid" />
             <path v-if="chart.area" :d="chart.area" fill="url(#dispatchTrendFill)" />
             <path :d="chart.outLine" class="ln" stroke="#1a6fff" />
-            <path :d="chart.outTail" class="ln tail" stroke="#1a6fff" />
             <path :d="chart.fbLine" class="ln" stroke="#f59e0b" />
-            <path :d="chart.fbTail" class="ln tail" stroke="#f59e0b" />
             <line v-if="hover != null" :x1="chart.outPts[hover].x" :x2="chart.outPts[hover].x" :y1="PAD_T" :y2="H" class="cursor" />
           </svg>
           <template v-if="chart.showDots || hover != null">
@@ -119,7 +112,7 @@ function hitStyle(i: number) {
           <div class="hit-row">
             <a-tooltip v-for="(p, i) in points" :key="p.dayStart" placement="top" :mouse-enter-delay="0.05">
               <template #title>
-                <div class="tip"><b>{{ p.today ? `今日（${p.label}）` : p.label }}</b><span>派出 {{ p.out }} 单</span><span>兜底回池 {{ p.fallback }} 单</span></div>
+                <div class="tip"><b>{{ p.label }}</b><span>派出 {{ p.out }} 单</span><span>兜底回池 {{ p.fallback }} 单</span></div>
               </template>
               <div class="hit" :style="hitStyle(i)" @mouseenter="hover = i" @mouseleave="hover = null" />
             </a-tooltip>
@@ -156,7 +149,6 @@ function hitStyle(i: number) {
 .line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .grid { stroke: #f0f0f0; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .ln { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.ln.tail { stroke-dasharray: 4 4; }
 .cursor { stroke: #d1d5db; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 2px solid; transform: translate(-50%, -50%); pointer-events: none; }
 .dot.sm { width: 7px; height: 7px; }

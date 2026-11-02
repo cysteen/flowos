@@ -207,7 +207,7 @@ function dayWave(dayStart: number, salt: number): number {
   return x - Math.floor(x);
 }
 
-export interface TrendPoint { label: string; dayStart: number; out: number; fallback: number; today: boolean }
+export interface TrendPoint { label: string; dayStart: number; out: number; fallback: number }
 
 export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: string[] | null, now: number): TrendPoint[] {
   const today = rangeStart('today', now);
@@ -218,19 +218,19 @@ export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: stri
   }, { out: 0, fb: 0 });
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const pts: TrendPoint[] = [];
-  for (let i = days - 1; i >= 0; i -= 1) {
+  // 只取已结束的整日：近 N 天＝昨日往前 N 天
+  for (let i = days; i >= 1; i -= 1) {
     const ds = today - i * DAY;
     const de = ds + DAY;
     const dayLogs = scoped.filter((l) => { const t = parseAt(l.at); return t >= ds && t < de; });
     const out = dayLogs.filter(isEngineAssign).length;
     const fallback = new Set(dayLogs.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.path === '兜底回池').map((l) => l.ticketNo)).size;
-    const isToday = i === 0;
     const wd = new Date(ds).getDay();
     const weekend = wd === 0 || wd === 6 ? 0.72 : 1;
-    const bOut = isToday ? 0 : Math.round(base.out * weekend * (0.86 + dayWave(ds, 1) * 0.28));
-    const bFb = isToday ? 0 : Math.round(base.fb * weekend * (0.5 + dayWave(ds, 2) * 1.1));
+    const bOut = Math.round(base.out * weekend * (0.86 + dayWave(ds, 1) * 0.28));
+    const bFb = Math.round(base.fb * weekend * (0.5 + dayWave(ds, 2) * 1.1));
     const d = new Date(ds);
-    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out, fallback: bFb + fallback, today: isToday });
+    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out, fallback: bFb + fallback });
   }
   return pts;
 }

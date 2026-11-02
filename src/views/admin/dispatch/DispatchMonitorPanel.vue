@@ -97,7 +97,7 @@ const cards = computed(() => {
 
 /* ---------------- 池积压 ---------------- */
 const backlogCols = [
-  { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', ellipsis: true },
+  { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
   { title: '池形态', key: 'mode', width: 90 },
   { title: '等原处理人', dataIndex: 'waitingOriginal', key: 'waitingOriginal', width: 96, align: 'right' as const },
   { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
@@ -191,7 +191,7 @@ const logOpen = ref(false);
 .n-zero { color: #9ca3af; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 
-@container (max-width: 1280px) {
+@container (max-width: 1080px) {
   .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @container (max-width: 1100px) {

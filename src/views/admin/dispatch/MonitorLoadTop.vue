@@ -60,11 +60,11 @@ const loadCols = [
     <div class="b-title">
       处理人负载
       <span class="b-sub">前 10 · 超限 {{ flagged.over }} 人 · 超额指派 {{ flagged.assigned }} 人</span>
-      <div class="hd-btn filters">
-        <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 132px" />
-        <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 100px" />
-        <a-button type="link" size="small" @click="allOpen = true">全部处理人</a-button>
-      </div>
+      <a-button class="hd-btn" type="link" size="small" @click="allOpen = true">全部处理人</a-button>
+    </div>
+    <div class="filters">
+      <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 150px" />
+      <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 110px" />
     </div>
     <a-empty v-if="!top.length" description="暂无处理人" />
     <div v-else class="heat">
@@ -107,7 +107,7 @@ const loadCols = [
 .b-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; min-height: 24px; flex-wrap: wrap; }
 .b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
 .hd-btn { margin-left: auto; }
-.filters { display: flex; gap: 8px; align-items: center; }
+.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .muted { color: #9ca3af; font-size: 12px; margin-left: 4px; }
 .heat { display: flex; flex-direction: column; }
 .hr { display: grid; grid-template-columns: minmax(96px, 1.3fr) 52px minmax(60px, 2fr) 52px 72px; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #f0f0f0; font-size: 13px; }
