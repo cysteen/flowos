@@ -487,6 +487,8 @@ export interface TicketDispatchState {
   seq: number;
   /** 兜底后引擎不再自动判定（4.4） */
   fallbackDone?: boolean;
+  /** 因「首响已超时」兜底回池：回切重派、正式派单开启、上线阶段推进时不再重新判定，留池等人工处理（5.1） */
+  overdueFallback?: boolean;
   /** 已首次派到人（受理短信只发一次） */
   everAssigned?: boolean;
 }

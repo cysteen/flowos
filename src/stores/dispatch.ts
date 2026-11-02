@@ -1088,6 +1088,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       st.reserveUntil = undefined;
     }
     st.fallbackDone = status === '派单失败回池';
+    st.overdueFallback = status === '派单失败回池' && d.failReason === '首响已超时';
 
     const relaxSuffix = d.relaxLevel > 0 && actualAssign ? `；产品放宽至${RELAX_LEVEL_LABEL[d.relaxLevel]}` : '';
     let reason: string;
@@ -1370,9 +1371,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /** 引擎派出的判定路径（不含预留 / 排队 / 留池 / 兜底） */
   const ENGINE_ASSIGN_PATHS: DispatchPath[] = ['原处理人', '加权评分', '组内放宽'];
 
-  /** 正式派单、正常态下进入派单的判定记录（自动降级只看引擎真正执行主流程的判定） */
+  /**
+   * 正式派单、正常态下进入派单的判定记录（自动降级只看引擎真正执行主流程的判定）。
+   * 因「首响已超时」直接兜底回池的判定不计入自动降级的派单失败率与自动派单成功率（5.3）。
+   */
   function engineLogsSince(from: number): DispatchLogEntry[] {
-    return logs.value.filter((x) => x.kind === '判定' && x.runMode === '正式派单' && x.effectiveMode === '正常态' && parseStamp(x.at) >= from);
+    return logs.value.filter((x) => x.kind === '判定' && x.runMode === '正式派单' && x.effectiveMode === '正常态' && parseStamp(x.at) >= from
+      && !(x.status === '派单失败回池' && x.failReason === '首响已超时'));
   }
 
   function healthMetrics(now: number): Omit<DispatchHealthView, 'okSince' | 'okMinutes' | 'resumeReady'> {
@@ -1458,12 +1463,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /** 定时判定：预留到期、排队放宽、兜底、名额释放（4.2 / 4.4） */
   function tick(now: number = Date.now()) {
     for (const st of Object.values(ticketStates.value)) {
-      if (!st.status || st.fallbackDone) continue;
+      if (!st.status && !st.overdueFallback) continue;
       const t = poolTicket(st.ticketNo);
       if (!t || t.assignee || t.tab !== 'pool') {
         st.status = null;
+        st.overdueFallback = false;
         continue;
       }
+      if (!st.status || st.fallbackDone) continue;
       if (st.status === '等原处理人') {
         const target = st.reserveFor;
         if (target && gates(t, st, 0, { only: target }).passed.length) dispatchTicket(t, '名额释放');
@@ -1506,6 +1513,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const g = groupOf(st.poolId);
     st.status = '派单失败回池';
     st.fallbackDone = true;
+    st.overdueFallback = reason === '首响已超时';
     st.queueSince = null;
     st.seq = nextTicketSeq(t.no);
     const text = `自动派单未派出（${reason}），已通知${g?.label ?? ''}班组长`;
@@ -1554,6 +1562,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (raw.archived || raw.isDraft) continue;
       if (effectiveModeOf(raw.groupId) === '停派态') continue;
       const st = ticketStates.value[raw.no];
+      // 因「首响已超时」兜底回池的单不再重新判定，留池等人工处理；其余派单失败回池的单照常重新执行主流程
+      if (st?.overdueFallback) {
+        st.status = '派单失败回池';
+        st.fallbackDone = true;
+        st.poolId = raw.groupId;
+        continue;
+      }
       if (st) {
         st.fallbackDone = false;
         st.poolId = raw.groupId;
