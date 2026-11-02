@@ -36,8 +36,9 @@ const focusRuleId = computed(() => (typeof route.query.rule === 'string' ? route
 
 <template>
   <div class="dispatch-config">
-    <AdminPageHeader :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
-    <DispatchMonitorPanel v-if="pageKey === 'dispatch-monitor'" />
+    <!-- 分派监控的页头带筛选与派单日志入口，由面板自行渲染 -->
+    <AdminPageHeader v-if="pageKey !== 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
+    <DispatchMonitorPanel v-if="pageKey === 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
     <DispatchStrategyPanel v-else-if="pageKey === 'dispatch-strategy'" v-model:tab="strategyTab" :focus-rule-id="focusRuleId" />
     <PoolManagePanel v-else-if="pageKey === 'dispatch-pool'" />
     <RoutingSummaryPanel v-else-if="pageKey === 'dispatch-routing'" />

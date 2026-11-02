@@ -89,6 +89,9 @@ export interface MonitorStats {
   respMedian: number | null;
   /** 较昨日（仅今日范围）：两段合计变化，分钟 */
   firstRespDelta: number | null;
+  /** 较昨日（仅今日范围）：池等待 / 派单后首响中位数各自变化，分钟 */
+  waitDelta: number | null;
+  respDelta: number | null;
   balance: number | null;
   successRate: number | null;
   fallbackRate: number | null;
@@ -140,9 +143,13 @@ export function computeStats(
 
   const seg = firstRespSegments(scoped, w);
   let firstRespDelta: number | null = null;
+  let waitDelta: number | null = null;
+  let respDelta: number | null = null;
   if (range === 'today') {
     const y = firstRespSegments(scoped, { from: from - 24 * 60 * MIN, to: from, poolIds });
     if (seg.wait != null && y.wait != null) firstRespDelta = (seg.wait + (seg.resp ?? 0)) - (y.wait + (y.resp ?? 0));
+    if (seg.wait != null && y.wait != null) waitDelta = seg.wait - y.wait;
+    if (seg.resp != null && y.resp != null) respDelta = seg.resp - y.resp;
   }
 
   // 派单均衡度（13.2）：各坐席当日每在岗小时接单量（派单与领取）的标准差 / 平均值；仅计当日在岗 2 小时及以上的坐席，不含直派规则单
@@ -169,6 +176,8 @@ export function computeStats(
     waitMedian: seg.wait,
     respMedian: seg.resp,
     firstRespDelta,
+    waitDelta,
+    respDelta,
     balance,
     successRate: succEntered.size ? Math.round((success.size / succEntered.size) * 1000) / 10 : null,
     fallbackRate: entered.size ? Math.round((fallback.size / entered.size) * 1000) / 10 : null,
@@ -176,6 +185,54 @@ export function computeStats(
     pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),
     pathTotal,
   };
+}
+
+/* ---------------- 派单趋势（按日派出量、兜底量） ---------------- */
+
+/** 历史基线：各组池日均派出量与兜底量（今日之前的日期叠加派单日志实计） */
+const TREND_BASE: Record<string, { out: number; fb: number }> = {
+  line2: { out: 46, fb: 3 },
+  hardware: { out: 22, fb: 1.4 },
+  'edu-flash': { out: 18, fb: 1.2 },
+  xiaozhi: { out: 14, fb: 0.6 },
+  edu: { out: 20, fb: 1 },
+  general: { out: 24, fb: 1.6 },
+};
+const DAY = 24 * 60 * MIN;
+
+/** 按日期取确定的波动系数（同一天每次打开一致） */
+function dayWave(dayStart: number, salt: number): number {
+  const d = Math.floor(dayStart / DAY) + salt * 7919;
+  const x = Math.sin(d * 12.9898 + salt * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+export interface TrendPoint { label: string; dayStart: number; out: number; fallback: number; today: boolean }
+
+export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: string[] | null, now: number): TrendPoint[] {
+  const today = rangeStart('today', now);
+  const ids = poolIds ?? Object.keys(TREND_BASE);
+  const base = ids.reduce((s, id) => {
+    const b = TREND_BASE[id];
+    return b ? { out: s.out + b.out, fb: s.fb + b.fb } : s;
+  }, { out: 0, fb: 0 });
+  const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
+  const pts: TrendPoint[] = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const ds = today - i * DAY;
+    const de = ds + DAY;
+    const dayLogs = scoped.filter((l) => { const t = parseAt(l.at); return t >= ds && t < de; });
+    const out = dayLogs.filter(isEngineAssign).length;
+    const fallback = new Set(dayLogs.filter((l) => l.kind === '判定' && l.runMode === '正式派单' && l.path === '兜底回池').map((l) => l.ticketNo)).size;
+    const isToday = i === 0;
+    const wd = new Date(ds).getDay();
+    const weekend = wd === 0 || wd === 6 ? 0.72 : 1;
+    const bOut = isToday ? 0 : Math.round(base.out * weekend * (0.86 + dayWave(ds, 1) * 0.28));
+    const bFb = isToday ? 0 : Math.round(base.fb * weekend * (0.5 + dayWave(ds, 2) * 1.1));
+    const d = new Date(ds);
+    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out, fallback: bFb + fallback, today: isToday });
+  }
+  return pts;
 }
 
 export function minText(v: number | null): string {
