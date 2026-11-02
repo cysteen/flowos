@@ -2,7 +2,7 @@
 // 派单策略（PRD 14.2）：运行设置 / 入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
+import { CheckCircleFilled, CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
 import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
@@ -28,7 +28,6 @@ const TABS = [
   { key: 'run', label: '运行设置' },
   { key: 'inpool', label: '入池规则' },
   { key: 'outpool', label: '出池规则' },
-  { key: 'score', label: '评分与阈值' },
   { key: 'cap', label: '个人上限' },
   { key: 'audit', label: '开关记录' },
 ];
@@ -103,13 +102,9 @@ function pickOut(c: DispatchConfig): OutForm {
 const out = reactive<OutForm>(pickOut(store.config));
 const enabledFactorCount = computed(() => out.factors.filter((x) => x.enabled).length);
 const weightSum = computed(() => out.factors.filter((x) => x.enabled).reduce((s, x) => s + (x.weight || 0), 0));
-/* 出池规则页签：原处理人优先与投诉预留；评分与阈值页签：加权评分、放宽与兜底（两页签共用一份表单、一起保存） */
-const OUT_TAB_KEYS: (keyof OutForm)[] = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem', 'reserveMinutes', 'reserveSlaPercent'];
-const SCORE_TAB_KEYS = OUT_KEYS.filter((k) => !OUT_TAB_KEYS.includes(k));
-function resetOut(keys: (keyof OutForm)[]) {
-  const d = pickOut(defaultDispatchConfig());
-  keys.forEach((k) => { (out as Record<string, unknown>)[k] = d[k]; });
-}
+/** 门槛过滤（PRD 4.1，P0 项）：引擎固定判定，此处只展示 */
+const GATES = ['候选范围', '三级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
 function factorShare(w: number | null | undefined) {
   return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
 }
@@ -273,9 +268,25 @@ watch(() => store.config, (c) => {
 
     <!-- 出池规则 -->
     <div v-else-if="active === 'outpool'" class="st-stack">
-      <DispatchCard title="原处理人优先" sub="原处理人优先的时间窗与附加条件">
+      <DispatchCard title="出池规则" sub="在归属组成员中按以下步骤选处理人">
+      <div class="cs-list">
+      <div class="cs">
+        <div class="cs-hd">
+          <span class="cs-seq">1</span>
+          <div class="cs-ti"><div class="cs-name">门槛过滤<a-tag class="cs-lk">固定</a-tag></div><div class="cs-desc">任一不满足的坐席不进入候选集</div></div>
+        </div>
+        <div class="cs-bd gates">
+          <span v-for="g in GATES" :key="g" class="gate"><CheckCircleFilled />{{ g }}</span>
+        </div>
+      </div>
+      <div class="cs" :class="{ off: !out.originalFirst }">
+        <div class="cs-hd">
+          <span class="cs-seq">2</span>
+          <div class="cs-ti"><div class="cs-name">原处理人优先</div><div class="cs-desc">原处理人通过全部门槛即派回</div></div>
+          <div class="cs-op"><a-switch v-model:checked="out.originalFirst" /></div>
+        </div>
+        <div class="cs-bd">
         <div class="dpf-grid">
-          <div class="dpf-item"><span class="dpf-label">原处理人优先</span><div class="dpf-ctl"><a-switch v-model:checked="out.originalFirst" /></div></div>
           <div class="dpf-item"><span class="dpf-label">附加条件</span><div class="dpf-ctl"><a-checkbox v-model:checked="out.originalSameProblem">同一问题分类</a-checkbox></div></div>
           <div class="dpf-item">
             <span class="dpf-label">时间窗 · 咨询及其他</span>
@@ -286,10 +297,8 @@ watch(() => store.config, (c) => {
             <div class="dpf-ctl"><a-input-number v-model:value="out.windowComplaintDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
           </div>
         </div>
-      </DispatchCard>
-      <DispatchCard title="投诉预留" sub="投诉单为原处理人预留的时长">
         <div class="dpf-grid one">
-          <div class="dpf-item">
+          <div class="dpf-item last">
             <span class="dpf-label">投诉预留时长</span>
             <div class="dpf-ctl">
               <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟，且不超过首响 SLA 剩余的</span>
@@ -297,14 +306,15 @@ watch(() => store.config, (c) => {
             </div>
           </div>
         </div>
-      </DispatchCard>
-      <div class="st-foot"><a-button @click="resetOut(OUT_TAB_KEYS)">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
-    </div>
-
-    <!-- 评分与阈值 -->
-    <div v-else-if="active === 'score'" class="st-stack">
-      <DispatchCard title="加权评分" sub="参与评分的因子与权重">
-        <template #extra><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></template>
+        </div>
+      </div>
+      <div class="cs">
+        <div class="cs-hd">
+          <span class="cs-seq">3</span>
+          <div class="cs-ti"><div class="cs-name">加权评分</div><div class="cs-desc">原处理人不可用时对候选集评分，取最高分</div></div>
+          <div class="cs-op"><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></div>
+        </div>
+        <div class="cs-bd">
         <div class="fc-list">
           <div v-for="fc in out.factors" :key="fc.key" class="fc-row" :class="{ off: !fc.enabled }">
             <a-checkbox v-model:checked="fc.enabled" class="fc-name">{{ fc.key === 'recent' ? `近 ${out.recentHours} 小时接单量` : fc.label }}</a-checkbox>
@@ -319,8 +329,14 @@ watch(() => store.config, (c) => {
             <div class="dpf-ctl"><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
           </div>
         </div>
-      </DispatchCard>
-      <DispatchCard title="放宽与兜底" sub="产品逐级放宽与兜底回池的阈值">
+        </div>
+      </div>
+      <div class="cs">
+        <div class="cs-hd">
+          <span class="cs-seq">4</span>
+          <div class="cs-ti"><div class="cs-name">放宽与兜底</div><div class="cs-desc">候选集为空时留池排队、组内放宽，仍派不出则兜底回池</div></div>
+        </div>
+        <div class="cs-bd">
         <div class="dpf-grid">
           <div class="dpf-item">
             <span class="dpf-label">产品逐级放宽</span>
@@ -352,8 +368,11 @@ watch(() => store.config, (c) => {
             <div class="dpf-ctl"><a-input-number v-model:value="out.noSlaFallbackMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
           </div>
         </div>
+        </div>
+      </div>
+      </div>
       </DispatchCard>
-      <div class="st-foot"><a-button @click="resetOut(SCORE_TAB_KEYS)">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
+      <div class="st-foot"><a-button @click="resetOut()">重置</a-button><a-button type="primary" @click="saveOut">保存</a-button></div>
     </div>
 
     <!-- 个人上限 -->
@@ -441,6 +460,25 @@ watch(() => store.config, (c) => {
 .ro-steps li.cur { color: #1a6fff; font-weight: 600; }
 .ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; box-shadow: 0 0 0 4px rgba(26, 111, 255, 0.15); }
 .ro-ops { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* 出池规则 · 编号步骤卡 */
+.cs-list { display: flex; flex-direction: column; gap: 10px; }
+.cs { border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; padding: 12px 16px; }
+.cs.off .cs-bd { opacity: 0.55; }
+.cs-hd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cs-seq { width: 22px; height: 22px; border-radius: 50%; background: #1a6fff; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+.cs.off .cs-seq { background: #9ca3af; }
+.cs-ti { flex: 1; min-width: 200px; }
+.cs-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; }
+.cs-lk { transform: scale(0.85); margin-inline-end: 0; }
+.cs-desc { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.cs-op { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.cs-bd { margin: 10px 0 0 34px; padding-top: 4px; border-top: 1px dashed #eef0f3; }
+.cs-bd .dpf-item.last, .cs-bd > .dpf-grid:last-child .dpf-item { border-bottom: none; }
+.gates { display: flex; flex-wrap: wrap; gap: 8px 20px; padding-top: 10px; }
+.gate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
+.gate :deep(.anticon) { color: #10b981; }
+@media (max-width: 640px) { .cs-bd { margin-left: 0; } }
 
 /* 加权评分 */
 .wsum { font-size: 12px; color: #6b7280; }
