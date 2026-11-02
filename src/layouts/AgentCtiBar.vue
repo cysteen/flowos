@@ -18,8 +18,6 @@ import { useUserStore } from '@/stores/user';
 import { syncSignInFromCti } from '@/views/tickets/composables/dispatchUi';
 import { useCtiWorkReminders } from '@/composables/useCtiWorkReminders';
 import { DEFAULT_WORK_TYPE, workTypeOf, workTypesOfGroup } from '@/mock/ctiWorkTypes';
-import { TICKETS } from '@/mock/tickets';
-import { isTicketClosed } from '@/views/tickets/types/ticket';
 
 const BREAK_MENU: { key: BreakReason; label: string }[] = [
   { key: 'meeting', label: '开会' },
@@ -38,20 +36,17 @@ useCtiWorkReminders();
 /** 就绪子态菜单：取本人所在班组的工作类型字典（首个处理组），未配置的组取缺省清单 */
 const READY_MENU = computed(() => workTypesOfGroup(dispatch.agentOf(user.name)?.groupIds[0]));
 
-/** 可关联的工单：本人名下在办（未结、非草稿），最近更新在前 */
-const myOpenTickets = computed(() =>
-  TICKETS
-    .filter((t) => t.assignee === user.name && !t.archived && !t.isDraft && !isTicketClosed(t.nodeStatus))
-    .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
-    .slice(0, 12),
-);
-const LINK_PREFIX = 'link:';
-const NO_LINK = '__none__';
-
 const route = useRoute();
+/**
+ * 当前激活的工单：工作区页签由路由驱动（stores/workspaceTabs 的页签切换即路由跳转），
+ * 故以当前路由为准——处于工单处理页（ticket-operation）时取其单号，否则为空。
+ */
+const activeTicketNo = computed(() =>
+  (route.name === 'ticket-operation' ? String(route.params.ticketNo ?? '') : ''),
+);
 /** 工单操作信号：打开工单处理页 */
 watch(
-  () => (route.name === 'ticket-operation' ? String(route.params.ticketNo ?? '') : ''),
+  activeTicketNo,
   (no) => { if (no && cti.isSignedIn) flow.noteOp(no); },
   { immediate: true },
 );
@@ -112,10 +107,7 @@ const dropdownLinked = computed(() => cti.workStatus === 'ready' && !!cti.readyT
 
 const menuSelectedKeys = computed(() => {
   if (cti.workStatus === 'busy') return ['busy'];
-  if (cti.workStatus === 'ready') {
-    if (!workTypeOf(cti.readyMode)?.linkTicket) return [cti.readyMode];
-    return [cti.readyMode, `${LINK_PREFIX}${cti.readyMode}:${cti.readyTicketNo ?? NO_LINK}`];
-  }
+  if (cti.workStatus === 'ready') return [cti.readyMode];
   if (cti.workStatus === 'break') return [cti.breakReason];
   return ['logged_in'];
 });
@@ -130,13 +122,9 @@ function signOut() {
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
   if (k === 'busy' || k === 'logged_in') return;
-  if (k.startsWith(LINK_PREFIX)) {
-    const [type, no] = k.slice(LINK_PREFIX.length).split(':');
-    cti.setReadyMode(type, no && no !== NO_LINK ? no : null);
-    return;
-  }
   if (READY_MENU.value.some((t) => t.key === k)) {
-    cti.setReadyMode(k);
+    // 可关联工单的子态：切换那一刻取当前激活的工单（不在工单处理页则不关联）；之后切换页签不改写
+    cti.setReadyMode(k, workTypeOf(k)?.linkTicket ? activeTicketNo.value || null : null);
     return;
   }
   if (['meeting', 'training', 'tea', 'meal'].includes(k)) {
@@ -197,27 +185,9 @@ function onMenuClick({ key }: { key: string | number }) {
                 <a-menu-item key="busy" disabled>忙碌（外呼通话中）</a-menu-item>
               </template>
               <template v-else-if="cti.workStatus === 'ready'">
-                <template v-for="item in READY_MENU" :key="item.key">
-                  <a-sub-menu
-                    v-if="item.linkTicket"
-                    :key="item.key"
-                    :title="item.label"
-                    popup-class-name="cti-link-popup"
-                  >
-                    <a-menu-item :key="`${LINK_PREFIX}${item.key}:${NO_LINK}`">不关联工单</a-menu-item>
-                    <a-menu-item-group v-if="myOpenTickets.length" title="关联我的在办工单">
-                      <a-menu-item
-                        v-for="t in myOpenTickets"
-                        :key="`${LINK_PREFIX}${item.key}:${t.no}`"
-                        :title="`${t.no} ${t.title}`"
-                      >
-                        <span class="link-no">{{ t.no }}</span>
-                        <span class="link-title">{{ t.title }}</span>
-                      </a-menu-item>
-                    </a-menu-item-group>
-                  </a-sub-menu>
-                  <a-menu-item v-else :key="item.key">{{ item.label }}</a-menu-item>
-                </template>
+                <a-menu-item v-for="item in READY_MENU" :key="item.key">
+                  {{ item.label }}
+                </a-menu-item>
               </template>
               <template v-else-if="cti.workStatus === 'break'">
                 <a-menu-item v-for="item in BREAK_MENU" :key="item.key">
@@ -377,21 +347,13 @@ function onMenuClick({ key }: { key: string | number }) {
   color: #6b7280; font-family: inherit;
 }
 .status-dd.wide { width: 148px; }
-.status-dd.linked { width: auto; min-width: 148px; max-width: 300px; }
+/* 带单号时按内容放宽；顶栏放不下时只压缩胶囊本身（单号省略，悬停看全），其余按钮不动 */
+.status-dd.linked { width: auto; min-width: 148px; max-width: 300px; flex: 0 1 auto; }
+.actions:has(.status-dd.linked) { flex: 0 1 auto; min-width: 0; }
 .status-dd .dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-dd[disabled] { opacity: 0.55; cursor: not-allowed; }
 .status-dd .dd-arr { font-size: 10px; color: #9ca3af; }
 .status-dd.ready { color: #10b981; }
 .status-dd.break { color: #d97706; background: #fffbeb; border-color: #fcd34d; }
 .status-dd.busy { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
-</style>
-
-<style>
-/* 关联工单二级菜单（浮层挂在 body 下，不能用 scoped） */
-.cti-link-popup .ant-menu-sub { max-height: 360px; overflow-y: auto; min-width: 280px; }
-.cti-link-popup .link-no { font-size: 12px; color: #111827; font-variant-numeric: tabular-nums; margin-right: 8px; }
-.cti-link-popup .link-title {
-  display: inline-block; max-width: 140px; vertical-align: bottom;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #6b7280;
-}
 </style>

@@ -106,7 +106,7 @@ export const useCtiStore = defineStore('cti', {
     workStatus: 'offline' as WorkStatus,
     workStatusSince: 0,
     readyMode: DEFAULT_WORK_TYPE as ReadyMode,
-    /** 验证测试 / 远程协助等可关联工单的子态所选工单（可不选） */
+    /** 验证测试 / 远程协助等可关联工单的子态：切换那一刻激活的工单，之后不随页签改写；不在工单处理页时为空 */
     readyTicketNo: null as string | null,
     breakReason: 'training' as BreakReason,
     workStatusBeforeCall: null as WorkStatus | null,

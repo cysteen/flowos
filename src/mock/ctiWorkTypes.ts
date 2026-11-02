@@ -6,7 +6,7 @@
  *
  * - 「工单处理」恒为首项与默认子状态；其余均为线下类工作（offline = true），期间照常派单（派单只看签入 / 小休 / 签出）。
  * - 「外呼」不是子状态：外呼通话由话务条自动进入忙碌，挂断后恢复原状态；统计中单列一项（OUTBOUND_ITEM）。
- * - linkTicket = true 的类型切换时可选一张本人在办工单作为关联工单（可不选）。
+ * - linkTicket = true 的类型切换时自动关联当前激活的工单（处于工单处理页时取该单，否则不关联），切换后不随页签改写。
  * - 班组 id / 组名取自工单处理组（types/ticket.ts POOL_GROUPS）；「投诉风险组」取自规则引擎 / 通知规则里的同名处理组。
  * - 配色经 dataviz 校验脚本（浅色底，相邻色 CVD ΔE ≥ 8）；同一班组内不会出现两项同色。
  */
@@ -19,7 +19,7 @@ export interface WorkTypeDef {
   capsule: string;
   /** 线下类工作：参与「长时间未确认」提醒与「状态存疑」统计 */
   offline: boolean;
-  /** 切换时可选关联工单 */
+  /** 切换时自动关联当前激活的工单 */
   linkTicket: boolean;
   color: string;
 }
