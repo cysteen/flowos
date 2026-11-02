@@ -133,7 +133,7 @@ watch(() => store.config, (c) => {
       </a-tabs>
 
       <!-- 入池规则 -->
-      <div v-else-if="active === 'inpool'" class="st-tab-pane">
+      <div v-if="active === 'inpool'" class="st-tab-pane">
         <PoolRuleList :focus-id="focusRuleId" />
       </div>
 
