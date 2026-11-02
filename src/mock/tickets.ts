@@ -989,6 +989,8 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '已超 00:15', slaSub: '已超时', slaState: 'overdue', slaMinutes: -15,
     resolveSlaText: '04:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line2', hasDunning: true,
+    // 时间戳与首响 SLA 对齐（P1 首响 480 分钟、已超 15 分）：不补则按单号日期落成 0610，池内等待显示 145 天
+    createdAt: todayStamp(495), updatedAt: todayStamp(495),
   },
   {
     id: 't15', no: 'IFLYTS-20260610-00013', type: '投诉', channel: '小程序',
@@ -1007,6 +1009,8 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:28:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 28,
     resolveSlaText: '02:30:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'hardware', hasDunning: true, hasSupplement: true,
+    // 时间戳：早于风险监控纳入时刻（riskQueue rq-s07，100 分钟前）；距超时 28 分
+    createdAt: todayStamp(110), updatedAt: todayStamp(110),
   },
   {
     id: 't30', no: 'IFLYZX-20260610-00015', type: '咨询', channel: '电话',
@@ -1016,6 +1020,8 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '01:20:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 80,
     resolveSlaText: '06:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line2',
+    // 时间戳与首响 SLA 对齐（P1 首响 480 分钟、还剩 80 分）
+    createdAt: todayStamp(400), updatedAt: todayStamp(400),
   },
 
   // ---- @我的工单 (cc) 3 ----
