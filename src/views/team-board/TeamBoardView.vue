@@ -119,13 +119,15 @@ const summaryParts = computed(() => {
   const inbound = metricVal('inbound');
   const escalated = metricVal('escalated');
   const assignN = board.value.todos[0]?.count ?? 0;
-  /** 阈值随积压口径同步下调：新口径只数超时未结单，量级由几十降到十几 */
-  const heavy = Number(unassigned) >= 5 || Number(backlog) >= 10;
+  const none = Number(unassigned) === 0;
+  /** 有未分派即建议去指派（数＝未分派卡＝待指派）；为 0 时不出指派建议 */
+  const heavy = !none && assignN > 0;
   return [
     { text: '当前「', tone: 'plain' as const },
     { text: currentTeam.value.label, tone: 'gain' as const },
-    { text: '」有 ', tone: 'plain' as const },
-    { text: `${unassigned} 单未分派`, tone: 'risk' as const },
+    ...(none
+      ? [{ text: '」暂无未分派工单', tone: 'plain' as const }]
+      : [{ text: '」有 ', tone: 'plain' as const }, { text: `${unassigned} 单未分派`, tone: 'risk' as const }]),
     { text: '、超时未结 ', tone: 'plain' as const },
     { text: `${backlog}`, tone: 'risk' as const },
     { text: '；今日新增 ', tone: 'plain' as const },
@@ -397,7 +399,7 @@ function onGoList(p: DrillGoListPayload) {
 
 /* ========================= ③ 指派 ========================= */
 
-/** 待指派工单（8 单，与存量区「累计未分派 8」一致） */
+/** 待指派工单池（各组按本组未分派数从中取，见 assignTickets） */
 const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a1', no: 'IFLYTS-20260803-00001', customer: '莫某', type: '投诉', priority: 'P0', slaLeftMin: 26, createdAt: '08-03 09:12' },
   { id: 'a2', no: 'IFLYTS-20260803-00002', customer: '陈某', type: '咨询', priority: 'P2', slaLeftMin: 132, createdAt: '08-03 09:40' },
@@ -408,6 +410,13 @@ const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a7', no: 'IFLYTS-20260803-00007', customer: '周某', type: '退换', priority: 'P2', slaLeftMin: 95, createdAt: '08-03 11:03' },
   { id: 'a8', no: 'IFLYJY-20260803-00008', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
 ];
+
+/** 本组待指派：从待指派池按组取，条数＝未分派卡（待指派数） */
+const assignTickets = computed(() => {
+  const n = board.value.todos.find((t) => t.key === 'assign')?.count ?? 0;
+  const k = Math.max(0, leaderTeams.value.findIndex((t) => t.value === teamId.value)) * 2;
+  return [...ASSIGN_TICKETS.slice(k % ASSIGN_TICKETS.length), ...ASSIGN_TICKETS.slice(0, k % ASSIGN_TICKETS.length)].slice(0, n);
+});
 
 const assignOpen = ref(false);
 const assignPreselect = ref<string[]>([]);
@@ -1252,7 +1261,7 @@ watch(teamId, () => {
       v-model:open="assignOpen"
       :preselected-ids="assignPreselect"
       :candidates="board.members"
-      :tickets="ASSIGN_TICKETS"
+      :tickets="assignTickets"
       :can-cross-team="true"
       @submit="onAssignSubmit"
     />

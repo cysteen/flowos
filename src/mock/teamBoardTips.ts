@@ -98,7 +98,7 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
     define: '从派给他到他下送，平均花多久',
   },
   'member.overdue': {
-    define: '区间内发生过超时的单数',
+    define: '此刻未结且已超解决时效的单数',
   },
   'member.followRate': {
     define: '派给他满 24 小时的单里，多少比例联络过',

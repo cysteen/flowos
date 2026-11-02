@@ -27,6 +27,9 @@
  *    · 解决率 取系统口径（P-3）：走到「已解决」÷ 下送满 24h 的单，非客户问卷口径
  *    · 超时工单 ＝ 区间内**发生过**超时的单数，与「此刻仍超时」是两个数
  *    同名指标两处必须同值，否则坐席门户与班组表会打架。
+ * 6. **按真实班组生成的快照（getGroupBoardSnapshot）里，组员明细「超时」改取积压口径**（2026-11 业务定）：
+ *    ＝ 此刻未结、SLA 未停表、且已超过解决时效的单（与班组积压同一口径），由班组积压按最大余数法拆给组员，
+ *    **组员超时之和 ＝ 班组积压 ＝ 优先级分布合计**。（上一条的「区间内发生过」口径只留给基准名册 TEAM_MEMBERS。）
  *
  * ── 数值自洽关系（评审可逐条核对）──
  * - PRIORITY_BUCKETS 合计 3+5+4+2 = 14 ＝ 班组积压 14（超解决时效的未结单）
@@ -1449,10 +1452,11 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
  *   人均日新增 9、下送 7.5、结案 6、在办 12、积压（超解决时效）1.0、升级 1.5 ……（见 PER_HEAD），
  *   再乘一个按组 id 定的 0.85–1.15 浮动，避免几组数字成比例。
  *
- * 不随组切换（维持基准数据）：未分派 / 去指派、催单、补充、预约、待审批、问题 TOP10 及各下钻明细。
+ * 不随组切换（维持基准数据）：催单、补充、预约、待审批、问题 TOP10 及其下钻明细。
+ * 未分派随组按人数生成（人均 0.5），卡片 ＝ 问候语 ＝ 待指派 ＝「去指派」列表条数。
  *
  * 生成后逐条满足的加总关系（与文件头「数值自洽关系」同一套）：
- * - 优先级分布合计 ＝ 班组积压
+ * - 优先级分布合计 ＝ 班组积压 ＝ 组员「超时」之和（积压口径，按最大余数拆给组员）
  * - 组员 forwardToday 之和 ＝ 今日下送
  * - 当日时段趋势三线之和 ＝ 今日 新增 / 下送 / 结案；近 30 天末点 ＝ 今日三值，前一点 ＝ 昨日三值，卡片环比＝两点之差
  * - 24 小时联络率分母 ＝ 近 30 天倒数第二点（昨日）的新增
@@ -1480,7 +1484,7 @@ const PER_HEAD = {
   transferIn: 0.4, returned: 0.25, returnedY: 0.3,
   delegated: 0.3, suspended: 0.25, transferredOut: 0.2,
   firstOver: 0.2, resolveOver: 0.4, evaluated: 5, bad: 0.35, badY: 0.25,
-  overdue: 1.9,
+  unassigned: 0.5, unassignedPrev: 0.4,
 } as const;
 
 function groupHash(s: string): number {
@@ -1544,12 +1548,18 @@ export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
   const bad = Math.min(evaluated, q(PER_HEAD.bad));
   const badY = q(PER_HEAD.badY);
   const contacted = Math.round(inboundY * 0.918);
+  const unassigned = q(PER_HEAD.unassigned);
+  const dUnassigned = unassigned - q(PER_HEAD.unassignedPrev);
+  /** 最久等待：按组定在 20–140 分钟 */
+  const waitMin = 20 + Math.floor(groupHash(`${g.id}|wait`) * 120);
+  const waitText = waitMin >= 60 ? `${Math.floor(waitMin / 60)}h${String(waitMin % 60).padStart(2, '0')}m` : `${waitMin}m`;
 
   // 组员：真实组员，个人属性沿用基准名册的同位行，数量按组合计分配
   const base = g.members.map((_, i) => TEAM_MEMBERS[i % TEAM_MEMBERS.length]);
   const fwd = apportionInt(forward, base.map((b) => b.forwardToday));
   const load = apportionInt(q(PER_HEAD.workload), base.map((b) => b.workload));
-  const over = apportionInt(q(PER_HEAD.overdue), base.map((b) => b.overdue + 0.5));
+  // 组员「超时」取积压口径：班组积压按最大余数拆给组员，之和＝班组积压
+  const over = apportionInt(backlog, base.map((b) => b.overdue + 0.5));
   const members: MemberRow[] = g.members.map((m, i) => {
     const workload = load[i];
     return {
@@ -1593,8 +1603,13 @@ export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
     openingBacklog: BOARD_OPENING_BACKLOG,
     backlog: patchMetric(BOARD_BACKLOG, { value: String(backlog), delta: '0', deltaTone: 'neutral' }),
     focus: [
-      // 未分派 / 催单 / 补充 / 预约维持基准（与「去指派」及事件明细同源，不随组切换）
-      focusOf('unassigned', {}),
+      // 未分派按人数生成（与问候语、待指派、「去指派」列表同数）；催单 / 补充 / 预约维持基准（与事件明细同源，不随组切换）
+      focusOf('unassigned', {
+        value: String(unassigned),
+        delta: signed(dUnassigned),
+        deltaTone: dUnassigned > 0 ? 'bad' : dUnassigned < 0 ? 'good' : 'neutral',
+        sub: unassigned ? `最久等待 ${waitText}` : undefined,
+      }),
       // 按人数生成的时点值：环比不另造，记 0；为 0 时不显示「最久…」副文案
       focusOf('delegated', countFocus(q(PER_HEAD.delegated))),
       focusOf('suspended', countFocus(q(PER_HEAD.suspended))),
@@ -1615,7 +1630,7 @@ export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
       patchMetric(BOARD_METRICS[6], { value: pct(resolveOver, inbound), sub: `解决超 ${resolveOver} / ${inbound} · 平均超 2.4h`, delta: '0', deltaTone: 'neutral' }),
       patchMetric(BOARD_METRICS[7], { value: String(bad), sub: `服务分 1–3 分 · 占今日已评 ${pct(bad, evaluated)}`, delta: signed(dBad), deltaTone: tone(dBad, false) }),
     ],
-    todos: BOARD_TODOS,
+    todos: BOARD_TODOS.map((t) => (t.key === 'assign' ? { ...t, count: unassigned } : t)),
     members,
     priorityBuckets,
     trafficScale: n / TEAM_MEMBERS.length,
