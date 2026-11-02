@@ -11,7 +11,7 @@ import {
 
 /**
  * 话务条状态流水：每次工作状态 / 子状态切换记一段（人、班组、状态、子状态、起止时刻、关联工单），
- * 外呼忙碌段同样记一段（子状态记 outbound）。另记「工单操作」时刻，供提醒与「状态存疑」统计。
+ * 外呼忙碌段同样记一段（子状态记 outbound）。另记「工单操作」时刻，供「状态存疑」统计。
  *
  * - 实时段落 localStorage（键带版本号），刷新后未结束的段以最后一次保存时刻收尾；
  * - 近两周种子按工作日 9:00–18:00 按人按日确定性生成，不入缓存（刷新、跨日都与当日对齐）；
@@ -20,12 +20,9 @@ import {
  */
 
 export const CTI_FLOW_LS_KEY = 'flowos-cti-status-flow';
-export const CTI_FLOW_VERSION = 1;
+/** v2：去掉线下子状态「仍在进行」确认记录（confirmAt） */
+export const CTI_FLOW_VERSION = 2;
 
-/** 停在「工单处理」超过 N 分钟无工单操作，提醒切换状态 */
-export const IDLE_TICKET_WORK_REMIND_MIN = 20;
-/** 处于线下子状态超过 M 分钟，提醒确认是否仍在进行 */
-export const OFFLINE_CONFIRM_REMIND_MIN = 120;
 /** 状态存疑：线下子状态期间每次工单操作计入其后这段时长（重叠合并，截到段尾） */
 export const SUSPECT_WINDOW_MIN = 10;
 
@@ -58,7 +55,6 @@ interface Persisted {
   savedAt: number;
   segments: FlowSegment[];
   ops: FlowOp[];
-  confirmAt: Record<string, number>;
 }
 
 export interface DistItem {
@@ -283,15 +279,13 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       .map((s) => (s.end == null ? { ...s, end: Math.max(s.start, cached!.savedAt) } : s)),
   );
   const ops = ref<FlowOp[]>((cached?.ops ?? []).filter((o) => o.at >= keepFrom));
-  /** 线下子状态「仍在进行」的最近确认时刻，按人 */
-  const confirmAt = ref<Record<string, number>>(cached?.confirmAt ?? {});
   let seq = segments.value.length;
 
   function save() {
     try {
       const v: Persisted = {
         version: CTI_FLOW_VERSION, savedAt: Date.now(),
-        segments: segments.value, ops: ops.value, confirmAt: confirmAt.value,
+        segments: segments.value, ops: ops.value,
       };
       localStorage.setItem(CTI_FLOW_LS_KEY, JSON.stringify(v));
     } catch {
@@ -332,20 +326,6 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     if (!who) return;
     ops.value.push({ who, at: Date.now(), ticketNo });
     save();
-  }
-
-  function lastOpAt(who: string): number {
-    for (let i = ops.value.length - 1; i >= 0; i--) if (ops.value[i].who === who) return ops.value[i].at;
-    return 0;
-  }
-
-  function confirmOngoing() {
-    const { who } = me();
-    confirmAt.value = { ...confirmAt.value, [who]: Date.now() };
-    save();
-  }
-  function confirmedAt(who: string): number {
-    return confirmAt.value[who] ?? 0;
   }
 
   /** 进行中段的定时落盘，刷新后以此收尾 */
@@ -432,6 +412,6 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
 
   return {
     segments, ops,
-    transition, noteOp, lastOpAt, confirmOngoing, confirmedAt, heartbeat, distribution,
+    transition, noteOp, heartbeat, distribution,
   };
 });

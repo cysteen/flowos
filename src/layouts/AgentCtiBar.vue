@@ -16,7 +16,6 @@ import { useCtiFlowStore } from '@/stores/ctiFlow';
 import { useDispatchStore } from '@/stores/dispatch';
 import { useUserStore } from '@/stores/user';
 import { syncSignInFromCti } from '@/views/tickets/composables/dispatchUi';
-import { useCtiWorkReminders } from '@/composables/useCtiWorkReminders';
 import { DEFAULT_WORK_TYPE, workTypeOf, workTypesOfGroup } from '@/mock/ctiWorkTypes';
 
 const BREAK_MENU: { key: BreakReason; label: string }[] = [
@@ -31,7 +30,6 @@ const user = useUserStore();
 const dispatch = useDispatchStore();
 const flow = useCtiFlowStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
-useCtiWorkReminders();
 
 /** 就绪子态菜单：取本人所在班组的工作类型字典（首个处理组），未配置的组取缺省清单 */
 const READY_MENU = computed(() => workTypesOfGroup(dispatch.agentOf(user.name)?.groupIds[0]));
