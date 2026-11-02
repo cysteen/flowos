@@ -788,11 +788,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 首响已超时（4.4）：进入派单或判定时已超时，直接兜底回池，不按「无首响 SLA」排队
     if (mode === '正常态' && firstRespOverdue(t, st, now)) {
       const g = gates(t, st, st.relaxLevel);
-      const failReason: DispatchFailReason | undefined = g.passed.length ? undefined
-        : g.blockedByCap.length ? '均达个人上限' : g.onDuty === 0 ? '无在班成员' : '无画像匹配成员';
       return {
         path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, drops: g.drops, candidateCount: 0,
-        ...(failReason ? { failReason } : {}),
+        failReason: '首响已超时',
       };
     }
 

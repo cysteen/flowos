@@ -375,7 +375,7 @@ export type DispatchTrigger =
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
 
 /** 失败原因（13.1） */
-export type DispatchFailReason = '无画像匹配成员' | '无在班成员' | '均达个人上限' | '引擎异常';
+export type DispatchFailReason = '无画像匹配成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
 export type GateKey = '候选范围' | '三级开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';

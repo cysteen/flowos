@@ -18,7 +18,7 @@ const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
 
 const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '组内放宽', '兜底回池', '留池'];
-const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无在班成员', '均达个人上限', '引擎异常'];
+const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无在班成员', '均达个人上限', '引擎异常', '首响已超时'];
 const FACTOR_LABEL: Record<ScoreFactorKey, string> = { load: '负载', proficiency: '熟练度', urgency: '紧急度', recent: '近 N 小时接单量', idle: '空闲时长' };
 
 const f = reactive<{ no: string; range: [Dayjs, Dayjs]; agents: string[]; pools: string[]; paths: DispatchPath[]; fails: DispatchFailReason[] }>({
