@@ -22,6 +22,7 @@ import {
   type PoolMode, type PoolRule, type PoolRuleConditions, type ProductPick, type Proficiency, type RelaxLevel,
   type RolloutStage, type RunMode, type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
+import { buildDispatchDemo } from '@/mock/dispatchDemo';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
 import { useFlashStore } from './flash';
@@ -42,7 +43,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 7;
+export const DISPATCH_CACHE_VERSION = 8;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -88,10 +89,18 @@ function poolLabelOf(label: string): string {
 const NON_DISPATCH_GROUP_IDS = new Set(['line1']);
 const LEADER = '王组长';
 
+/**
+ * 运行中种子（上线阶段「多组」）：二线、硬件、综合、技术支持四组开启班组开关；小智、教育刷机、教育支持三组（专属工单线）
+ * 未开启，本组降级态、组内领取。硬件缺陷组由管理员切为降级态（原因见审计种子）。
+ */
+const SWITCH_OFF_GROUP_IDS = new Set(['xiaozhi', 'edu-flash', 'edu']);
 function seedGroups(): DispatchGroup[] {
   return POOL_GROUPS
     .filter((g) => !NON_DISPATCH_GROUP_IDS.has(g.id))
-    .map((g) => ({ id: g.id, label: g.label, switchOn: true, mode: '正常态' as PoolMode, leaders: [LEADER] }));
+    .map((g) => ({
+      id: g.id, label: g.label, switchOn: !SWITCH_OFF_GROUP_IDS.has(g.id),
+      mode: (g.id === 'hardware' ? '降级态' : '正常态') as PoolMode, leaders: [LEADER],
+    }));
 }
 
 const ANY: AgentProfile = {
@@ -340,7 +349,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const now0 = Date.now();
   const cached = readCache();
 
-  const config = ref<DispatchConfig>(cached ? { ...defaultDispatchConfig(), ...cached.config } : defaultDispatchConfig());
+  // 运行中种子：全局开关开启、正式派单（上线以来的切换记录见审计种子）
+  const config = ref<DispatchConfig>(cached
+    ? { ...defaultDispatchConfig(), ...cached.config }
+    : { ...defaultDispatchConfig(), globalSwitch: true, runMode: '正式派单' });
   const groups = ref<DispatchGroup[]>(cached?.groups ?? seedGroups());
   const agents = ref<DispatchAgent[]>(cached?.agents ?? seedAgents(now0));
   const rules = ref<PoolRule[]>(cached?.rules ?? seedRules(now0));
@@ -350,6 +362,16 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const audits = ref<DispatchAuditEntry[]>(cached?.audits ?? []);
   let seq = cached?.seq ?? 0;
   const health = ref<DispatchHealthState>(cached?.health ?? { okSince: null, engineDownSince: null, syncStalledSince: null });
+
+  /** 无缓存时铺运行中种子：近两周派单日志与审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
+  const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value);
+  if (demo) {
+    for (const a of agents.value) Object.assign(a, demo.agentPatch[a.name] ?? {});
+    ticketStates.value = demo.ticketStates;
+    overAssigned.value = demo.overAssigned;
+    logs.value = demo.logs.slice(-LOG_LIMIT);
+    audits.value = demo.audits;
+  }
 
   // 默认池（综合处理组）不在旧缓存里时补上
   if (!groups.value.some((g) => g.id === DEFAULT_POOL_ID)) {
@@ -408,6 +430,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
     }
   }
   replayRows();
+  // 种子池内待派单注入工单库，并随派单快照落库（刷新后由回放补回）
+  if (demo) {
+    for (const row of demo.rows) {
+      if (!TICKETS.some((x) => x.no === row.no)) TICKETS.unshift(row);
+      touchRow(row);
+    }
+  }
 
   function persist() {
     try {

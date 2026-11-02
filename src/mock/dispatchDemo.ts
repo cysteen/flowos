@@ -1,0 +1,872 @@
+/**
+ * 【1215】智能派单 · 运行中种子（PRD 13 / 14 / 17 章）：近两周的派单日志、审计、池内待派工单与坐席当日在岗。
+ *
+ * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来（试运行 → 单组试点 → 多组）的判定与人工记录。
+ * - 只由 `stores/dispatch.ts` 在无缓存（或版本闸失效）时调用一次，结果随 `flowos-dispatch` 落库；改本文件须升 `DISPATCH_CACHE_VERSION`。
+ * - 日志里的工单号为历史单（号段 5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
+ * - 历史单的派单后首响时刻记在日志 `firstRespAt`（工单库查不到该单时，分派监控按此取首响）。
+ */
+import type { Ticket } from '@/views/tickets/types/ticket';
+import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import {
+  PRIORITY_SCORE, PROFICIENCY_SCORE, defaultScoreFactors, isProfileConfigured,
+  type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchFailReason, type DispatchGroup,
+  type DispatchLogEntry, type DispatchPath, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction,
+  type PoolMode, type RelaxLevel, type RunMode, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
+} from '@/views/tickets/types/dispatch';
+
+type Priority = Ticket['priority'];
+
+/** 历史单的派单日志：带派单后首响时刻（工单库无此单时分派监控取它） */
+export type SeedLogEntry = DispatchLogEntry & { firstRespAt?: string };
+
+export interface DispatchDemo {
+  logs: SeedLogEntry[];
+  audits: DispatchAuditEntry[];
+  ticketStates: Record<string, TicketDispatchState>;
+  overAssigned: Record<string, boolean>;
+  /** 池内待派的真实工单行（注入工单库） */
+  rows: Ticket[];
+  /** 坐席当日在岗、签入状态、接单时刻 */
+  agentPatch: Record<string, Partial<DispatchAgent>>;
+}
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+const ADMIN = '赵管理';
+const LEADER = '王组长';
+const SYSTEM = '系统';
+
+const pad = (n: number) => String(n).padStart(2, '0');
+function stamp(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function ymd(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+function dayStartOf(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+function hm(ms: number): string {
+  const d = new Date(ms);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 确定性随机（同一天每次生成一致） */
+function rng(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* 工单快照模板（按池）                                                  */
+/* ------------------------------------------------------------------ */
+
+interface Snap {
+  businessType?: string;
+  ticketType: '咨询' | '投诉';
+  productCategory?: string;
+  product?: string;
+  problem?: string;
+  ticketSource?: string;
+  customerType?: string;
+}
+
+const SNAPS: Record<string, Snap[]> = {
+  line2: [
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '功能异常 / 播放问题 / 在线播放', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '蓝牙耳机 Air', problem: '功能异常 / 播放问题 / 无法播放', ticketSource: '客户服务小程序', customerType: '个人用户' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能录音笔 SR302', problem: '功能异常 / 录音问题 / 转写失败', ticketSource: 'IM', customerType: '个人用户' },
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '功能异常 / 播放问题 / 无法播放', ticketSource: 'IM', customerType: '家长' },
+    { businessType: '翻译机', ticketType: '咨询', productCategory: '消费电子', product: '讯飞翻译机 T10', problem: '功能异常 / 翻译问题 / 识别不准', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞学习机 T20', problem: '功能异常 / 应用问题 / 闪退', ticketSource: '电话', customerType: '家长' },
+  ],
+  hardware: [
+    { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '扫地机器人 R2', problem: '设备故障 / 无法开机 / 无响应', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '咨询', productCategory: '智能硬件', product: '智能门锁 L1', problem: '设备故障 / 网络 / WiFi 连不上', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '投诉', productCategory: '学习硬件', product: '学习机 T20', problem: '设备故障 / 屏幕 / 花屏', ticketSource: '电话', customerType: '家长' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '空气净化器 P2', problem: '设备故障 / 无法开机 / 指示灯不亮', ticketSource: '售后系统', customerType: '个人用户' },
+  ],
+  general: [
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '蓝牙耳机 Air', ticketSource: '售后系统', customerType: '个人用户' },
+    { businessType: '其他', ticketType: '咨询', productCategory: '会员权益', product: '会员服务', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '扫地机器人 R2', ticketSource: '售后系统', customerType: '个人用户' },
+    { ticketType: '咨询', productCategory: '企业服务', product: '企业版', ticketSource: 'IM', customerType: '经销商' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '路由器 R2', ticketSource: '电话', customerType: '个人用户' },
+    { businessType: '学习机', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞学习机 T20', ticketSource: '电话', customerType: '家长' },
+  ],
+  tech: [
+    { ticketType: '咨询', productCategory: '开放平台', product: '开放平台', problem: '功能异常 / 接口 / 鉴权失败', ticketSource: '跨组调剂', customerType: '经销商' },
+    { ticketType: '咨询', productCategory: '企业服务', product: '企业版', problem: '功能异常 / 账号 / 单点登录失败', ticketSource: '跨组调剂', customerType: '经销商' },
+    { businessType: '智能硬件', ticketType: '咨询', productCategory: '智能硬件', product: '智能音箱 X1', problem: '功能异常 / 固件 / 升级失败', ticketSource: '跨组调剂', customerType: '个人用户' },
+  ],
+  'edu-flash': [
+    { businessType: '教育', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞智慧课堂学生平板 S30', problem: '售后 / 服务申请 / 自助刷机', ticketSource: '客户服务小程序', customerType: '学生' },
+    { businessType: '教育', ticketType: '咨询', productCategory: '学习硬件', product: '讯飞智慧课堂学生平板 S20', problem: '售后 / 服务申请 / 自助刷机', ticketSource: '电话', customerType: '家长' },
+  ],
+  edu: [
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '个性化学习手册', problem: '个册退费 / 退费申请 / 个册退费', ticketSource: '电话', customerType: '家长' },
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '账号问题 / 权益 / 订单未同步', ticketSource: 'IM', customerType: '家长' },
+  ],
+  xiaozhi: [
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网会员', problem: '功能异常 / 播放问题 / 在线播放', ticketSource: 'IM', customerType: '老师' },
+    { businessType: '教育', ticketType: '咨询', productCategory: '软件服务', product: '智学网校级版', problem: '功能异常 / 扫描 / 识别偏移', ticketSource: 'IM', customerType: '老师' },
+  ],
+};
+
+/** 命中规则（13.1）：按池取迁移规则名；技术支持池经调剂到池 / 升级三线进入记「指定池」 */
+function ruleOf(pool: string, s: Snap): string {
+  if (pool === 'line2') return '功能异常（迁移）';
+  if (pool === 'hardware') return s.ticketType === '投诉' && s.product === '学习机 T20' ? '投诉自动派学习机组（迁移）' : '设备故障（迁移）';
+  if (pool === 'tech') return '指定池';
+  if (pool === 'edu-flash') return '自助刷机（迁移）';
+  if (pool === 'edu') return '个册退费（迁移）';
+  return '默认池';
+}
+
+const FIRST_RESP_LIMIT: Record<Priority, number> = { P0: 15, P1: 480, P2: 480, P3: 480 };
+
+/* ------------------------------------------------------------------ */
+/* 日志构造                                                             */
+/* ------------------------------------------------------------------ */
+
+interface Mode {
+  runMode: RunMode;
+  globalMode: PoolMode;
+  groupMode: PoolMode;
+  effectiveMode: PoolMode;
+}
+const FORMAL: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '正常态', effectiveMode: '正常态' };
+const TRIAL: Mode = { runMode: '试运行', globalMode: '正常态', groupMode: '正常态', effectiveMode: '正常态' };
+const HW_DEGRADED: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '降级态', effectiveMode: '降级态' };
+const GLOBAL_DEGRADED: Mode = { runMode: '正式派单', globalMode: '降级态', groupMode: '正常态', effectiveMode: '降级态' };
+/** 未开启班组开关的组（专属工单线）：本组降级态，组内领取 */
+const OFF_GROUP: Mode = { runMode: '正式派单', globalMode: '正常态', groupMode: '降级态', effectiveMode: '降级态' };
+
+interface Tk {
+  no: string;
+  pool: string;
+  snap: Snap;
+  priority: Priority;
+  /** 进入派单时首响剩余（分钟） */
+  remain0: number;
+  enteredAt: number;
+  seq: number;
+}
+
+interface JudgeOpts {
+  trigger: DispatchTrigger;
+  path: DispatchPath;
+  mode: Mode;
+  status?: DispatchStatus | null;
+  chosen?: DispatchAgent;
+  relaxLevel?: RelaxLevel;
+  failReason?: DispatchFailReason;
+  /** 试运行：建议处理人 */
+  trial?: boolean;
+  /** 本次判定的候选数（不传按池成员估算） */
+  candidates?: number;
+  firstRespAt?: number;
+}
+
+function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => number) {
+  const logs: SeedLogEntry[] = [];
+  let idn = 0;
+  const weights = defaultScoreFactors();
+  const wsum = weights.reduce((s, f) => s + f.weight, 0);
+  const groupLabel = (id: string) => groups.find((g) => g.id === id)?.label ?? id;
+  const poolLabel = (id: string) => `${groupLabel(id)}池`;
+  const members = (pool: string) => agents.filter((a) => a.groupIds.includes(pool));
+  const eligible = (pool: string) => members(pool).filter((a) => a.personalSwitch && isProfileConfigured(a.profile));
+  const capOf = (a: DispatchAgent) => {
+    const base = a.roles.includes('技术支持') ? 8 : a.roles.some((x) => ['班组长', '客诉专员', '督导'].includes(x)) ? 5 : 10;
+    return a.capOverride ?? Math.round(base * ({ 初级: 0.6, 熟练: 1, 专家: 1.3 } as const)[a.proficiency]);
+  };
+  const between = (lo: number, hi: number) => lo + (hi - lo) * r();
+  const pick = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length) % xs.length];
+
+  function snapshotOf(t: Tk, at: number): DispatchLogEntry['snapshot'] {
+    const remain = Math.round(t.remain0 - (at - t.enteredAt) / MIN);
+    return {
+      ...(t.snap.businessType ? { businessType: t.snap.businessType } : {}),
+      ticketType: t.snap.ticketType,
+      ...(t.snap.productCategory ? { productCategory: t.snap.productCategory } : {}),
+      ...(t.snap.product ? { product: t.snap.product } : {}),
+      ...(t.snap.problem ? { problem: t.snap.problem } : {}),
+      ...(t.snap.ticketSource ? { ticketSource: t.snap.ticketSource } : {}),
+      ...(t.snap.customerType ? { customerType: t.snap.customerType } : {}),
+      priority: t.priority,
+      firstRespRemainMin: Math.max(0, remain),
+    };
+  }
+
+  /** 单个候选评分（4.3）：五因子加权 */
+  function scoreOf(a: DispatchAgent, t: Tk, boost = 0): ScoreDetail {
+    const cap = capOf(a);
+    const load = Math.min(0.95, Math.max(0.1, between(0.25, 0.9) + boost));
+    const factors: Record<ScoreFactorKey, number> = {
+      load,
+      proficiency: PROFICIENCY_SCORE[a.proficiency],
+      urgency: Math.max(PRIORITY_SCORE[t.priority], between(0, 0.35)),
+      recent: Math.min(1, Math.max(0, between(0.2, 1) + boost)),
+      idle: Math.min(1, Math.max(0.05, between(0.1, 0.9) + boost)),
+    };
+    const total = Math.round((weights.reduce((s, f) => s + f.weight * factors[f.key], 0) / wsum) * 1000) / 10;
+    for (const k of Object.keys(factors) as ScoreFactorKey[]) factors[k] = Math.round(factors[k] * 100) / 100;
+    return { name: a.name, total, factors, idleMinutes: Math.round(factors.idle * 120), inTransit: Math.round((1 - load) * cap) };
+  }
+
+  /** 门槛淘汰（4.1）：按池成员估算各门槛淘汰人数，`keep` 为最终候选数 */
+  function dropsOf(pool: string, keep: number, capBlocked = 0): Partial<Record<GateKey, number>> {
+    const m = members(pool);
+    const d: Partial<Record<GateKey, number>> = {};
+    const outside = agents.length - m.length;
+    if (outside) d['候选范围'] = outside;
+    const off = m.filter((a) => !a.personalSwitch).length;
+    if (off) d['三级开关'] = off;
+    const unconf = m.filter((a) => a.personalSwitch && !isProfileConfigured(a.profile)).length;
+    let rest = m.length - off - unconf - keep - capBlocked;
+    if (rest > 0) {
+      const shift = Math.min(rest, Math.round(r() * Math.min(1, rest)));
+      if (shift) d['在班'] = shift;
+      rest -= shift;
+    }
+    if (unconf) d['画像已配置'] = unconf;
+    if (rest > 0) d['画像匹配'] = rest;
+    if (capBlocked) d['个人上限'] = capBlocked;
+    return d;
+  }
+
+  function judge(t: Tk, at: number, o: JudgeOpts): SeedLogEntry {
+    t.seq += 1;
+    const assignLike = !!o.chosen;
+    let chosenScore: ScoreDetail | undefined;
+    let top3: { name: string; total: number }[] | undefined;
+    let candidates = 0;
+    if (o.chosen) {
+      const pool = eligible(t.pool);
+      candidates = o.candidates ?? (o.path === '原处理人' ? 1 : Math.max(1, Math.min(pool.length, 1 + Math.floor(r() * pool.length))));
+      chosenScore = scoreOf(o.chosen, t, 0.15);
+      if (o.path !== '原处理人') {
+        const others = pool.filter((a) => a.name !== o.chosen!.name).slice(0, Math.max(0, candidates - 1));
+        top3 = [{ name: chosenScore.name, total: chosenScore.total }, ...others.map((a) => {
+          const s = scoreOf(a, t);
+          return { name: a.name, total: Math.min(s.total, Math.round((chosenScore!.total - between(1.5, 12)) * 10) / 10) };
+        })].sort((x, y) => y.total - x.total).slice(0, 3);
+      }
+    }
+    const capBlocked = o.path === '排队' ? Math.max(1, Math.min(2, eligible(t.pool).length)) : 0;
+    const status = o.trial ? null : (o.status ?? null);
+    const e: SeedLogEntry = {
+      id: `dl-seed-${(idn += 1)}`,
+      ticketNo: t.no,
+      seq: t.seq,
+      at: stamp(at),
+      kind: '判定',
+      trigger: o.trigger,
+      poolId: t.pool,
+      poolLabel: poolLabel(t.pool),
+      ruleName: ruleOf(t.pool, t.snap),
+      globalMode: o.mode.globalMode,
+      groupMode: o.mode.groupMode,
+      effectiveMode: o.mode.effectiveMode,
+      runMode: o.mode.runMode,
+      path: o.path,
+      relaxLevel: o.relaxLevel ?? 0,
+      ...(o.path === '留池' || o.path === '预留' ? {} : { gateDrops: dropsOf(t.pool, assignLike ? candidates : 0, capBlocked), candidateCount: assignLike ? candidates : 0 }),
+      ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
+      ...(chosenScore ? { chosenScore } : {}),
+      ...(top3 ? { top3 } : {}),
+      ...(o.failReason ? { failReason: o.failReason } : {}),
+      status,
+      snapshot: snapshotOf(t, at),
+      ...(o.trial ? { trial: { suggested: o.chosen?.name ?? null, actual: null, same: false } } : {}),
+      ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
+    };
+    logs.push(e);
+    return e;
+  }
+
+  function manual(t: Tk, at: number, action: ManualAction, operator: string, mode: Mode, o: {
+    target?: string; reason?: string; overCap?: '超额指派'; firstRespAt?: number; trialSuggested?: string | null; ruleName?: string;
+  } = {}): SeedLogEntry {
+    t.seq += 1;
+    const e: SeedLogEntry = {
+      id: `dl-seed-${(idn += 1)}`,
+      ticketNo: t.no,
+      seq: t.seq,
+      at: stamp(at),
+      kind: '人工',
+      poolId: t.pool,
+      poolLabel: poolLabel(t.pool),
+      ruleName: o.ruleName ?? ruleOf(t.pool, t.snap),
+      globalMode: mode.globalMode,
+      groupMode: mode.groupMode,
+      effectiveMode: mode.effectiveMode,
+      runMode: mode.runMode,
+      snapshot: snapshotOf(t, at),
+      manual: { action, operator, ...(o.target ? { target: o.target } : {}), ...(o.reason ? { reason: o.reason } : {}) },
+      ...(o.overCap ? { overCap: o.overCap } : {}),
+      ...(o.trialSuggested !== undefined && o.target
+        ? { trial: { suggested: o.trialSuggested, actual: o.target, same: o.trialSuggested === o.target } } : {}),
+      ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
+    };
+    logs.push(e);
+    return e;
+  }
+
+  return { logs, judge, manual, members, eligible, poolLabel, groupLabel, between, pick, capOf };
+}
+
+type Builder = ReturnType<typeof makeBuilder>;
+
+const REASSIGN_REASONS = ['客户要求更换处理人', '原处理人临时外出培训', '需熟悉该产品的坐席跟进'];
+const TRANSFER_REASONS = ['该客户近期由其跟进', '跨组协助处理'];
+const FAIL_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '无在班成员', '首响已超时', '无画像匹配成员'];
+
+/* ------------------------------------------------------------------ */
+/* 上线以来（前 13 天）                                                   */
+/* ------------------------------------------------------------------ */
+
+interface Timeline {
+  today0: number;
+  trialStart: number;
+  singleStart: number;
+  multiStart: number;
+  degradeStart: number;
+  degradeEnd: number;
+}
+
+function timelineOf(now: number): Timeline {
+  const today0 = dayStartOf(now);
+  const at = (d: number, h: number, m = 0) => today0 - d * DAY + h * HOUR + m * MIN;
+  return {
+    today0,
+    trialStart: at(13, 9, 30),
+    singleStart: at(7, 10),
+    multiStart: at(4, 10, 30),
+    degradeStart: at(3, 14, 5),
+    degradeEnd: at(3, 14, 40),
+  };
+}
+
+function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () => number, now: number,
+  noteTake: (name: string, at: number) => void) {
+  const A = (n: string) => agents.find((a) => a.name === n)!;
+  const respAt = (take: number) => {
+    const at = take + (6 + 18 * r() ** 1.3) * MIN;
+    return at < now ? at : undefined;
+  };
+  for (let d = 13; d >= 1; d -= 1) {
+    const ds = tl.today0 - d * DAY;
+    const wd = new Date(ds).getDay();
+    const weekend = wd === 0 || wd === 6;
+    let serial = 50000;
+    const newTk = (pool: string, at: number, type?: '咨询' | '投诉'): Tk => {
+      const base = b.pick(SNAPS[pool]);
+      const snap: Snap = type ? { ...base, ticketType: type } : base;
+      const x = r();
+      const priority: Priority = x < 0.05 ? 'P0' : x < 0.25 ? 'P1' : x < 0.9 ? 'P2' : 'P3';
+      serial += 1 + Math.floor(r() * 3);
+      return {
+        no: `${snap.ticketType === '投诉' ? 'IFLYTS' : 'IFLYZX'}-${ymd(ds)}-${serial}`,
+        pool, snap, priority,
+        remain0: priority === 'P0' ? b.between(9, 15) : b.between(180, FIRST_RESP_LIMIT[priority] - 10),
+        enteredAt: at, seq: 0,
+      };
+    };
+    const from = Math.max(ds + 8 * HOUR + 40 * MIN, tl.trialStart);
+    const to = ds + 18 * HOUR + 20 * MIN;
+    const stageAt = (ts: number) => (ts < tl.singleStart ? 'trial' : ts < tl.multiStart ? 'single' : 'multi');
+    const volume = { trial: weekend ? 9 : 15, single: weekend ? 7 : 11, multi: weekend ? 13 : 21 }[stageAt(from)];
+    const times = Array.from({ length: volume }, () => from + r() * (to - from)).sort((x, y) => x - y);
+
+    // 自动降级当日：引擎异常判定（降级前）
+    if (ds <= tl.degradeStart && tl.degradeStart < ds + DAY) {
+      for (const m of [1, 2, 4]) {
+        const at = tl.degradeStart - (5 - m) * MIN;
+        const t = newTk(m === 2 ? 'general' : 'line2', at);
+        b.judge(t, at, { trigger: '新单', path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: '引擎异常' });
+        const who = b.pick(b.eligible(t.pool));
+        const take = at + b.between(8, 20) * MIN;
+        b.manual(t, take, '班组长指派', LEADER, GLOBAL_DEGRADED, { target: who.name, firstRespAt: respAt(take) });
+      }
+    }
+
+    let movedToTech = false;
+    for (const ts of times) {
+      const stage = stageAt(ts);
+      const pools = stage === 'single' ? ['line2'] : ['line2', 'general', 'hardware', 'tech'];
+      const x = r();
+      const pool = pools.length === 1 ? 'line2' : x < 0.4 ? 'line2' : x < 0.7 ? 'general' : x < 0.88 ? 'hardware' : 'tech';
+      const elig = b.eligible(pool);
+      const sc = r();
+      // 自动降级期间：全局降级态留池，组内领取
+      if (ts >= tl.degradeStart && ts < tl.degradeEnd) {
+        const t = newTk(pool, ts);
+        b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_DEGRADED, status: null });
+        const who = b.pick(elig);
+        const take = ts + b.between(4, 12) * MIN;
+        b.manual(t, take, '二线领取', who.name, GLOBAL_DEGRADED, { target: who.name, firstRespAt: respAt(take) });
+        noteTake(who.name, take);
+        continue;
+      }
+      const reserve = sc >= 0.82 && sc < 0.85;
+      const t = newTk(pool, ts, reserve ? '投诉' : undefined);
+      const trigger: DispatchTrigger = pool === 'tech' ? (r() < 0.6 ? '升级三线' : '调剂到池') : r() < 0.1 ? '售后转回' : '新单';
+      const agent = b.pick(elig);
+      if (stage === 'trial') {
+        // 试运行：引擎只给建议，组内领取 / 班组长指派；建议与实际有同有不同
+        let suggested: DispatchAgent | undefined;
+        if (sc < 0.5) {
+          suggested = agent;
+          b.judge(t, ts, { trigger, path: sc < 0.4 ? '加权评分' : '原处理人', mode: TRIAL, chosen: agent, trial: true });
+        } else if (sc < 0.82) {
+          b.judge(t, ts, { trigger, path: '排队', mode: TRIAL, trial: true });
+        } else if (sc < 0.9) {
+          suggested = agent;
+          b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: 1, mode: TRIAL, chosen: agent, trial: true });
+        } else {
+          b.judge(t, ts, { trigger, path: '兜底回池', mode: TRIAL, failReason: b.pick(FAIL_REASONS), trial: true });
+        }
+        const same = suggested && r() < 0.72;
+        const other = elig.filter((a) => a.name !== suggested?.name);
+        const target = same ? suggested! : (other.length ? b.pick(other) : agent);
+        const take = ts + b.between(3, 25) * MIN;
+        const byLeader = r() < 0.3;
+        b.manual(t, take, byLeader ? '班组长指派' : '二线领取', byLeader ? LEADER : target.name, TRIAL,
+          { target: target.name, trialSuggested: suggested?.name ?? null, firstRespAt: respAt(take) });
+        noteTake(target.name, take);
+        continue;
+      }
+      // 正式派单
+      let assignAt: number | null = null;
+      if (sc < 0.4) {
+        assignAt = ts;
+        b.judge(t, ts, { trigger, path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
+      } else if (sc < 0.5) {
+        assignAt = ts;
+        b.judge(t, ts, { trigger, path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
+      } else if (sc < 0.78) {
+        b.judge(t, ts, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
+        assignAt = ts + b.between(2, 16) * MIN;
+        b.judge(t, assignAt, { trigger: '名额释放', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
+      } else if (sc < 0.82) {
+        assignAt = ts;
+        b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: r() < 0.7 ? 1 : 2, mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
+      } else if (reserve) {
+        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人' });
+        assignAt = ts + b.between(3, 12) * MIN;
+        b.judge(t, assignAt, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
+      } else if (sc < 0.93) {
+        const reason = b.pick(FAIL_REASONS);
+        let fbAt = ts;
+        if (reason === '均达个人上限') {
+          b.judge(t, ts, { trigger, path: '排队', relaxLevel: 2, mode: FORMAL, status: '排队中' });
+          fbAt = ts + b.between(15, 22) * MIN;
+        }
+        b.judge(t, fbAt, {
+          trigger: reason === '均达个人上限' ? '组内放宽' : trigger, path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: reason,
+          relaxLevel: reason === '无画像匹配成员' || reason === '均达个人上限' ? 2 : 0,
+        });
+        const byLeader = r() < 0.45;
+        const take = fbAt + b.between(5, 30) * MIN;
+        b.manual(t, take, byLeader ? '班组长指派' : '二线领取', byLeader ? LEADER : agent.name, FORMAL,
+          { target: agent.name, firstRespAt: respAt(take) });
+        noteTake(agent.name, take);
+        continue;
+      } else {
+        assignAt = ts;
+        b.judge(t, ts, { trigger, path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
+      }
+      noteTake(agent.name, assignAt);
+      const u = r();
+      if (u < 0.025 && elig.length > 1) {
+        const to2 = b.pick(elig.filter((a) => a.name !== agent.name));
+        const at2 = assignAt + b.between(20, 90) * MIN;
+        b.manual(t, at2, '改派', LEADER, FORMAL, { target: to2.name, reason: b.pick(REASSIGN_REASONS) });
+        noteTake(to2.name, at2);
+      } else if (u < 0.04 && elig.length > 1) {
+        const to2 = b.pick(elig.filter((a) => a.name !== agent.name));
+        const at2 = assignAt + b.between(20, 90) * MIN;
+        b.manual(t, at2, '调剂到人', LEADER, FORMAL, { target: to2.name, reason: b.pick(TRANSFER_REASONS) });
+        noteTake(to2.name, at2);
+      } else if (!movedToTech && stage === 'multi' && pool === 'general' && !weekend) {
+        // 调剂到池：综合处理组 → 技术支持组池，重新派送
+        movedToTech = true;
+        const at2 = assignAt + b.between(25, 60) * MIN;
+        b.manual(t, at2, '调剂到池', agent.name, FORMAL, { target: b.poolLabel('tech'), reason: '需技术支持排查接口问题' });
+        t.pool = 'tech';
+        const tech = A('陈技支');
+        b.judge(t, at2, { trigger: '调剂到池', path: '加权评分', mode: FORMAL, chosen: tech, candidates: 1, firstRespAt: respAt(at2) });
+        noteTake(tech.name, at2);
+      }
+    }
+
+    // 未开启班组开关的组：组内领取
+    const offCount = weekend ? 3 : 5;
+    for (let i = 0; i < offCount; i += 1) {
+      const pool = (['xiaozhi', 'edu-flash', 'edu'] as const)[i % 3];
+      const ts = from + r() * (to - from);
+      const t = newTk(pool, ts);
+      const who = pool === 'xiaozhi' ? '谭小智' : pool === 'edu-flash' ? (r() < 0.75 ? '许文静' : '王坐席') : (r() < 0.75 ? '何教支' : '张三');
+      const mode: Mode = stageAt(ts) === 'trial' ? { ...OFF_GROUP, runMode: '试运行' } : OFF_GROUP;
+      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, mode, { target: who });
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 今日                                                                 */
+/* ------------------------------------------------------------------ */
+
+/** 今日引擎派出：[池, 坐席, 时刻占今日已过时长的比例] */
+const TODAY_ASSIGNS: [string, string, number][] = [
+  ['line2', '张三', 0.05], ['line2', '王坐席', 0.08], ['hardware', '陈坐席', 0.1], ['general', '张三', 0.12],
+  ['general', '徐璐', 0.15], ['line2', '王坐席', 0.18], ['line2', '张三', 0.2], ['hardware', '李四', 0.21],
+  ['tech', '陈技支', 0.22], ['general', '刘洋', 0.25], ['line2', '王坐席', 0.3], ['general', '徐璐', 0.33],
+  ['general', '张三', 0.35], ['line2', '张三', 0.4], ['line2', '王坐席', 0.42], ['general', '刘洋', 0.47],
+  ['line2', '林坐席', 0.5], ['tech', '陈技支', 0.55], ['general', '林坐席', 0.58], ['general', '徐璐', 0.6],
+  ['line2', '林坐席', 0.65], ['general', '刘洋', 0.7], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
+  ['line2', '林坐席', 0.8], ['general', '林坐席', 0.92],
+];
+/** 派出方式：d 加权评分直派、o 原处理人、x 组内放宽、q 排队后名额释放、r 预留后原处理人 */
+const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqxqdqrdoq';
+const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12];
+const RESERVE_WAITS = [6, 9];
+/** 今日组内领取：[池, 坐席, 比例] */
+const TODAY_CLAIMS: [string, string, number][] = [
+  ['xiaozhi', '谭小智', 0.07], ['edu', '何教支', 0.1], ['edu-flash', '许文静', 0.14], ['line2', '王组长', 0.28],
+  ['xiaozhi', '谭小智', 0.29], ['tech', '周技支', 0.3], ['edu', '何教支', 0.32], ['edu-flash', '许文静', 0.38],
+  ['xiaozhi', '谭小智', 0.5], ['tech', '周技支', 0.5], ['general', '王组长', 0.52], ['edu', '何教支', 0.55],
+  ['edu-flash', '许文静', 0.6], ['tech', '周技支', 0.68], ['xiaozhi', '谭小智', 0.71], ['line2', '王组长', 0.73],
+  ['edu', '何教支', 0.77], ['edu-flash', '许文静', 0.84], ['hardware', '李四', 0.16], ['tech', '周技支', 0.82],
+  ['line2', '王组长', 0.88],
+];
+
+interface TodayCtx {
+  b: Builder;
+  agents: DispatchAgent[];
+  now: number;
+  t0: number;
+  r: () => number;
+  noteTake: (name: string, at: number) => void;
+}
+
+function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
+  const E = now - t0;
+  const at = (f: number) => t0 + f * E;
+  const A = (n: string) => agents.find((a) => a.name === n)!;
+  const hwDegradeAt = at(0.3);
+  const respAt = (take: number) => {
+    const x = take + (6 + 18 * r() ** 1.2) * MIN;
+    return x < now - 2 * MIN ? x : undefined;
+  };
+  let serial = 50000;
+  const newTk = (pool: string, enter: number, type?: '咨询' | '投诉'): Tk => {
+    const base = b.pick(SNAPS[pool]);
+    const snap: Snap = type ? { ...base, ticketType: type } : base;
+    const x = r();
+    const priority: Priority = x < 0.2 ? 'P1' : x < 0.92 ? 'P2' : 'P3';
+    serial += 1 + Math.floor(r() * 2);
+    return {
+      no: `${snap.ticketType === '投诉' ? 'IFLYTS' : 'IFLYZX'}-${ymd(now)}-${serial}`,
+      pool, snap, priority, remain0: b.between(220, FIRST_RESP_LIMIT[priority] - 10), enteredAt: enter, seq: 0,
+    };
+  };
+
+  let qi = 0;
+  let ri = 0;
+  TODAY_ASSIGNS.forEach(([pool, name, f], i) => {
+    const agent = A(name);
+    const take = at(f);
+    const via = TODAY_VIA[i];
+    const wait = via === 'q' ? QUEUE_WAITS[qi++] : via === 'r' ? RESERVE_WAITS[ri++] : 0;
+    const enter = take - wait * MIN;
+    const t = newTk(pool, enter, via === 'r' ? '投诉' : undefined);
+    const trigger: DispatchTrigger = pool === 'tech' ? '升级三线' : i % 7 === 3 ? '售后转回' : '新单';
+    if (via === 'q') {
+      b.judge(t, enter, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
+      b.judge(t, take, { trigger: '名额释放', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+    } else if (via === 'r') {
+      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人' });
+      b.judge(t, take, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+    } else {
+      const path: DispatchPath = via === 'o' ? '原处理人' : via === 'x' ? '组内放宽' : '加权评分';
+      b.judge(t, take, { trigger, path, relaxLevel: via === 'x' ? 2 : 0, mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+    }
+    noteTake(name, take);
+    // 改派（人工换人）：班组长把张三的一单改派给林坐席
+    if (i === 13) {
+      const at2 = take + 28 * MIN;
+      b.manual(t, at2, '改派', LEADER, FORMAL, { target: '林坐席', reason: '客户要求更换熟悉该产品的坐席' });
+      noteTake('林坐席', at2);
+    }
+  });
+
+  // 硬件缺陷组降级后：留池，组内领取、指派、调剂到人
+  const hw: [number, ManualAction, string, string | undefined][] = [
+    [0.35, '调剂到人', '李四', '李四熟悉学习机返修流程'],
+    [0.45, '二线领取', '陈坐席', undefined],
+    [0.6, '班组长指派', '陈坐席', undefined],
+  ];
+  for (const [f, action, target, reason] of hw) {
+    const enter = Math.max(at(f), hwDegradeAt + MIN);
+    const t = newTk('hardware', enter);
+    b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_DEGRADED, status: null });
+    const take = enter + b.between(6, 14) * MIN;
+    b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_DEGRADED, { target, reason, firstRespAt: respAt(take) });
+    noteTake(target, take);
+  }
+
+  // 班组长指派超出个人上限（超额指派）
+  {
+    const take = at(0.62);
+    const t = newTk('line2', take - 5 * MIN);
+    b.manual(t, take, '班组长指派', LEADER, FORMAL, { target: '王坐席', reason: '客户点名要求王坐席跟进', overCap: '超额指派', firstRespAt: respAt(take) });
+    noteTake('王坐席', take);
+  }
+
+  // 组内领取
+  for (const [pool, name, f] of TODAY_CLAIMS) {
+    const take = at(f);
+    const t = newTk(pool, take - b.between(4, 18) * MIN);
+    const mode = ['xiaozhi', 'edu', 'edu-flash'].includes(pool) ? OFF_GROUP : FORMAL;
+    b.manual(t, take, '二线领取', name, mode, { target: name, ...(mode === FORMAL ? { firstRespAt: respAt(take) } : {}) });
+    noteTake(name, take);
+  }
+  return { hwDegradeAt };
+}
+
+/* ------------------------------------------------------------------ */
+/* 池内待派（真实工单行）                                                */
+/* ------------------------------------------------------------------ */
+
+interface PoolSeed {
+  key: string;
+  pool: string;
+  type: '咨询' | '投诉';
+  priority: Priority;
+  title: string;
+  customer: string;
+  snap: Snap;
+  /** 进入派单距今（分钟） */
+  enteredAgo: number;
+  /** 进入派单时首响剩余（分钟） */
+  remain0: number;
+  status: DispatchStatus | null;
+}
+
+const POOL_SEEDS: PoolSeed[] = [
+  { key: 'L-Q1', pool: 'line2', type: '咨询', priority: 'P2', title: '智能音箱在线播放频繁中断', customer: '邵明',
+    snap: SNAPS.line2[0], enteredAgo: 6, remain0: 410, status: '排队中' },
+  { key: 'L-Q2', pool: 'line2', type: '咨询', priority: 'P2', title: '耳机升级固件后无法播放本地音乐', customer: '江珊',
+    snap: SNAPS.line2[1], enteredAgo: 19, remain0: 440, status: '排队中' },
+  { key: 'L-F1', pool: 'line2', type: '咨询', priority: 'P1', title: '录音笔转写结果出现乱码', customer: '冯涛',
+    snap: SNAPS.line2[2], enteredAgo: 48, remain0: -5, status: '派单失败回池' },
+  { key: 'L-R1', pool: 'line2', type: '投诉', priority: 'P1', title: '翻译机识别不准，二次来电投诉', customer: '顾婷',
+    snap: { ...SNAPS.line2[4], ticketType: '投诉' }, enteredAgo: 2, remain0: 300, status: '等原处理人' },
+  { key: 'G-Q1', pool: 'general', type: '咨询', priority: 'P2', title: '扫地机器人 APP 无法绑定新手机', customer: '韦力',
+    snap: SNAPS.general[2], enteredAgo: 12, remain0: 430, status: '排队中' },
+  { key: 'G-R1', pool: 'general', type: '投诉', priority: 'P1', title: '门锁安装预约两次爽约投诉', customer: '褚倩',
+    snap: { businessType: '智能硬件', ticketType: '投诉', productCategory: '智能硬件', product: '智能门锁 L1', ticketSource: '电话', customerType: '个人用户' },
+    enteredAgo: 1, remain0: 320, status: '等原处理人' },
+  { key: 'G-F1', pool: 'general', type: '咨询', priority: 'P2', title: '会员续费后权益未到账', customer: '房宇',
+    snap: SNAPS.general[1], enteredAgo: 50, remain0: 150, status: '派单失败回池' },
+  { key: 'T-F1', pool: 'tech', type: '咨询', priority: 'P2', title: 'API 回调签名校验失败，需三线排查', customer: '欧阳青',
+    snap: SNAPS.tech[0], enteredAgo: 28, remain0: 400, status: '派单失败回池' },
+  { key: 'T-R1', pool: 'tech', type: '投诉', priority: 'P1', title: '企业版单点登录反复失败，投诉响应慢', customer: '程立',
+    snap: { ...SNAPS.tech[1], ticketType: '投诉' }, enteredAgo: 2, remain0: 330, status: '等原处理人' },
+  { key: 'H-R1', pool: 'hardware', type: '投诉', priority: 'P1', title: '学习机 T20 返修后再次花屏', customer: '包蕾',
+    snap: SNAPS.hardware[2], enteredAgo: 1, remain0: 350, status: '等原处理人' },
+  { key: 'H-P1', pool: 'hardware', type: '咨询', priority: 'P2', title: '门锁断网后无法远程开锁', customer: '尹航',
+    snap: SNAPS.hardware[1], enteredAgo: 16, remain0: 420, status: null },
+];
+
+/** 预留目标（当日在班、当前不可用：满额或小休） */
+const RESERVE_FOR: Record<string, string> = { 'L-R1': '王坐席', 'G-R1': '刘洋', 'T-R1': '陈技支', 'H-R1': '李四' };
+
+function slaTextOf(min: number): { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' } {
+  const m = Math.round(Math.abs(min));
+  const t = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  if (min < 0) return { slaText: `已超 ${t}`, slaSub: '已超时', slaState: 'overdue' };
+  return { slaText: `${t}:00`, slaSub: min < 60 ? '距超时' : '充足', slaState: min < 60 ? 'soon' : 'ok' };
+}
+
+function buildPool(b: Builder, now: number) {
+  const rows: Ticket[] = [];
+  const states: Record<string, TicketDispatchState> = {};
+  POOL_SEEDS.forEach((s, i) => {
+    const enteredAt = now - s.enteredAgo * MIN;
+    const no = `${s.type === '投诉' ? 'IFLYTS' : 'IFLYZX'}-${ymd(now)}-${80001 + i}`;
+    const t: Tk = { no, pool: s.pool, snap: s.snap, priority: s.priority, remain0: s.remain0, enteredAt, seq: 0 };
+    const label = b.groupLabel(s.pool);
+    const pl = b.poolLabel(s.pool);
+    const tl: Omit<TimelineEntry, 'id'>[] = [];
+    const sys = (how: string, what: string, ms: number) => tl.push({
+      category: 'node', action: 'transfer', who: SYSTEM, role: '系统', systemActor: true, how, what, when: stamp(ms),
+    } as Omit<TimelineEntry, 'id'>);
+    const st: TicketDispatchState = {
+      ticketNo: no, poolId: s.pool, ruleId: null, enteredAt, status: s.status, relaxLevel: 0, queueSince: null,
+      firstRespTotalMin: Math.max(FIRST_RESP_LIMIT[s.priority], s.remain0), firstRespDueAt: enteredAt + s.remain0 * MIN, seq: 0,
+    };
+    const mode = s.pool === 'hardware' ? HW_DEGRADED : FORMAL;
+    if (s.key === 'L-Q1' || s.key === 'G-Q1') {
+      b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
+      st.queueSince = enteredAt;
+      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
+    } else if (s.key === 'L-Q2') {
+      b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
+      const relaxAt = enteredAt + 15 * MIN;
+      b.judge(t, relaxAt, { trigger: '组内放宽', path: '排队', relaxLevel: 1, mode, status: '排队中' });
+      Object.assign(st, { relaxLevel: 1, queueSince: relaxAt });
+      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
+      sys('组内放宽', '产品放宽至同产品分类', relaxAt);
+    } else if (s.key === 'L-F1') {
+      b.judge(t, enteredAt, { trigger: '售后转回', path: '兜底回池', mode, status: '派单失败回池', failReason: '首响已超时' });
+      Object.assign(st, { fallbackDone: true, overdueFallback: true });
+      sys('兜底回池', `自动派单未派出（首响已超时），已通知${label}班组长`, enteredAt);
+    } else if (s.key === 'G-F1') {
+      b.judge(t, enteredAt, { trigger: '新单', path: '排队', relaxLevel: 2, mode, status: '排队中' });
+      const fbAt = enteredAt + 15 * MIN;
+      b.judge(t, fbAt, { trigger: '组内放宽', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
+      Object.assign(st, { relaxLevel: 2, fallbackDone: true });
+      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
+      sys('兜底回池', `自动派单未派出（均达个人上限），已通知${label}班组长`, fbAt);
+    } else if (s.key === 'T-F1') {
+      const movedAt = enteredAt;
+      b.manual({ ...t, pool: 'line2' }, movedAt, '调剂到池', LEADER, FORMAL, { target: pl, reason: '需技术支持排查接口问题', ruleName: '功能异常（迁移）' });
+      t.seq = 1;
+      b.judge(t, movedAt, { trigger: '调剂到池', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '无画像匹配成员' });
+      Object.assign(st, { relaxLevel: 2, fallbackDone: true, designatedPool: true });
+      sys('调剂到池', `调剂到池 → ${pl}；原因：需技术支持排查接口问题`, movedAt);
+      sys('兜底回池', `自动派单未派出（无画像匹配成员），已通知${label}班组长`, movedAt);
+    } else if (s.status === '等原处理人') {
+      const who = RESERVE_FOR[s.key];
+      const until = enteredAt + 15 * MIN;
+      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人' });
+      Object.assign(st, { reserveFor: who, reserveUntil: until, complaintTarget: undefined });
+      sys('等原处理人', `等原处理人 ${who}，${hm(until)} 到期`, enteredAt);
+    } else {
+      b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null });
+    }
+    st.seq = t.seq;
+    // 命中入池规则（与 stores/dispatch 种子规则 id 对应）
+    st.ruleId = s.pool === 'line2' ? 'pr-5' : s.key === 'H-R1' ? 'pr-1' : s.key === 'H-P1' ? 'pr-4' : null;
+    if (s.pool === 'tech') st.designatedPool = true;
+    states[no] = st;
+    const remainNow = Math.round(s.remain0 - s.enteredAgo);
+    const created = enteredAt - (s.key === 'L-F1' ? 26 * 60 : 1) * MIN;
+    rows.push({
+      id: `dispatch-seed-${80001 + i}`, no, type: s.type, channel: s.snap.ticketSource === 'IM' ? '在线客服' : '电话',
+      title: s.title, smartMarks: s.type === '投诉' ? ['情绪'] : [], customer: s.customer, vip: false,
+      customerPhone: `1591200${pad(80 + i)}${pad(i * 7 % 100)}`,
+      product: s.snap.product, productCategory: s.snap.productCategory, businessType: s.snap.businessType,
+      ...(s.snap.problem ? (() => { const [l1, l2, l3] = s.snap.problem!.split(' / '); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
+      ticketSource: s.snap.ticketSource,
+      nodeStatus: '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority,
+      ...slaTextOf(remainNow), slaMinutes: remainNow,
+      resolveSlaText: '24:00:00', resolveSlaState: 'ok',
+      assignee: null, tab: 'pool', groupId: s.pool, groupNames: [label],
+      createdAt: stamp(created), updatedAt: stamp(enteredAt),
+      eventTimeline: tl.map((e, k) => ({ ...e, id: `dispatch-${no}-seed-${k + 1}` })) as TimelineEntry[],
+    } as unknown as Ticket);
+  });
+  return { rows, states };
+}
+
+/* ------------------------------------------------------------------ */
+/* 审计（近两周）                                                        */
+/* ------------------------------------------------------------------ */
+
+function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now: number }): DispatchAuditEntry[] {
+  let n = 0;
+  const a = (ms: number, operator: string, kind: DispatchAuditKind, target: string, before: string, after: string, reason?: string): DispatchAuditEntry => ({
+    id: `da-seed-${(n += 1)}`, at: stamp(ms), operator, kind, target, before, after, ...(reason ? { reason } : {}),
+  });
+  const E = today.now - today.t0;
+  return [
+    a(tl.trialStart, ADMIN, '全局开关', '全局', '关闭', '开启'),
+    a(tl.singleStart, ADMIN, '运行方式', '全局', '试运行', '正式派单'),
+    a(tl.singleStart, ADMIN, '班组开关', '硬件缺陷组', '开启', '关闭'),
+    a(tl.singleStart, ADMIN, '班组开关', '综合处理组', '开启', '关闭'),
+    a(tl.singleStart, ADMIN, '班组开关', '技术支持组', '开启', '关闭'),
+    a(tl.singleStart, ADMIN, '运行方式', '上线阶段', '试运行', '单组试点'),
+    a(tl.multiStart, ADMIN, '班组开关', '硬件缺陷组', '关闭', '开启'),
+    a(tl.multiStart, ADMIN, '班组开关', '综合处理组', '关闭', '开启'),
+    a(tl.multiStart, ADMIN, '班组开关', '技术支持组', '关闭', '开启'),
+    a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单组试点', '多组'),
+    a(tl.degradeStart, SYSTEM, '池形态', '全局', '正常态', '降级态', '5 分钟内派单失败率 ≥ 20%'),
+    a(tl.degradeEnd, ADMIN, '池形态', '全局', '降级态', '正常态', '派单服务已恢复，各项指标连续 10 分钟达标'),
+    a(today.hwDegradeAt, ADMIN, '池形态', '硬件缺陷组池', '正常态', '降级态', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
+    a(today.t0 + 0.45 * E, LEADER, '个人上限', '王坐席', '默认 13', '3'),
+    a(today.t0 + 0.55 * E, LEADER, '个人上限', '张三', '40', '32'),
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* 入口                                                                 */
+/* ------------------------------------------------------------------ */
+
+/** 坐席当前签入状态（小休 / 签出起点距今分钟）；其余签入 */
+const AWAY: Record<string, { signIn: '小休' | '签出'; agoMin: number }> = {
+  刘洋: { signIn: '小休', agoMin: 25 },
+  李四: { signIn: '小休', agoMin: 20 },
+  陈技支: { signIn: '小休', agoMin: 35 },
+  徐璐: { signIn: '签出', agoMin: 50 },
+};
+/** 当日未签入 */
+const OFF_TODAY = ['秦督导', '吴投诉'];
+
+export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: DispatchGroup[]): DispatchDemo {
+  const tl = timelineOf(now);
+  const t0 = Math.min(tl.today0 + 8.5 * HOUR, now - 4 * HOUR);
+  const r = rng(Math.floor(tl.today0 / DAY) * 31 + 7);
+  const b = makeBuilder(agents, groups, r);
+  const takes: Record<string, number[]> = {};
+  const noteTake = (name: string, at: number) => { (takes[name] ??= []).push(at); };
+
+  buildHistory(b, agents, tl, r, now, noteTake);
+  const { hwDegradeAt } = buildToday({ b, agents, now, t0, r, noteTake });
+  const pool = buildPool(b, now);
+  const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+
+  const agentPatch: Record<string, Partial<DispatchAgent>> = {};
+  const day = `${new Date(now).getFullYear()}-${pad(new Date(now).getMonth() + 1)}-${pad(new Date(now).getDate())}`;
+  for (const a of agents) {
+    const mine = (takes[a.name] ?? []).filter((x) => x <= now && x >= now - DAY).sort((x, y) => x - y);
+    const p: Partial<DispatchAgent> = { onDutyDay: day };
+    const away = AWAY[a.name];
+    if (OFF_TODAY.includes(a.name)) {
+      Object.assign(p, { signIn: '签出', signedInToday: false, signInSince: null, onDutyMs: 0 });
+    } else if (away) {
+      Object.assign(p, { signIn: away.signIn, signedInToday: true, signInSince: null, onDutyMs: Math.max(0, now - away.agoMin * MIN - t0) });
+    } else {
+      Object.assign(p, { signIn: '签入', signedInToday: true, signInSince: t0, onDutyMs: 0 });
+    }
+    if (mine.length) Object.assign(p, { lastTakenAt: mine[mine.length - 1], recentTakes: mine });
+    agentPatch[a.name] = p;
+  }
+  agentPatch['王坐席'] = { ...agentPatch['王坐席'], capOverride: 3 };
+  agentPatch['张三'] = { ...agentPatch['张三'], capOverride: 32 };
+
+  return {
+    logs,
+    audits: buildAudits(tl, { hwDegradeAt, t0, now }),
+    ticketStates: pool.states,
+    overAssigned: { 王坐席: true },
+    rows: pool.rows,
+    agentPatch,
+  };
+}
