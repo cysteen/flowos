@@ -1961,10 +1961,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /** 派单策略（14.2 运行设置 / 出池规则 / 个人上限）保存：返回提示文案 */
   function updateConfig(patch: Partial<DispatchConfig>, operator?: string): OccupyResult {
     const next: DispatchConfig = { ...config.value, ...clone(patch) };
-    if (!next.factors.some((f) => f.enabled)) return { ok: false, message: '请至少启用一个评分因子' };
+    if (!next.factors.some((f) => f.enabled)) return { ok: false, message: '请至少启用一个打分因素' };
     if (next.factors.some((f) => !Number.isInteger(f.weight) || f.weight < 0 || f.weight > 100)) return { ok: false, message: '请输入 0–100 的整数' };
-    if (next.relaxSlaPercent <= next.fallbackSlaPercent) return { ok: false, message: '放宽阈值须大于兜底阈值' };
-    if (next.noSlaFallbackMinutes <= next.relaxQueueMinutes) return { ok: false, message: '兜底排队时长须大于放宽排队时长' };
+    if (next.relaxSlaPercent <= next.fallbackSlaPercent) return { ok: false, message: '放宽产品范围的首次响应剩余比例须大于退回工单池的比例' };
+    if (next.noSlaFallbackMinutes <= next.relaxQueueMinutes) return { ok: false, message: '退回工单池的排队时长须大于放宽产品范围的排队时长' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
     // 运行设置 · 自动转混合 / 恢复 / 小休阈值（14.2）
