@@ -40,7 +40,7 @@ function goEdit(id: string) {
           </div>
         </template>
         <span v-else-if="column.key === 'pool'" class="rs-pool">{{ store.poolLabel(record.poolId) }}</span>
-        <a-tag v-else-if="column.key === 'priority'" color="blue" class="rs-prio">{{ record.priority }}</a-tag>
+        <span v-else-if="column.key === 'priority'" class="rs-prio">{{ record.priority }}</span>
         <span v-else-if="column.key === 'enabled'" class="rs-st" :class="{ on: record.enabled }"><i />{{ record.enabled ? '启用' : '停用' }}</span>
         <a-button v-else-if="column.key === 'op'" type="link" size="small" class="rs-go" @click="goEdit(record.id)">去编辑 →</a-button>
       </template>
@@ -49,7 +49,7 @@ function goEdit(id: string) {
           <a-table-summary-cell :index="0"><span class="rs-name">默认池</span></a-table-summary-cell>
           <a-table-summary-cell :index="1"><span class="rs-expr muted">未命中任何规则</span></a-table-summary-cell>
           <a-table-summary-cell :index="2"><span class="rs-pool">{{ store.poolLabel(DEFAULT_POOL_ID) }}</span></a-table-summary-cell>
-          <a-table-summary-cell :index="3"><a-tag class="rs-prio">兜底</a-tag></a-table-summary-cell>
+          <a-table-summary-cell :index="3"><span class="rs-prio dft">兜底</span></a-table-summary-cell>
           <a-table-summary-cell :index="4"><span class="rs-st on"><i />启用</span></a-table-summary-cell>
           <a-table-summary-cell :index="5" />
         </a-table-summary-row>
@@ -59,19 +59,20 @@ function goEdit(id: string) {
 </template>
 
 <style scoped>
-.rs-name { color: #111827; }
-.rs-cond { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; line-height: 22px; }
-.rs-expr { color: #374151; }
-.rs-and { color: #9ca3af; font-size: 12px; }
-.rs-pool { color: #111827; }
-.rs-prio { margin-inline-end: 0; min-width: 32px; text-align: center; }
-.rs-st { display: inline-flex; align-items: center; gap: 6px; color: #9ca3af; }
-.rs-st i { width: 7px; height: 7px; border-radius: 50%; background: #d1d5db; }
-.rs-st.on { color: #374151; }
+.rs-name { color: #1f2329; font-weight: 500; }
+.rs-cond { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; line-height: 22px; }
+.rs-expr { color: #4e5969; }
+.rs-and { color: #86909c; font-size: 13px; }
+.rs-pool { color: #1f2329; }
+.rs-prio { color: #1f2329; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rs-prio.dft { color: #86909c; font-weight: normal; }
+.rs-st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #86909c; }
+.rs-st i { width: 6px; height: 6px; border-radius: 50%; background: #c9cdd4; }
+.rs-st.on { color: #4e5969; }
 .rs-st.on i { background: #10b981; }
 .rs-go { padding: 0; }
-.muted { color: #9ca3af; }
-:deep(.rs-off td), :deep(.rs-off .rs-name), :deep(.rs-off .rs-expr), :deep(.rs-off .rs-pool) { color: #9ca3af; }
+.muted { color: #86909c; }
+:deep(.rs-off td), :deep(.rs-off .rs-name), :deep(.rs-off .rs-expr), :deep(.rs-off .rs-pool), :deep(.rs-off .rs-prio) { color: #86909c; }
 :deep(.rs-default td) { background: #fafafa; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 </style>
