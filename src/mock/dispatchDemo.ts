@@ -1,7 +1,7 @@
 /**
  * 【1215】智能派单 · 运行中种子（PRD 13 / 14 / 17 章）：近两周的派单日志、审计、池内待派工单与坐席当日在岗。
  *
- * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来（试运行 → 单组试点 → 多组）的判定与人工记录。
+ * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来（试运行 → 单池试点 → 多池）的判定与人工记录。
  * - 只由 `stores/dispatch.ts` 在无缓存（或版本闸失效）时调用一次，结果随 `flowos-dispatch` 落库；改本文件须升 `DISPATCH_CACHE_VERSION`。
  * - 日志里的工单号为历史单（号段 5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
  * - 历史单的派单后首响时刻记在日志 `firstRespAt`（工单库查不到该单时，分派监控按此取首响）。
@@ -726,25 +726,25 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     if (s.key === 'L-Q1' || s.key === 'G-Q1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       st.queueSince = enteredAt;
-      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
+      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
     } else if (s.key === 'L-Q2') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       const relaxAt = enteredAt + 15 * MIN;
       b.judge(t, relaxAt, { trigger: '组内放宽', path: '排队', relaxLevel: 1, mode, status: '排队中' });
       Object.assign(st, { relaxLevel: 1, queueSince: relaxAt });
-      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
-      sys('组内放宽', '产品放宽至同产品分类', relaxAt);
+      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
+      sys('放宽产品范围', '产品放宽至同产品分类', relaxAt);
     } else if (s.key === 'L-F1') {
       b.judge(t, enteredAt, { trigger: '售后转回', path: '兜底回池', mode, status: '派单失败回池', failReason: '首响已超时' });
       Object.assign(st, { fallbackDone: true, overdueFallback: true });
-      sys('兜底回池', `自动派单未派出（首响已超时），已通知${label}班组长`, enteredAt);
+      sys('退回工单池', `退回工单池（首次响应已超时），已通知${label}班组长`, enteredAt);
     } else if (s.key === 'G-F1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', relaxLevel: 2, mode, status: '排队中' });
       const fbAt = enteredAt + 15 * MIN;
       b.judge(t, fbAt, { trigger: '组内放宽', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
       Object.assign(st, { relaxLevel: 2, fallbackDone: true });
-      sys('排队', `${pl}排队：画像匹配成员均已满载`, enteredAt);
-      sys('兜底回池', `自动派单未派出（均达个人上限），已通知${label}班组长`, fbAt);
+      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
+      sys('退回工单池', `退回工单池（均达个人上限），已通知${label}班组长`, fbAt);
     } else if (s.key === 'T-F1') {
       const movedAt = enteredAt;
       b.manual({ ...t, pool: 'line2' }, movedAt, '调剂到池', LEADER, FORMAL, { target: pl, reason: '需技术支持排查接口问题', ruleName: '功能异常（迁移）' });
@@ -752,7 +752,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       b.judge(t, movedAt, { trigger: '调剂到池', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '无画像匹配成员' });
       Object.assign(st, { relaxLevel: 2, fallbackDone: true, designatedPool: true });
       sys('调剂到池', `调剂到池 → ${pl}；原因：需技术支持排查接口问题`, movedAt);
-      sys('兜底回池', `自动派单未派出（无画像匹配成员），已通知${label}班组长`, movedAt);
+      sys('退回工单池', `退回工单池（无画像相符的成员），已通知${label}班组长`, movedAt);
     } else if (s.status === '等原处理人') {
       const who = RESERVE_FOR[s.key];
       const until = enteredAt + 15 * MIN;
@@ -798,16 +798,16 @@ function buildAudits(tl: Timeline, today: { hwDegradeAt: number; t0: number; now
   });
   const E = today.now - today.t0;
   const pl = (id: string) => `${groups.find((g) => g.id === id)?.label ?? id}池`;
-  // 单组试点：二线技术支持组为试点组，其余组切为混合派单；多组：硬件、综合、技术支持切为自动派单
+  // 单池试点：二线技术支持组池为试点池，其余池切为混合派单；多池：硬件、综合、技术支持组池切为自动派单
   const toMixed = ['hardware', 'general', 'tech', 'xiaozhi', 'edu-flash', 'edu'].filter((id) => groups.some((g) => g.id === id));
   const toAuto = ['hardware', 'general', 'tech'];
   return [
     a(tl.trialStart, ADMIN, '全局开关', '全局', '关闭', '开启'),
     a(tl.singleStart, ADMIN, '运行方式', '全局', '试运行', '正式派单'),
-    ...toMixed.map((id) => a(tl.singleStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '上线阶段推进至单组试点')),
-    a(tl.singleStart, ADMIN, '运行方式', '上线阶段', '试运行', '单组试点'),
-    ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单', '上线阶段推进至多组')),
-    a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单组试点', '多组'),
+    ...toMixed.map((id) => a(tl.singleStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '上线阶段推进至单池试点')),
+    a(tl.singleStart, ADMIN, '运行方式', '上线阶段', '试运行', '单池试点'),
+    ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单', '上线阶段推进至多池')),
+    a(tl.multiStart, ADMIN, '运行方式', '上线阶段', '单池试点', '多池'),
     a(tl.degradeStart, SYSTEM, '派单方式', '全局', '自动派单', '混合派单', '5 分钟内派单失败率 ≥ 20%'),
     a(tl.degradeEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单', '派单服务已恢复，各项指标连续 10 分钟达标'),
     a(today.hwDegradeAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),

@@ -88,7 +88,7 @@ function onModeOk() {
     message.warning('切换原因最多 200 字');
     return;
   }
-  const res = dispatch.setGroupMode(g.id, modeTarget.value, modeReason.value, user.name);
+  const res = dispatch.setPoolMode(g.id, modeTarget.value, modeReason.value, user.name);
   if (!res.ok) {
     if (res.message) message.warning(res.message);
     return;
@@ -224,7 +224,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <div class="hd-actions">
         <div class="dtp-ctl">
           <span class="dtp-ctl-label">本组派单方式</span>
-          <span class="dtp-mode">{{ group.mode }}</span>
+          <span class="dtp-mode">{{ dispatch.poolModeOf(group.id) }}</span>
           <a-tooltip :title="modeTip || undefined">
             <button type="button" class="btn-ghost" :disabled="!!modeTip" @click="openMode">
               <SwapOutlined /> 切换派单方式
@@ -378,12 +378,12 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         </div>
         <div class="dtp-frow">
           <div class="op-label">当前派单方式</div>
-          <div class="dtp-ro">{{ group.mode }}</div>
+          <div class="dtp-ro">{{ dispatch.poolModeOf(group.id) }}</div>
         </div>
         <div class="dtp-frow">
           <div class="op-label req">切换为</div>
           <a-radio-group v-model:value="modeTarget">
-            <a-radio v-for="m in POOL_MODES" :key="m" :value="m" :disabled="m === group.mode">{{ m }}</a-radio>
+            <a-radio v-for="m in POOL_MODES" :key="m" :value="m" :disabled="m === dispatch.poolModeOf(group.id)">{{ m }}</a-radio>
           </a-radio-group>
         </div>
         <div class="dtp-frow top">

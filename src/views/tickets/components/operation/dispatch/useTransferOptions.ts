@@ -3,7 +3,7 @@
  *
  * - 调剂到人：候选为全部坐席（停用除外、不含当前处理人），按组分段；每行「姓名 · 所属组 · 签入状态 · 在途 N / 上限 M」。
  *   调剂权限沿用现行：无跨组调剂权的角色只可选归属组成员，其余置灰；个册退费单只限本组成员。
- * - 调剂到池：全部二线组池与技术支持池（含当前归属池），每项「〈组名〉池 · 〈派单方式〉」；无跨组调剂权时只可选当前归属池。
+ * - 调剂到池：全部启用中的工单池（含当前归属池），每项「〈池名称〉 · 〈派单方式〉」；无跨组调剂权时只可选归属组的池。
  * - 升级三线 · 指定技术支持：技术支持组成员，每行「姓名 · 签入状态 · 在途 N / 上限 M」。
  */
 import { computed } from 'vue';
@@ -26,7 +26,7 @@ export function useTransferOptions(ticketNo: () => string, canCrossGroup: () => 
   /** 当前归属组：工单行归属组为派单组时取它；否则取发起人所在各组 */
   const homeGroupIds = computed<string[]>(() => {
     const g = row.value?.groupId;
-    if (g && store.isDispatchPool(g)) return [g];
+    if (g && store.isDispatchGroup(g)) return [g];
     return store.agentOf(user.name)?.groupIds ?? [];
   });
   const refundOnly = computed(() => !!row.value && isRefundTicket(row.value));
@@ -73,15 +73,15 @@ export function useTransferOptions(ticketNo: () => string, canCrossGroup: () => 
     const home = row.value?.groupId;
     if (home && a.groupIds.includes(home)) return [];
     return a.groupIds
-      .filter((id) => store.isDispatchPool(id))
+      .filter((id) => store.isDispatchGroup(id))
       .map((id) => ({ value: id, label: store.groupOf(id)?.label ?? id }));
   }
 
-  const poolOptions = computed<Opt[]>(() => store.groups.map((g) => {
-    const allowed = crossAllowed.value || homeGroupIds.value.includes(g.id);
+  const poolOptions = computed<Opt[]>(() => store.enabledPools().map((p) => {
+    const allowed = crossAllowed.value || homeGroupIds.value.includes(p.groupId);
     return {
-      value: g.id,
-      label: `${store.poolLabel(g.id)} · ${store.effectiveModeOf(g.id)}`,
+      value: p.id,
+      label: `${p.name} · ${store.effectiveModeOf(p.id)}`,
       disabled: !allowed,
       title: allowed ? undefined : CROSS_GROUP_TIP,
     };

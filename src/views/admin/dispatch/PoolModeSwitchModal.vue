@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 切换派单方式弹窗（PRD 5.4）：全局或某组池；「切换为」固定列出三种派单方式，当前派单方式置灰
+// 切换派单方式弹窗（PRD 5.4）：全局或某个工单池；「切换为」固定列出三种派单方式，当前派单方式置灰
 import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
@@ -14,11 +14,11 @@ const store = useDispatchStore();
 
 const isGlobal = computed(() => props.scope === 'global');
 const scopeText = computed(() => (isGlobal.value ? '全局' : store.poolLabel(props.scope)));
-const currentShown = computed<PoolMode>(() => (isGlobal.value ? store.globalEffectiveMode() : store.groupModeOf(props.scope)));
-/** 与 store 比较的当前值：全局取全局派单方式（开关关闭时为人工派单），本组取本组派单方式 */
+const currentShown = computed<PoolMode>(() => (isGlobal.value ? store.globalEffectiveMode() : store.poolModeOf(props.scope)));
+/** 与 store 比较的当前值：全局取全局派单方式（开关关闭时为人工派单），工单池取本池派单方式 */
 const currentRaw = computed<PoolMode>(() => {
   if (isGlobal.value) return store.config.globalSwitch ? store.config.globalMode : '人工派单';
-  return store.groupOf(props.scope)?.mode ?? '自动派单';
+  return store.poolOf(props.scope)?.mode ?? '自动派单';
 });
 const choices = computed(() => POOL_MODES.map((m) => ({
   mode: m,
@@ -38,7 +38,7 @@ function submit() {
   if (reason.value.length > 200) { message.error('切换原因最多 200 字'); return; }
   const r = isGlobal.value
     ? store.setGlobalMode(target.value, reason.value.trim())
-    : store.setGroupMode(props.scope, target.value, reason.value.trim());
+    : store.setPoolMode(props.scope, target.value, reason.value.trim());
   if (!r.ok) { message.error(r.message); return; }
   message.success(r.message);
   emit('update:open', false);

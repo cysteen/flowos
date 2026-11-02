@@ -148,7 +148,7 @@ export interface PoolRule {
   /** 正整数 1–999，数值小者优先，不可重复 */
   priority: number;
   conditions: PoolRuleConditions;
-  /** 归属池（＝组 id，一组一池） */
+  /** 目标池（工单池 id；只可选启用中的池，3.3） */
   poolId: string;
   enabled: boolean;
   /** 迁移来源（3.4）；人工新增为空 */
@@ -165,14 +165,39 @@ export const DEFAULT_POOL_LABEL = '综合处理组';
 /* 人 · 组 · 池                                                          */
 /* ------------------------------------------------------------------ */
 
-/** 派单侧的组（一组一池，池 id ＝ 组 id，沿用 `POOL_GROUPS`） */
+/** 派单侧的处理组（用户分组中的派单组，沿用 `POOL_GROUPS`）：候选成员、归属组与班组长取自这里 */
 export interface DispatchGroup {
   id: string;
   label: string;
-  /** 本组派单方式（管理员 / 班组长切换，5.4）；作用于本组池时与全局派单方式取较严者 */
-  mode: PoolMode;
   /** 班组长姓名（兜底回池通知、指派权限） */
   leaders: string[];
+}
+
+/** 工单池状态（14.3）：停用后由系统收尾，可再启用 */
+export type PoolStatus = '启用' | '停用';
+/** 池名称最多 20 字（14.3） */
+export const POOL_NAME_MAX = 20;
+
+/**
+ * 工单池（14.3）：在工单池管理里新建，建池时选处理组；一个处理组可有多个池。
+ * 派单只在池所属处理组的成员中选人，工单归属组＝所在池的处理组；派单方式按池设置，与全局取较严者（5.1）。
+ * 初始 7 个池的 id 与原组 id 相同（小智 / 刷机 / 退费 / 售后转回的落池点按 id 接线）。
+ */
+export interface DispatchPool {
+  id: string;
+  /** 池名称：必填、最多 20 字、全局唯一 */
+  name: string;
+  /** 处理组：创建后不可改 */
+  groupId: string;
+  /** 本池派单方式（管理员 / 班组长切换，5.4） */
+  mode: PoolMode;
+  status: PoolStatus;
+  /** 默认池：未命中任何入池规则时落入，不可停用 */
+  isDefault: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
 }
 
 /** 坐席（参与派单的处理人） */
@@ -208,9 +233,9 @@ export interface DispatchAgent {
   onDutyDay?: string;
 }
 
-/** 上线阶段（第 17 章）：试运行 → 单组试点 → 多组 → 全量 */
-export type RolloutStage = '试运行' | '单组试点' | '多组' | '全量';
-export const ROLLOUT_STAGES: RolloutStage[] = ['试运行', '单组试点', '多组', '全量'];
+/** 上线阶段（第 17 章，按池计）：试运行 → 单池试点 → 多池 → 全量 */
+export type RolloutStage = '试运行' | '单池试点' | '多池' | '全量';
+export const ROLLOUT_STAGES: RolloutStage[] = ['试运行', '单池试点', '多池', '全量'];
 
 /* ------------------------------------------------------------------ */
 /* 配置（14.2）                                                          */
@@ -368,7 +393,8 @@ export type DispatchTrigger =
   | '升级三线'
   | '售后转回'
   | '回访打回'
-  | '恢复重派';
+  | '恢复重派'
+  | '池停用';
 
 /** 判定路径（13.1）。直派规则为 P1 */
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
@@ -496,7 +522,7 @@ export interface TicketDispatchState {
 /* 审计（3.1 / 5.4 / 6.5 / 7.5 / 8.3）                                   */
 /* ------------------------------------------------------------------ */
 
-export type DispatchAuditKind = '全局开关' | '个人开关' | '派单方式' | '运行方式' | '入池规则' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
+export type DispatchAuditKind = '全局开关' | '个人开关' | '派单方式' | '运行方式' | '入池规则' | '工单池' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
 export interface DispatchAuditEntry {
   id: string;
   at: string;

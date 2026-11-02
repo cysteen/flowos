@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 组池卡片、切换与恢复确认入口、切换记录
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 工单池卡片（启用中的池，按池展示）、切换与恢复确认入口、切换记录
 import { computed, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -29,12 +29,18 @@ const cards = computed(() => {
   void clock.value;
   void store.ticketStates;
   return store.poolViews()
-    .filter((p) => !props.poolIds || props.poolIds.includes(p.id))
+    .filter((p) => p.enabled && (!props.poolIds || props.poolIds.includes(p.id)))
     .map((p) => ({
       ...p,
       configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
       backlog: p.waitingOriginal + p.queued + p.failed,
     }));
+});
+
+/** 自动派单池：启用中的池里本池派单方式为自动派单的池数 */
+const autoPools = computed(() => {
+  const list = store.enabledPools();
+  return { on: list.filter((p) => p.mode === '自动派单').length, total: list.length };
 });
 
 const recordOpen = ref(false);
@@ -54,13 +60,13 @@ const recordCols = [
   <section class="ps">
     <div class="dx-sec-hd">
       <span class="dx-sec-title">池状态</span>
-      <span class="dx-sec-sub">共 {{ cards.length }} 个组池</span>
+      <span class="dx-sec-sub">共 {{ cards.length }} 个工单池</span>
       <span class="dx-sec-extra">
         <a-button type="link" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
       </span>
     </div>
 
-    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、自动派单组；右侧切换派单方式 / 确认恢复 -->
+    <!-- 全局状态条：派单方式、全局开关、运行方式、上线阶段、自动派单池；右侧切换派单方式 / 确认恢复 -->
     <div class="dx-card gs">
       <div class="gs-main">
         <span class="dx-icon gs-ic"><GlobalOutlined /></span>
@@ -72,7 +78,7 @@ const recordCols = [
         <span class="gs-kv"><em>全局开关</em>{{ store.config.globalSwitch ? '开启' : '关闭' }}</span>
         <span class="gs-kv"><em>运行方式</em>{{ store.config.runMode }}</span>
         <span class="gs-kv"><em>上线阶段</em>{{ stage }}</span>
-        <span class="gs-kv"><em>自动派单组</em>{{ store.groups.filter((g) => g.mode === '自动派单').length }} / {{ store.groups.length }}</span>
+        <span class="gs-kv"><em>自动派单池</em>{{ autoPools.on }} / {{ autoPools.total }}</span>
       </div>
       <div class="gs-ops">
         <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可恢复`">
@@ -94,14 +100,15 @@ const recordCols = [
           <div class="pc-hd">
             <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
             <span class="pc-mode" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
-            <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
+            <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
                 <template #icon><SwapOutlined /></template>
               </a-button>
             </a-tooltip>
           </div>
           <div class="pc-tags">
-            <span class="pc-tag">本组 {{ c.groupMode }}</span>
+            <span class="pc-tag">{{ c.label }}</span>
+            <span class="pc-tag">本池 {{ c.poolMode }}</span>
             <span class="pc-tag">{{ store.config.runMode }}</span>
           </div>
           <div class="pc-stats">
@@ -149,7 +156,7 @@ const recordCols = [
 .gs-kv em { font-style: normal; color: #86909c; margin-right: 8px; }
 .gs-ops { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
-/* 组池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
+/* 工单池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
 .group-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; min-width: 0; }
 @container (max-width: 1280px) { .group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container (max-width: 960px) { .group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

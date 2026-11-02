@@ -121,7 +121,7 @@ export interface TransferDispatchInput {
   target?: string;
   /** 到人：调剂后的归属组（此人非归属组成员时） */
   groupId?: string;
-  /** 到池：目标池（＝组 id） */
+  /** 到池：目标池（工单池 id，启用中的池） */
   poolId?: string;
   reason: string;
 }
@@ -146,7 +146,7 @@ export function applyTransferDispatch(
     queueMicrotask(() => {
       const target = reactive(row) as Ticket;
       const before = rowIds(target);
-      const g = store.groupOf(poolId);
+      const g = store.poolGroupOf(poolId);
       if (g) target.groupNames = groupNamesWith(target, g.label);
       target.myTransferAction = true;
       store.redispatchToPool(target, poolId, '调剂到池', operator, reason);

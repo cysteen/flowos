@@ -10,8 +10,8 @@ import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
 import type { DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
-// 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组（一组一池），成员取派单坐席；
-// 本组派单方式只读；组级技能移除，处理能力由成员人员画像表达。
+// 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组，成员取派单坐席；工单池在工单池管理新建（建池时选处理组），
+// 本页只读列出本组的工单池；新建分组不生成工单池；组级技能移除，处理能力由成员人员画像表达。
 interface Group {
   key: string; name: string; type: '业务班组' | '审批组' | '虚拟组';
   leader: string; shift: string;
@@ -38,7 +38,9 @@ const groups = computed<Group[]>(() => [
 ]);
 const selected = ref('line1');
 const sel = computed(() => groups.value.find((g) => g.key === selected.value) ?? groups.value[0]);
-const isDispatchGroup = (key: string) => dispatch.isDispatchPool(key);
+const isDispatchGroup = (key: string) => dispatch.isDispatchGroup(key);
+/** 处理组为本组的工单池（含已停用） */
+const groupPools = (key: string) => dispatch.poolsOfGroup(key);
 const selGroup = computed(() => dispatch.groupOf(selected.value));
 
 const memberMap: Record<string, Member[]> = reactive({
@@ -182,7 +184,7 @@ function removeMember(m: Member) {
 
 <template>
   <div class="user-group">
-    <AdminPageHeader title="用户分组" subtitle="按班组/审批组/虚拟组管理成员；组池、派单候选范围与报表均取用户分组">
+    <AdminPageHeader title="用户分组" subtitle="按班组/审批组/虚拟组管理成员；工单池处理组、派单候选范围与报表均取用户分组">
       <template #actions>
         <a-button type="primary" @click="openCreateGroup"><template #icon><PlusOutlined /></template>新建分组</a-button>
       </template>
@@ -229,8 +231,14 @@ function removeMember(m: Member) {
                 <span class="gd-val">{{ members.length }} 人</span>
               </div>
               <div v-if="selGroup" class="gd-kv">
-                <span class="gd-label">本组派单方式</span>
-                <span class="gd-val"><a-tag :color="MODE_TONE[dispatch.groupModeOf(selGroup.id)]">{{ dispatch.groupModeOf(selGroup.id) }}</a-tag></span>
+                <span class="gd-label">工单池</span>
+                <span class="gd-val">
+                  <template v-for="p in groupPools(selGroup.id)" :key="p.id">
+                    <span>{{ p.name }}</span>
+                    <a-tag :color="p.status === '启用' ? MODE_TONE[p.mode] : 'default'">{{ p.status === '启用' ? p.mode : '已停用' }}</a-tag>
+                  </template>
+                  <span v-if="!groupPools(selGroup.id).length">—</span>
+                </span>
               </div>
             </div>
           </div>
@@ -261,9 +269,6 @@ function removeMember(m: Member) {
         <a-form-item label="分组类型" class="half"><a-select v-model:value="gf.type" :disabled="gfDispatch" :options="TYPE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
         <a-form-item label="负责人" class="half"><a-input v-model:value="gf.leader" placeholder="组长姓名" /></a-form-item>
         <a-form-item label="排班" class="half"><a-select v-model:value="gf.shift" :options="SHIFT_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
-        <a-form-item v-if="gfDispatch" label="本组派单方式" class="half">
-          <a-tag :color="MODE_TONE[dispatch.groupModeOf(gf.key)]">{{ dispatch.groupModeOf(gf.key) }}</a-tag>
-        </a-form-item>
       </a-form>
     </a-modal>
 

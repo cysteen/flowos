@@ -19,26 +19,26 @@ const to = computed<RolloutStage | null>(() => {
 });
 const isForward = computed(() => props.direction === 'forward');
 
-/* ---------------- 组选择 ---------------- */
+/* ---------------- 池选择（按启用中的工单池计） ---------------- */
 
-/** 本组派单方式为自动派单的组 / 其余组 */
-const onGroups = computed(() => store.groups.filter((g) => g.mode === '自动派单'));
-const offGroups = computed(() => store.groups.filter((g) => g.mode !== '自动派单'));
-/** 单选：试点组（推进至单组试点 / 退回至单组试点时保留的组） */
+/** 本池派单方式为自动派单的启用池 / 其余启用池 */
+const onPools = computed(() => store.enabledPools().filter((p) => p.mode === '自动派单'));
+const offPools = computed(() => store.enabledPools().filter((p) => p.mode !== '自动派单'));
+/** 单选：试点池（推进至单池试点 / 退回至单池试点时保留的池） */
 const single = ref<string | undefined>(undefined);
-/** 多选：推进至多组时切为自动派单的组 / 退回至多组时切为混合派单的组 */
+/** 多选：推进至多池时切为自动派单的池 / 退回至多池时切为混合派单的池 */
 const multi = ref<string[]>([]);
 
 const pickKind = computed<'single' | 'multi' | null>(() => {
-  if (to.value === '单组试点') return 'single';
-  if (to.value === '多组') return 'multi';
+  if (to.value === '单池试点') return 'single';
+  if (to.value === '多池') return 'multi';
   return null;
 });
-const singleOpts = computed(() => (isForward.value ? store.groups : onGroups.value).map((g) => ({ value: g.id, label: store.poolLabel(g.id) })));
-const multiOpts = computed(() => (isForward.value ? offGroups.value : onGroups.value).map((g) => ({ value: g.id, label: store.poolLabel(g.id) })));
+const singleOpts = computed(() => (isForward.value ? store.enabledPools() : onPools.value).map((p) => ({ value: p.id, label: p.name })));
+const multiOpts = computed(() => (isForward.value ? offPools.value : onPools.value).map((p) => ({ value: p.id, label: p.name })));
 const pickLabel = computed(() => {
-  if (pickKind.value === 'single') return isForward.value ? '试点组' : '保留试点组';
-  return isForward.value ? '切为自动派单的组' : '切为混合派单的组';
+  if (pickKind.value === 'single') return isForward.value ? '试点池' : '保留试点池';
+  return isForward.value ? '切为自动派单的池' : '切为混合派单的池';
 });
 
 /* ---------------- 进入条件（推进时） ---------------- */
@@ -109,10 +109,10 @@ const conditions = computed<CondRow[]>(() => {
   if (!isForward.value || !to.value) return [];
   void store.logs;
   const now = Date.now();
-  if (to.value === '单组试点') {
+  if (to.value === '单池试点') {
     const days = workDaysSince(store.rolloutStageSince('试运行'), now);
     const gid = single.value;
-    const members = gid ? store.membersOf(gid) : [];
+    const members = gid ? store.poolMembersOf(gid) : [];
     const configured = members.filter((a) => isProfileConfigured(a.profile)).length;
     const profileRate = members.length ? (configured / members.length) * 100 : null;
     const match = gid ? trialMatchOf(gid) : { total: 0, same: 0 };
@@ -120,14 +120,14 @@ const conditions = computed<CondRow[]>(() => {
     const engineErr = gid ? store.logs.filter((l) => l.poolId === gid && l.failReason === '引擎异常').length : 0;
     return [
       { key: 'trialDays', label: '试运行运行时长', value: `${days} 个工作日`, th: { key: 'trialDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.trialDays },
-      { key: 'profileRate', label: '试点组成员画像配置率', value: gid ? `${pct(profileRate)}（${configured} / ${members.length}）` : '—', th: { key: 'profileRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: profileRate != null && profileRate >= th.profileRate },
-      { key: 'matchRate', label: '试点组建议与实际处理人画像匹配率', value: gid ? `${pct(matchRate)}（${match.same} / ${match.total} 单）` : '—', th: { key: 'matchRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: matchRate != null && matchRate >= th.matchRate },
+      { key: 'profileRate', label: '试点池成员画像配置率', value: gid ? `${pct(profileRate)}（${configured} / ${members.length}）` : '—', th: { key: 'profileRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: profileRate != null && profileRate >= th.profileRate },
+      { key: 'matchRate', label: '试点池建议与实际处理人画像匹配率', value: gid ? `${pct(matchRate)}（${match.same} / ${match.total} 单）` : '—', th: { key: 'matchRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: matchRate != null && matchRate >= th.matchRate },
       { key: 'engineErr', label: '派单日志「引擎异常」', value: gid ? `${engineErr} 条` : '—', thText: '无', ok: !!gid && engineErr === 0 },
     ];
   }
   const since = store.rolloutStageSince(from.value);
   const days = workDaysSince(since, now);
-  const pools = onGroups.value.map((g) => g.id);
+  const pools = onPools.value.map((p) => p.id);
   const afterLogs = since == null ? store.logs : store.logs.filter((l) => parseAt(l.at) >= since);
   const beforeLogs = since == null ? [] : store.logs.filter((l) => parseAt(l.at) < since);
   const s = statsOf(afterLogs, pools, now);
@@ -135,27 +135,27 @@ const conditions = computed<CondRow[]>(() => {
   const respOk = s.respMedian != null && (b.respMedian == null || s.respMedian <= b.respMedian);
   const respRow: CondRow = {
     key: 'resp', label: '派单后首响中位数',
-    value: `${minText(s.respMedian)}（${to.value === '多组' ? '试点前' : '本阶段前'} ${minText(b.respMedian)}）`,
-    thText: `不劣于${to.value === '多组' ? '试点前' : '本阶段前'}`, ok: respOk,
+    value: `${minText(s.respMedian)}（${to.value === '多池' ? '试点前' : '本阶段前'} ${minText(b.respMedian)}）`,
+    thText: `不劣于${to.value === '多池' ? '试点前' : '本阶段前'}`, ok: respOk,
   };
-  if (to.value === '多组') {
+  if (to.value === '多池') {
     return [
-      { key: 'pilotDays', label: '试点组运行时长', value: `${days} 个工作日`, th: { key: 'pilotDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.pilotDays },
+      { key: 'pilotDays', label: '试点池运行时长', value: `${days} 个工作日`, th: { key: 'pilotDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.pilotDays },
       { key: 'successRate', label: '自动派单成功率', value: pct(s.successRate), th: { key: 'successRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: s.successRate != null && s.successRate >= th.successRate },
       { key: 'fallbackRate', label: '兜底回池率', value: pct(s.fallbackRate), th: { key: 'fallbackRate', prefix: '≤', unit: '%', min: 0, max: 100 }, ok: s.fallbackRate != null && s.fallbackRate <= th.fallbackRate },
       respRow,
     ];
   }
-  // 推进至全量：自动派单各组连续 N 个工作日满足多组进入条件中的指标
+  // 推进至全量：自动派单各池连续 N 个工作日满足多池进入条件中的指标
   const per = pools.map((id) => ({ id, s: statsOf(afterLogs, [id], now) }));
   const succVals = per.map((x) => x.s.successRate).filter((v): v is number => v != null);
   const fbVals = per.map((x) => x.s.fallbackRate).filter((v): v is number => v != null);
   const minSucc = succVals.length === per.length && per.length ? Math.min(...succVals) : null;
   const maxFb = fbVals.length === per.length && per.length ? Math.max(...fbVals) : null;
   return [
-    { key: 'fullDays', label: '自动派单各组连续运行时长', value: `${days} 个工作日`, th: { key: 'fullDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.fullDays },
-    { key: 'successRate', label: '各组自动派单成功率（最低）', value: pct(minSucc), th: { key: 'successRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: minSucc != null && minSucc >= th.successRate },
-    { key: 'fallbackRate', label: '各组兜底回池率（最高）', value: pct(maxFb), th: { key: 'fallbackRate', prefix: '≤', unit: '%', min: 0, max: 100 }, ok: maxFb != null && maxFb <= th.fallbackRate },
+    { key: 'fullDays', label: '自动派单各池连续运行时长', value: `${days} 个工作日`, th: { key: 'fullDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.fullDays },
+    { key: 'successRate', label: '各池自动派单成功率（最低）', value: pct(minSucc), th: { key: 'successRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: minSucc != null && minSucc >= th.successRate },
+    { key: 'fallbackRate', label: '各池兜底回池率（最高）', value: pct(maxFb), th: { key: 'fallbackRate', prefix: '≤', unit: '%', min: 0, max: 100 }, ok: maxFb != null && maxFb <= th.fallbackRate },
     respRow,
   ];
 });
@@ -164,11 +164,11 @@ const conditions = computed<CondRow[]>(() => {
 
 const effectText = computed(() => {
   switch (to.value) {
-    case '单组试点':
-      if (!isForward.value) return '只保留试点组为自动派单，其余组切为混合派单';
-      return `${store.rolloutNoAutoGroup() ? '运行方式保持正式派单' : '运行方式切为正式派单'}；试点组切为自动派单，其余组切为混合派单`;
-    case '多组': return isForward.value ? '所选组切为自动派单' : '所选组切为混合派单';
-    case '全量': return '全部组切为自动派单';
+    case '单池试点':
+      if (!isForward.value) return '只保留试点池为自动派单，其余池切为混合派单';
+      return `${store.rolloutNoAutoGroup() ? '运行方式保持正式派单' : '运行方式切为正式派单'}；试点池切为自动派单，其余池切为混合派单`;
+    case '多池': return isForward.value ? '所选池切为自动派单' : '所选池切为混合派单';
+    case '全量': return '全部启用中的工单池切为自动派单';
     case '试运行': return '运行方式切回试运行，引擎只出派单建议、不实际派单';
     default: return '';
   }
@@ -178,10 +178,10 @@ function submit() {
   if (!to.value) return;
   let ids: string[] = [];
   if (pickKind.value === 'single') {
-    if (!single.value) { message.error(isForward.value ? '请选择试点组' : '请选择保留的试点组'); return; }
+    if (!single.value) { message.error(isForward.value ? '请选择试点池' : '请选择保留的试点池'); return; }
     ids = [single.value];
   } else if (pickKind.value === 'multi') {
-    if (!multi.value.length) { message.error(isForward.value ? '请选择切为自动派单的组' : '请选择切为混合派单的组'); return; }
+    if (!multi.value.length) { message.error(isForward.value ? '请选择切为自动派单的池' : '请选择切为混合派单的池'); return; }
     ids = [...multi.value];
   }
   const r = store.setRolloutStage(to.value, ids);
