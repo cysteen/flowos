@@ -41,7 +41,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 3;
+export const DISPATCH_CACHE_VERSION = 4;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -130,9 +130,9 @@ function seedAgents(now: number): DispatchAgent[] {
     };
   };
   return [
-    // 王坐席：教育刷机处理组种子单的二线处理人（flash 种子）
+    // 王坐席：老四类与教育刷机处理组种子单的二线处理人（flash 种子）；名下种子在途单多，个人上限设 40 不超限
     a('王坐席', 'E2001', ['二线专员'], ['line2', 'edu-flash'], {
-      proficiency: '专家', lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
+      proficiency: '专家', capOverride: 40, lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
     }),
     // 张三：二线专员演示账号；同属教育刷机处理组（刷机池演示）、教育支持组（个册退费种子单的组员）
     a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {

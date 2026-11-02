@@ -431,7 +431,7 @@ const primaryHandlerName = computed(() => {
   if (row?.upgradedByMe && row.nodeStatus === '已升级技术支持') return WORKBENCH_HANDLER;
   return d.value.lastHandler ?? null;
 });
-/** 当前登录用户是不是本单主责处理人（`isCurrentHandler`：登录人姓名，二线专员另认历史样例处理人名） */
+/** 当前登录用户是不是本单主责处理人（`isCurrentHandler`：登录人姓名） */
 const isPrimaryHandler = computed(
   () => isCurrentHandler(primaryHandlerName.value, user.roleKey, user.name),
 );
@@ -2991,7 +2991,7 @@ watch(
     const row = TICKETS.find((x) => x.no === d.value.no);
     if (!canAutoClaim(row)) {
       const holder = row?.assignee?.trim();
-      if (holder && holder !== '系统' && holder !== WORKBENCH_HANDLER && holder !== currentHandlerName(user.roleKey, user.name)) {
+      if (holder && holder !== '系统' && holder !== currentHandlerName(user.roleKey, user.name)) {
         message.warning(`该工单已被 ${holder} 领取`);
       }
       return;

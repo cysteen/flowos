@@ -155,11 +155,12 @@ export function useTicketWorkbench() {
     if (isXiaozhiTicket(t)) return inMineTaskScope(t, flashHandler.value);
     // 个册退费单（1120）：二线记名为登录人姓名（用户 10-27），同样按当前登录人取
     if (isRefundTicket(t)) return inMineTaskScope(t, flashHandler.value);
-    return inMineTaskScope(t, WORKBENCH_HANDLER);
+    // 老四类同按当前登录人取（【1215】B1：引擎派给本人、本人领取的单都进本人「我的任务」）
+    return inMineTaskScope(t, flashHandler.value);
   }
-  /** 已办数据域：个册退费单按当前登录人判「我」，其余照旧按 `WORKBENCH_HANDLER` */
+  /** 已办数据域：按当前登录人判「我」 */
   function inDoneTabScope(t: Ticket): boolean {
-    return inDoneScope(t, isRefundTicket(t) ? flashHandler.value : WORKBENCH_HANDLER);
+    return inDoneScope(t, flashHandler.value);
   }
 
   /** 一线坐席「刷机池」：一线刷机池未认领的刷机单，按进池时间正序（§9.2；列表列「进池时间」同源） */
@@ -543,7 +544,7 @@ export function useTicketWorkbench() {
   }
   function takeOverPoolPendingOwner(t: Ticket): { ok: boolean; from: string | null } {
     const id = t.id;
-    // 刷机单 / 小智单 / 个册退费单记登录人姓名；老四类仍按样例数据模型的处理人名落库（「我的任务」按它取数）
+    // 各类工单一律记登录人姓名（【1215】B1）
     const me = isFlashTicket(t) || isXiaozhiTicket(t) || isRefundTicket(t) ? flashHandler.value : legacyHandlerName(user.roleKey, user.name);
     const from = poolPendingOwnerOf(t);
     if (isCurrentHandler(from, user.roleKey, user.name)) return { ok: true, from };

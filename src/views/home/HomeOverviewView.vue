@@ -35,7 +35,7 @@ import {
   HOME_NOTICES,
   HOME_METRIC_DRILLS,
   HOME_QUICK_LINKS,
-  HOME_TODOS,
+  homeTodosFor,
   HOME_SLA_COLOR,
   HOME_TREND_DONE,
   HOME_TREND_FOLLOW,
@@ -65,6 +65,8 @@ const kpiTipOverlayStyle = {
 
 const router = useRouter();
 const user = useUserStore();
+/** 待办 Top5：当前登录人「我的任务」（【1215】B1） */
+const homeTodos = computed(() => homeTodosFor(user.name));
 
 /**
  * 本期（815）不支持的三块内容，统一用开关隐藏而非物理删除
@@ -441,7 +443,7 @@ function openDrillTicket(no: string) {
         </div>
         <div class="todo-list">
           <div
-            v-for="t in HOME_TODOS"
+            v-for="t in homeTodos"
             :key="t.no"
             class="todo-row"
             role="link"

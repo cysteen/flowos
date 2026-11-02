@@ -528,8 +528,8 @@ function homeSlaVis(t: Ticket): HomeTodoItem['slaVis'] {
  * 单号也大多不在工单数据源里（点进去只能打到演示单）。改为派生后两件事一起解决，
  * 且工单 mock 增删时门户自动跟着走，不需要人工同步。
  */
-export const HOME_TODOS: HomeTodoItem[] = TICKETS
-  .filter((t) => inMineTaskScope(t))
+export const homeTodosFor = (handler: string): HomeTodoItem[] => TICKETS
+  .filter((t) => inMineTaskScope(t, handler))
   .sort(slaUrgencyCompare)
   .slice(0, HOME_TODO_LIMIT)
   .map((t) => ({

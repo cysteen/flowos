@@ -5,9 +5,9 @@ import {
   inMineTaskScope,
   isSearchableTicket,
   POOL_GROUPS,
-  WORKBENCH_HANDLER,
   type Ticket,
 } from '@/views/tickets/types/ticket';
+import { useUserStore } from '@/stores/user';
 import {
   matchesSearchText,
   parseBatchTicketQuery,
@@ -37,7 +37,8 @@ const VISIBLE_POOL_GROUPS = POOL_GROUPS.map((g) => g.id);
 
 /** 工作台数据域：本人名下 + 本组池（与 useTicketWorkbench 的 mine / pool 两档同源） */
 function inWorkbenchScope(t: Ticket): boolean {
-  return inMineTaskScope(t, WORKBENCH_HANDLER) || inGroupPoolScope(t, VISIBLE_POOL_GROUPS);
+  // 本人＝当前登录人（【1215】B1）
+  return inMineTaskScope(t, useUserStore().name) || inGroupPoolScope(t, VISIBLE_POOL_GROUPS);
 }
 
 /** 列表页默认按更新时间倒序（PRD-05 §9） */

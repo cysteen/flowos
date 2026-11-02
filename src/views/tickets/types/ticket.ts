@@ -1131,20 +1131,19 @@ export function currentHandlerName(_roleKey: string, userName: string): string {
 }
 
 /**
- * 工单上的处理人名是不是当前登录人：登录人姓名；二线专员另认历史样例里写死的处理人 `WORKBENCH_HANDLER`
- * （种子单的处理人保持不动，老四类「我的任务」仍按它取数）。
+ * 工单上的处理人名是不是当前登录人：只认登录人姓名（【1215】B1：与派单坐席同一身份口径；
+ * 种子单里的 `WORKBENCH_HANDLER` 是另一位二线坐席，不再等于当前登录人）。
  */
-export function isCurrentHandler(name: string | null | undefined, roleKey: string, userName: string): boolean {
+export function isCurrentHandler(name: string | null | undefined, _roleKey: string, userName: string): boolean {
   if (!name) return false;
-  return name === userName || (roleKey === 'agent-l2' && name === WORKBENCH_HANDLER);
+  return name === userName;
 }
 
 /**
- * 老四类样例数据模型里的处理人名（`WORKBENCH_HANDLER` 演示口径）：只用于老四类工单的落库（领取 / 换主责），
- * 使其仍落进按 `WORKBENCH_HANDLER` 取数的「我的任务」。刷机单、小智单记 `currentHandlerName`。
+ * 老四类工单落库（领取 / 换主责）记的处理人名：登录人姓名（【1215】B1，与 `currentHandlerName` 同口径）。
  */
-export function legacyHandlerName(roleKey: string, userName: string): string {
-  return roleKey === 'agent-l2' ? WORKBENCH_HANDLER : userName;
+export function legacyHandlerName(_roleKey: string, userName: string): string {
+  return userName;
 }
 
 /* ---- 930 教育刷机单 · 工作台池可见性（§4.2 / §9.2–9.4，M15 / M71 / M72） ---- */
