@@ -1,14 +1,19 @@
 <script setup lang="ts">
-// 工单池管理（PRD 14.3）：一组一池；派单方式、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
-import { computed, ref } from 'vue';
+// 工单池管理（PRD 14.3）：工单池在此新建（建池时选处理组），一个处理组可有多个池；
+// 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认，默认池不可停用）；
+// 停用的池另列「已停用」；池详情列池内待领工单，管理员可指派
+import { computed, reactive, ref } from 'vue';
+import { message } from 'ant-design-vue';
+import { InboxOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
-import { DEFAULT_POOL_ID, PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
+import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
+import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
-import { SwapOutlined } from '@ant-design/icons-vue';
+import DispatchConfirmModal from './DispatchConfirmModal.vue';
 import './dispatchTheme.css';
 
 const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
@@ -16,11 +21,71 @@ const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 const store = useDispatchStore();
 const clock = useClock();
 
-const rows = computed(() => {
+const allRows = computed(() => {
   void clock.value;
   void store.ticketStates;
+  void store.pools;
   return store.poolViews();
 });
+/** 启用中的池（卡片区） */
+const rows = computed(() => allRows.value.filter((p) => p.enabled));
+/** 已停用的池（另列） */
+const offRows = computed(() => allRows.value.filter((p) => !p.enabled));
+
+/* ---------------- 新建 / 编辑（14.3） ---------------- */
+const formOpen = ref(false);
+const formId = ref<string | null>(null);
+const form = reactive<{ name: string; groupId: string | undefined; mode: PoolMode }>({ name: '', groupId: undefined, mode: '人工派单' });
+const groupOpts = computed(() => store.groups.map((g) => ({ value: g.id, label: g.label })));
+function openCreate() {
+  formId.value = null;
+  Object.assign(form, { name: '', groupId: undefined, mode: '人工派单' });
+  formOpen.value = true;
+}
+function openEdit(id: string) {
+  const p = store.poolOf(id);
+  if (!p) return;
+  formId.value = id;
+  Object.assign(form, { name: p.name, groupId: p.groupId, mode: p.mode });
+  formOpen.value = true;
+}
+function submitForm() {
+  const err = store.validatePoolName(form.name, formId.value ?? undefined);
+  if (err) { message.error(err); return; }
+  const r = formId.value
+    ? store.renamePool(formId.value, form.name)
+    : (form.groupId ? store.addPool({ name: form.name, groupId: form.groupId, mode: form.mode }) : { ok: false, message: '请选择处理组' });
+  if (!r.ok) { if (r.message) message.error(r.message); return; }
+  message.success(r.message);
+  formOpen.value = false;
+}
+defineExpose({ openCreate });
+
+/* ---------------- 停用 / 启用（二次确认） ---------------- */
+const toggleOpen = ref(false);
+const toggleId = ref<string | null>(null);
+const toggleTo = ref(false);
+const toggleTip = ref('');
+function openToggle(id: string, enabled: boolean) {
+  const p = store.poolOf(id);
+  if (!p) return;
+  toggleId.value = id;
+  toggleTo.value = enabled;
+  if (enabled) {
+    toggleTip.value = `启用后「${p.name}」可重新作为入池规则的归属池，原指向该池的入池规则保持停用，需手动启用`;
+  } else {
+    const im = store.poolDisableImpact(id);
+    toggleTip.value = `停用后指向该池的 ${im.rules} 条入池规则将停用，池内 ${im.tickets} 张未领取工单将按入池规则重新入池`;
+  }
+  toggleOpen.value = true;
+}
+function confirmToggle() {
+  if (!toggleId.value) return;
+  const r = store.setPoolEnabled(toggleId.value, toggleTo.value);
+  if (!r.ok) { if (r.message) message.error(r.message); return; }
+  if (r.message) message.success(r.message);
+  if (!toggleTo.value && detailId.value === toggleId.value) detailId.value = null;
+}
 const backlogOf = (p: { waitingOriginal: number; queued: number; failed: number }) => p.waitingOriginal + p.queued + p.failed;
 /** 指向本池的已启用入池规则（按优先级）；默认池另含「未命中任何规则」 */
 function rulesOf(poolId: string): string {
@@ -37,8 +102,6 @@ function waitItems(p: { waitingOriginal: number; queued: number; failed: number;
   xs.push({ label: '最长等待', value: waitText(p.maxWaitMin), tone: '' });
   return xs;
 }
-const totalBacklog = computed(() => rows.value.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0));
-
 const globalStopped = computed(() => store.globalEffectiveMode() === '人工派单');
 
 const modeOpen = ref(false);
@@ -58,7 +121,7 @@ const detailRows = computed(() => {
   if (!id) return [];
   const now = Date.now();
   return TICKETS
-    .filter((t) => t.groupId === id && t.tab === 'pool' && !t.assignee && !t.archived && !t.isDraft)
+    .filter((t) => t.tab === 'pool' && !t.assignee && !t.archived && !t.isDraft && store.poolIdOf(t) === id)
     .map((t) => {
       const st = store.ticketStateOf(t.no);
       const due = st?.firstRespTotalMin != null ? st.firstRespDueAt ?? st.enteredAt + st.firstRespTotalMin * 60_000 : null;
@@ -102,12 +165,13 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
   <section class="block pool-panel pm">
     <div class="meta-strip">
       <div class="meta-chip">
-        <span class="meta-chip-val">{{ rows.length }}</span>
-        <span class="meta-chip-lb">个组池</span>
+        <span class="meta-chip-val">{{ allRows.length }}</span>
+        <span class="meta-chip-lb">个工单池</span>
       </div>
-      <div class="meta-chip" :class="{ 'is-warn': totalBacklog > 0 }">
-        <span class="meta-chip-val">{{ totalBacklog }}</span>
-        <span class="meta-chip-lb">池内待派（单）</span>
+      <div v-if="offRows.length" class="meta-chip">
+        <span class="meta-chip-lb">其中停用</span>
+        <span class="meta-chip-val">{{ offRows.length }}</span>
+        <span class="meta-chip-lb">个</span>
       </div>
     </div>
     <div class="pm-grid">
@@ -122,12 +186,21 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
           <div class="pm-card-hd">
             <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
             <span class="pm-mode" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
-            <a-tooltip :title="globalStopped ? '全局为人工派单，本组派单方式不可切换' : '切换派单方式'">
+            <a-tooltip :title="globalStopped ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
                 <template #icon><SwapOutlined /></template>
               </a-button>
             </a-tooltip>
-            <a-button type="link" size="small" class="pm-detail" @click="detailId = p.id">池详情</a-button>
+          </div>
+          <div class="pm-row">
+            <div class="pm-cond"><em>处理组</em>{{ p.label }}<span v-if="p.isDefault" class="pm-default">默认池</span></div>
+            <span class="pm-ops">
+              <a-button type="link" size="small" class="pm-op" @click="detailId = p.id">池详情</a-button>
+              <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
+              <a-tooltip :title="p.isDefault ? '默认池不可停用' : undefined">
+                <a-button type="link" size="small" danger class="pm-op" :disabled="p.isDefault" @click="openToggle(p.id, false)">停用</a-button>
+              </a-tooltip>
+            </span>
           </div>
           <div class="pm-cond" :title="rulesOf(p.id)"><em>入池</em>{{ rulesOf(p.id) }}</div>
           <div class="pm-stats">
@@ -154,6 +227,68 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
       </div>
     </div>
 
+    <template v-if="offRows.length">
+      <div class="pm-off-hd">已停用<span class="pm-off-sub">{{ offRows.length }} 个</span></div>
+      <div class="pm-grid">
+        <div v-for="p in offRows" :key="p.id" class="pm-card pm--off">
+          <div class="pm-inner">
+            <div class="pm-card-hd">
+              <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
+              <span class="pm-mode">已停用</span>
+            </div>
+            <div class="pm-row">
+              <div class="pm-cond"><em>处理组</em>{{ p.label }}</div>
+              <span class="pm-ops">
+                <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
+                <a-button type="link" size="small" class="pm-op" @click="openToggle(p.id, true)">启用</a-button>
+              </span>
+            </div>
+            <div class="pm-cond"><em>更新</em>{{ store.poolOf(p.id)?.updatedBy }} · {{ store.poolOf(p.id)?.updatedAt }}</div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- 新建 / 编辑工单池（14.3） -->
+    <OpActionModal
+      v-model:open="formOpen"
+      :title="formId ? '编辑工单池' : '新建工单池'"
+      :icon="InboxOutlined"
+      tone="primary"
+      :width="480"
+      :ok-text="formId ? '保存' : '创建'"
+      cancel-text="取消"
+      @ok="submitForm"
+    >
+      <div class="op-form">
+        <div class="op-field op-field-h">
+          <span class="op-label req">池名称</span>
+          <div class="pm-grow"><a-input v-model:value="form.name" :maxlength="POOL_NAME_MAX" show-count placeholder="请输入池名称" /></div>
+        </div>
+        <div class="op-field op-field-h">
+          <span class="op-label" :class="{ req: !formId }">处理组</span>
+          <div class="pm-grow">
+            <a-select v-model:value="form.groupId" :options="groupOpts" :disabled="!!formId" placeholder="请选择处理组" style="width: 100%" />
+          </div>
+        </div>
+        <div class="op-field op-field-h">
+          <span class="op-label" :class="{ req: !formId }">派单方式</span>
+          <a-radio-group v-model:value="form.mode" :disabled="!!formId">
+            <a-radio v-for="m in POOL_MODES" :key="m" :value="m">{{ m }}</a-radio>
+          </a-radio-group>
+        </div>
+      </div>
+    </OpActionModal>
+
+    <DispatchConfirmModal
+      v-model:open="toggleOpen"
+      :title="toggleTo ? '启用工单池' : '停用工单池'"
+      :tip="toggleTip"
+      :ok-text="toggleTo ? '确认启用' : '确认停用'"
+      :danger="!toggleTo"
+      @ok="confirmToggle"
+    />
+
     <a-drawer
       v-model:open="detailOpen"
       :title="detailId ? store.poolLabel(detailId) : ''"
@@ -165,6 +300,8 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
       <div v-if="detailPool" class="pd-body">
         <div class="pd-overview">
           <span class="pd-mode">
+            处理组 <b class="pd-group">{{ detailPool.label }}</b>
+            <i class="dx-meta-sep">·</i>
             派单方式
             <span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span>
           </span>
@@ -244,7 +381,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 .pm-inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pm-card-hd { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .pm-name {
-  flex: 1; min-width: 120px; font-size: 14px; font-weight: 600; color: #111827;
+  flex: 1 1 0; min-width: 96px; font-size: 14px; font-weight: 600; color: #111827;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pm-mode {
@@ -254,7 +391,19 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 .pm-mode.is-green { background: #ecfdf5; color: #047857; }
 .pm-mode.is-orange { background: #fff7ed; color: #c2410c; }
 .pm-mode.is-red { background: #fef2f2; color: #dc2626; }
-.pm-detail { flex: none; padding: 0 2px; margin-left: auto; }
+.pm-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -2px 0; }
+.pm-row .pm-cond { flex: 1; min-width: 0; }
+.pm-ops { flex: none; display: inline-flex; align-items: center; gap: 2px; margin-left: auto; margin-right: -4px; }
+.pm-op { padding: 0 4px; height: 22px; font-size: 12px; }
+.pm-default {
+  margin-left: 8px; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 4px;
+  background: #eff6ff; color: #1a6fff;
+}
+.pm-off-hd { display: flex; align-items: baseline; gap: 8px; margin: 20px 0 10px; font-size: 13px; font-weight: 600; color: #4e5969; }
+.pm-off-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
+.pm--off { background: #fafbfc; }
+.pm--off .pm-name { color: #6b7280; }
+.pm-grow { flex: 1; min-width: 0; }
 .pm-cond { font-size: 11px; color: #6b7280; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-cond em { font-style: normal; color: #9ca3af; margin-right: 6px; }
 .pm-stats {
@@ -282,6 +431,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
 }
 .pd-mode { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
 .pd-mode .dx-status { font-size: 12px; line-height: 20px; }
+.pd-group { font-weight: 600; color: #1f2329; }
 .pd-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .pd-stat {
   display: inline-flex; align-items: baseline; gap: 6px;

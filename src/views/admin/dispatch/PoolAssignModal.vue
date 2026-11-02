@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 指派弹窗（PRD 9.3）：候选为归属池所属组成员；未签入、将超上限二次确认；先到先得
+// 指派弹窗（PRD 9.3）：候选为工单所在池的处理组成员；未签入、将超上限二次确认；先到先得
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { UserSwitchOutlined } from '@ant-design/icons-vue';
@@ -19,7 +19,7 @@ watch(() => props.open, (v) => { if (v) assignee.value = undefined; });
 const candidates = computed(() => {
   if (!props.ticket) return [];
   const t = props.ticket;
-  return store.membersOf(props.poolId)
+  return store.poolMembersOf(props.poolId)
     .filter((a) => !a.disabled && a.name !== t.assignee)
     .map((a) => {
       const v = store.agentView(a.name)!;
@@ -39,7 +39,7 @@ function doAssign(name: string) {
   const t = props.ticket!;
   const occ = store.checkOccupy(wb.ticketById(t.id) ?? t);
   if (!occ.ok) { message.error(occ.message); emit('update:open', false); emit('done'); return; }
-  const [res] = wb.assignTickets([t.id], { scope: 'in-team', targetId: props.poolId, targetName: name });
+  const [res] = wb.assignTickets([t.id], { scope: 'in-team', targetId: store.poolGroupIdOf(props.poolId) ?? props.poolId, targetName: name });
   if (!res?.ok) { message.error(res?.reason ?? ''); return; }
   message.success(`已指派给${name}`);
   emit('update:open', false);

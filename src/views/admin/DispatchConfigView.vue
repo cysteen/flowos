@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { PlusOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { adminNavActiveKey } from '@/config/adminNav';
 import DispatchMonitorPanel from './dispatch/DispatchMonitorPanel.vue';
@@ -16,7 +17,7 @@ const router = useRouter();
 const DISPATCH_PAGE_META: Record<string, { title: string; subtitle: string }> = {
   'dispatch-monitor': { title: '分派监控', subtitle: '派单效果、派单方式、池积压与处理人负载；派单日志查询。' },
   'dispatch-strategy': { title: '派单策略', subtitle: '运行设置、入池规则、出池规则与个人上限；保存即生效。' },
-  'dispatch-pool': { title: '工单池管理', subtitle: '各组池的派单方式、派单状态与成员画像配置，池内待领工单可指派。' },
+  'dispatch-pool': { title: '工单池管理', subtitle: '新建工单池并选择处理组；各池的派单方式、派单状态与成员画像配置，池内待领工单可指派。' },
   'dispatch-routing': { title: '路由规则', subtitle: '入池规则只读一览；新增与编辑在派单策略 · 入池规则。' },
   'dispatch-profile': { title: '坐席画像', subtitle: '坐席的人员画像、熟练度、个人上限与个人开关。' },
 };
@@ -32,15 +33,22 @@ const strategyTab = computed({
   },
 });
 const focusRuleId = computed(() => (typeof route.query.rule === 'string' ? route.query.rule : undefined));
+
+/** 工单池管理页头「新建工单池」 */
+const poolPanel = ref<InstanceType<typeof PoolManagePanel> | null>(null);
 </script>
 
 <template>
   <div class="dispatch-config" :class="{ 'is-compact-header': pageKey !== 'dispatch-monitor' }">
     <!-- 分派监控的页头带筛选与派单日志入口，由面板自行渲染 -->
-    <AdminPageHeader v-if="pageKey !== 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
+    <AdminPageHeader v-if="pageKey !== 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle">
+      <template v-if="pageKey === 'dispatch-pool'" #actions>
+        <a-button type="primary" @click="poolPanel?.openCreate()"><template #icon><PlusOutlined /></template>新建工单池</a-button>
+      </template>
+    </AdminPageHeader>
     <DispatchMonitorPanel v-if="pageKey === 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
     <DispatchStrategyPanel v-else-if="pageKey === 'dispatch-strategy'" v-model:tab="strategyTab" :focus-rule-id="focusRuleId" />
-    <PoolManagePanel v-else-if="pageKey === 'dispatch-pool'" />
+    <PoolManagePanel v-else-if="pageKey === 'dispatch-pool'" ref="poolPanel" />
     <RoutingSummaryPanel v-else-if="pageKey === 'dispatch-routing'" />
     <AgentProfilePanel v-else />
   </div>
