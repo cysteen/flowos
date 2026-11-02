@@ -32,10 +32,14 @@ const { requestOutboundCall, checkCanCall } = useOutboundCall();
 
 /**
  * 【1215】话务条「签入 / 小休 / 签出」联动派单签入状态（11.5：签入即在班）。
- * 只跟随变化、不在挂载时回写：刷新后话务条回到未签入，不把派单侧已有的签入状态冲掉。
+ * 以话务条为准：挂载（刷新、重新登录）时即按话务条当前状态回写派单侧，之后跟随变化，两边始终一致（G1）。
  * 签入后由派单 store 先看预留给本人的单、再选排队单。
  */
-watch(() => cti.workStatus, (s) => syncSignInFromCti(user.name, s));
+watch(
+  () => [user.name, cti.workStatus] as const,
+  ([name, s]) => syncSignInFromCti(name, s),
+  { immediate: true },
+);
 
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
