@@ -5,6 +5,7 @@ import { message } from 'ant-design-vue';
 import { RiseOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
+import { TICKETS } from '@/mock/tickets';
 import { ROLLOUT_STAGES, isProfileConfigured, type DispatchLogEntry, type RolloutStage } from '@/views/tickets/types/dispatch';
 import { computeStats, minText, parseAt } from './dispatchMetrics';
 
@@ -84,6 +85,29 @@ function statsOf(logs: DispatchLogEntry[], poolIds: string[], now: number) {
     (no) => store.dispatchStatusOf(no));
 }
 
+/**
+ * 建议与实际处理人画像匹配率（第 17 章）：按工单计 —— 试运行期间有建议处理人的工单为分母，
+ * 建议处理人（该单最后一次试运行建议）与实际处理人一致的为分子；实际处理人取建议之后首次人工拿单的坐席，
+ * 无人工拿单记录时取工单当前处理人。
+ */
+function trialMatchOf(gid: string): { total: number; same: number } {
+  const suggested = new Map<string, { name: string; seq: number }>();
+  for (const l of store.logs) {
+    if (l.poolId !== gid || l.kind !== '判定' || !l.trial?.suggested) continue;
+    const cur = suggested.get(l.ticketNo);
+    if (!cur || l.seq > cur.seq) suggested.set(l.ticketNo, { name: l.trial.suggested, seq: l.seq });
+  }
+  let same = 0;
+  for (const [no, s] of suggested) {
+    const take = store.logs
+      .filter((l) => l.ticketNo === no && l.kind === '人工' && l.seq > s.seq && !!l.manual?.target)
+      .sort((a, b) => a.seq - b.seq)[0];
+    const actual = take?.manual?.target ?? TICKETS.find((t) => t.no === no)?.assignee ?? null;
+    if (actual && actual === s.name) same += 1;
+  }
+  return { total: suggested.size, same };
+}
+
 const conditions = computed<CondRow[]>(() => {
   if (!isForward.value || !to.value) return [];
   void store.logs;
@@ -94,13 +118,13 @@ const conditions = computed<CondRow[]>(() => {
     const members = gid ? store.membersOf(gid) : [];
     const configured = members.filter((a) => isProfileConfigured(a.profile)).length;
     const profileRate = members.length ? (configured / members.length) * 100 : null;
-    const trialLogs = gid ? store.logs.filter((l) => l.poolId === gid && l.trial && l.trial.actual) : [];
-    const matchRate = trialLogs.length ? (trialLogs.filter((l) => l.trial!.same).length / trialLogs.length) * 100 : null;
+    const match = gid ? trialMatchOf(gid) : { total: 0, same: 0 };
+    const matchRate = match.total ? (match.same / match.total) * 100 : null;
     const engineErr = gid ? store.logs.filter((l) => l.poolId === gid && l.failReason === '引擎异常').length : 0;
     return [
       { key: 'trialDays', label: '试运行运行时长', value: `${days} 个工作日`, th: { key: 'trialDays', prefix: '满', unit: '个工作日', min: 1, max: 60 }, ok: days >= th.trialDays },
       { key: 'profileRate', label: '试点组成员画像配置率', value: gid ? `${pct(profileRate)}（${configured} / ${members.length}）` : '—', th: { key: 'profileRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: profileRate != null && profileRate >= th.profileRate },
-      { key: 'matchRate', label: '试点组建议与实际处理人画像匹配率', value: gid ? `${pct(matchRate)}（${trialLogs.length} 单）` : '—', th: { key: 'matchRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: matchRate != null && matchRate >= th.matchRate },
+      { key: 'matchRate', label: '试点组建议与实际处理人画像匹配率', value: gid ? `${pct(matchRate)}（${match.same} / ${match.total} 单）` : '—', th: { key: 'matchRate', prefix: '≥', unit: '%', min: 1, max: 100 }, ok: matchRate != null && matchRate >= th.matchRate },
       { key: 'engineErr', label: '派单日志「引擎异常」', value: gid ? `${engineErr} 条` : '—', thText: '无', ok: !!gid && engineErr === 0 },
     ];
   }
