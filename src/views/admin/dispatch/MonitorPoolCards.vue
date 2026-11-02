@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局与各组池形态卡片、切换与回切确认入口、切换记录
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 组池卡片、切换与回切确认入口、切换记录
 import { computed, ref } from 'vue';
-import { GlobalOutlined, HistoryOutlined } from '@ant-design/icons-vue';
+import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import type { DispatchAuditEntry } from '@/views/tickets/types/dispatch';
@@ -51,51 +51,57 @@ const recordCols = [
 </script>
 
 <template>
-  <section class="block">
-    <div class="b-title">
-      池状态
-      <a-button class="hd-btn" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
+  <section class="ps">
+    <div class="dx-sec-hd">
+      <span class="dx-sec-title">池状态</span>
+      <span class="dx-sec-sub">共 {{ cards.length }} 个组池</span>
+      <span class="dx-sec-extra">
+        <a-button type="link" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
+      </span>
     </div>
 
-    <div class="pool-grid">
-      <div class="pc pc-global" :class="`tone-${MODE_TONE[globalMode]}`">
-        <div class="pc-hd">
-          <span class="pc-ic"><GlobalOutlined /></span>
-          <span class="pc-name">全局</span>
-          <a-tag :color="MODE_TONE[globalMode]">{{ globalMode }}</a-tag>
-          <a-tag v-if="store.config.autoDegraded" color="orange">自动降级</a-tag>
-        </div>
-        <div class="kv"><span class="k">全局开关</span><span class="v" :class="store.config.globalSwitch ? 'on' : 'off'">{{ store.config.globalSwitch ? '开启' : '关闭' }}</span></div>
-        <div class="kv"><span class="k">运行方式</span><span class="v">{{ store.config.runMode }}</span></div>
-        <div class="kv"><span class="k">上线阶段</span><span class="v">{{ stage }}</span></div>
-        <div class="kv"><span class="k">开启班组</span><span class="v">{{ store.groups.filter((g) => g.switchOn).length }} / {{ store.groups.length }}</span></div>
-        <div class="pc-ft">
-          <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可回切`">
-            <a-button size="small" type="primary" :disabled="!canResume" @click="openMode('global')">确认回切</a-button>
-          </a-tooltip>
-          <a-button size="small" @click="openMode('global')">切换形态</a-button>
-        </div>
+    <!-- 全局状态条：形态、全局开关、运行方式、上线阶段、开启班组；右侧切换形态 / 确认回切 -->
+    <div class="dx-card gs">
+      <div class="gs-main">
+        <span class="dx-icon gs-ic"><GlobalOutlined /></span>
+        <span class="gs-name">全局</span>
+        <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
+        <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动降级</span>
       </div>
+      <div class="gs-meta">
+        <span class="gs-kv"><em>全局开关</em>{{ store.config.globalSwitch ? '开启' : '关闭' }}</span>
+        <span class="gs-kv"><em>运行方式</em>{{ store.config.runMode }}</span>
+        <span class="gs-kv"><em>上线阶段</em>{{ stage }}</span>
+        <span class="gs-kv"><em>开启班组</em>{{ store.groups.filter((g) => g.switchOn).length }} / {{ store.groups.length }}</span>
+      </div>
+      <div class="gs-ops">
+        <a-tooltip v-if="store.config.autoDegraded" :title="canResume ? undefined : `各项指标连续 ${resumeMinutes} 分钟达标后可回切`">
+          <a-button type="link" size="small" :disabled="!canResume" @click="openMode('global')">确认回切</a-button>
+        </a-tooltip>
+        <a-button type="link" size="small" @click="openMode('global')">切换形态</a-button>
+      </div>
+    </div>
 
-      <div class="group-grid">
-      <div v-for="c in cards" :key="c.id" class="pc" :class="`tone-${MODE_TONE[c.effectiveMode]}`">
+    <div class="group-grid">
+      <div v-for="c in cards" :key="c.id" class="dx-card pc">
         <div class="pc-hd">
-          <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
-          <a-tag :color="MODE_TONE[c.effectiveMode]">{{ c.effectiveMode }}</a-tag>
-        </div>
-        <div class="kv"><span class="k">本组形态</span><span class="v">{{ c.groupMode }}</span></div>
-        <div class="kv"><span class="k">班组开关</span><span class="v" :class="c.switchOn ? 'on' : 'off'">{{ c.switchOn ? '开启' : '关闭' }}</span></div>
-        <div class="kv"><span class="k">运行方式</span><span class="v">{{ store.config.runMode }}</span></div>
-        <div class="kv"><span class="k">班组长</span><span class="v ell" :title="c.leaders.join('、')">{{ c.leaders.join('、') || '—' }}</span></div>
-        <div class="kv"><span class="k">成员 · 画像配置</span><span class="v">{{ c.memberCount }} 人 · {{ c.configRate == null ? '—' : `${c.configRate}%` }}</span></div>
-        <div class="rate-bar"><i :style="{ width: `${c.configRate ?? 0}%` }" /></div>
-        <div class="pc-ft">
-          <span class="pc-bk" :class="{ hot: c.backlog }">池内待派 {{ c.backlog }}</span>
-          <a-tooltip :title="globalMode === '停派态' ? '全局已停派，本组形态不可切换' : undefined">
-            <a-button size="small" :disabled="globalMode === '停派态'" @click="openMode(c.id)">切换形态</a-button>
+          <span class="dx-card-title" :title="c.poolLabel">{{ c.poolLabel }}</span>
+          <span class="dx-status" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
+          <span class="pc-sp" />
+          <a-tooltip :title="globalMode === '停派态' ? '全局已停派，本组形态不可切换' : '切换形态'">
+            <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '停派态'" @click="openMode(c.id)">
+              <template #icon><SwapOutlined /></template>
+            </a-button>
           </a-tooltip>
         </div>
-      </div>
+        <div class="dx-meta pc-meta" :title="`本组形态 ${c.groupMode} · 班组开关 ${c.switchOn ? '开启' : '关闭'} · ${store.config.runMode} · 班组长 ${c.leaders.join('、') || '—'}`">
+          本组{{ c.groupMode }}<i class="dx-meta-sep">·</i>班组开关 {{ c.switchOn ? '开启' : '关闭' }}<i class="dx-meta-sep">·</i>{{ store.config.runMode }}<i class="dx-meta-sep">·</i>{{ c.leaders.join('、') || '—' }}
+        </div>
+        <div class="dx-metrics">
+          <div class="dx-metric"><b :class="c.backlog ? 'is-warn' : 'is-primary'">{{ c.backlog }}</b><span>池内待派</span></div>
+          <div class="dx-metric"><b>{{ c.memberCount }}</b><span>成员数</span></div>
+          <div class="dx-metric"><b>{{ c.configRate == null ? '—' : `${c.configRate}%` }}</b><span>画像配置率</span></div>
+        </div>
       </div>
     </div>
 
@@ -111,36 +117,27 @@ const recordCols = [
 </template>
 
 <style scoped>
-.block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; }
-.b-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; min-height: 24px; }
-.b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
-.hd-btn { margin-left: auto; }
-.pool-grid { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); gap: 12px; align-items: stretch; }
-.group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; min-width: 0; }
-.pc-global { align-self: start; }
-/* 外层分派监控根节点为尺寸容器 */
-@container (max-width: 720px) {
-  .pool-grid { grid-template-columns: minmax(0, 1fr); }
-}
-.pc { border: 1px solid #eef0f3; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; min-width: 0; }
-.pc::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #10b981; }
-.pc.tone-orange::before { background: #f59e0b; }
-.pc.tone-red::before { background: #ef4444; }
-.pc-global { background: #f9fafb; }
-.pc-hd { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; min-width: 0; }
-.pc-hd :deep(.ant-tag) { margin-inline-end: 0; }
-.pc-ic { color: #1a6fff; font-size: 14px; }
-.pc-name { font-weight: 600; color: #111827; font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; line-height: 20px; }
-.k { color: #6b7280; flex: none; }
-.v { color: #374151; min-width: 0; text-align: right; }
-.v.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v.on { color: #10b981; }
-.v.off { color: #9ca3af; }
-.rate-bar { height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; }
-.rate-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 2px; }
-.pc-ft { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 8px; border-top: 1px dashed #f0f0f0; }
-.pc-bk { font-size: 12px; color: #9ca3af; margin-right: auto; }
-.pc-bk.hot { color: #ea580c; }
+.ps { min-width: 0; }
+
+/* 全局状态条 */
+.gs { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 16px; }
+.gs-main { display: flex; align-items: center; gap: 12px; flex: none; }
+.gs-ic { width: 32px; height: 32px; font-size: 15px; }
+.gs-name { font-size: 14px; font-weight: 600; color: #1f2329; }
+.gs-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 24px; font-size: 13px; color: #1f2329; min-width: 0; flex: 1; }
+.gs-kv { white-space: nowrap; }
+.gs-kv em { font-style: normal; color: #86909c; margin-right: 8px; }
+.gs-ops { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+
+/* 组池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
+.group-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; min-width: 0; }
+@container (max-width: 1280px) { .group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 960px) { .group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 560px) { .group-grid { grid-template-columns: minmax(0, 1fr); } }
+.pc { display: flex; flex-direction: column; gap: 12px; }
+.pc-hd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -4px 0; }
+.pc-sp { flex: 1; min-width: 0; }
+.pc-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: -6px; }
+.pc-meta .dx-meta-sep { font-style: normal; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

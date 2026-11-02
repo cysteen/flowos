@@ -39,8 +39,8 @@ const hovered = ref<number | null>(null);
 </script>
 
 <template>
-  <section class="block algo">
-    <div class="b-title">派单路径占比<span class="b-sub">{{ rangeText }}</span></div>
+  <section class="dx-card algo">
+    <div class="dx-sec-hd"><span class="dx-sec-title">派单路径占比</span><span class="dx-sec-sub">{{ rangeText }}</span></div>
     <div class="donut-wrap">
       <svg viewBox="0 0 140 140" class="donut-svg">
         <circle v-if="!segs.length" :cx="CX" :cy="CX" :r="(R_OUT + R_IN) / 2" fill="none" stroke="#f3f4f6" :stroke-width="R_OUT - R_IN" />
@@ -73,10 +73,7 @@ const hovered = ref<number | null>(null);
 </template>
 
 <style scoped>
-.block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; min-width: 0; }
-.b-title { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; min-height: 24px; margin-bottom: 6px; }
-.b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
-.donut-wrap { display: flex; justify-content: center; padding: 8px 0 14px; }
+.donut-wrap { display: flex; justify-content: center; padding: 0 0 16px; }
 .donut-svg { width: 148px; height: 148px; overflow: visible; }
 .seg { cursor: pointer; transition: opacity 0.15s, filter 0.15s; }
 .seg.dim { opacity: 0.4; }
@@ -85,10 +82,10 @@ const hovered = ref<number | null>(null);
 .c-val { font-size: 18px; font-weight: 700; fill: #111827; pointer-events: none; }
 .legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
 .lg-item { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 4px; cursor: default; transition: background 0.15s; }
-.lg-item:hover, .lg-item.active { background: #f3f4f6; }
-.lg-sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.lg-nm { font-size: 12px; color: #374151; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lg-n { font-size: 12px; color: #9ca3af; }
-.lg-pc { font-size: 12px; font-weight: 600; color: #111827; width: 44px; text-align: right; }
+.lg-item:hover, .lg-item.active { background: #f7f8fa; }
+.lg-sw { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.lg-nm { font-size: 13px; color: #4e5969; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-n { font-size: 13px; color: #86909c; }
+.lg-pc { font-size: 13px; font-weight: 600; color: #1f2329; width: 44px; text-align: right; }
 .tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.5; }
 </style>

@@ -72,10 +72,11 @@ function hitStyle(i: number) {
 </script>
 
 <template>
-  <section class="block trend">
-    <div class="chart-head">
-      <div class="b-title inline">派单趋势<span class="b-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }} · 兜底 {{ totals.fb }}</span></div>
-      <div class="range-toggle">
+  <section class="dx-card trend">
+    <div class="dx-sec-hd">
+      <span class="dx-sec-title">派单趋势</span>
+      <span class="dx-sec-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }} · 兜底 {{ totals.fb }}</span>
+      <div class="range-toggle dx-sec-extra">
         <button type="button" class="range-btn" :class="{ active: days === 7 }" @click="days = 7">7 天</button>
         <button type="button" class="range-btn" :class="{ active: days === 30 }" @click="days = 30">30 天</button>
       </div>
@@ -130,15 +131,11 @@ function hitStyle(i: number) {
 </template>
 
 <style scoped>
-.block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; min-width: 0; }
-.b-title { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
-.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.range-toggle { display: flex; gap: 4px; flex: none; }
-.range-btn { border: none; background: transparent; padding: 4px 10px; border-radius: 4px; font-size: 12px; color: #6b7280; cursor: pointer; }
-.range-btn.active { background: #eff6ff; color: #1a6fff; font-weight: 600; }
-.range-btn:hover:not(.active) { background: #f9fafb; }
-.legend-line { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin: 0 0 8px 46px; }
+.range-toggle { gap: 4px; flex: none; }
+.range-btn { border: none; background: transparent; padding: 2px 10px; border-radius: 4px; font-size: 13px; color: #86909c; cursor: pointer; line-height: 22px; }
+.range-btn.active { background: #f2f3f5; color: #1a6fff; font-weight: 600; }
+.range-btn:hover:not(.active) { color: #1f2329; }
+.legend-line { display: flex; gap: 16px; font-size: 13px; color: #86909c; margin: 0 0 8px 46px; }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
 .line-chart { display: flex; gap: 10px; height: 220px; }

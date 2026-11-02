@@ -43,7 +43,8 @@ const flagged = computed(() => ({
   over: loadRows.value.filter((r) => r.overLimit).length,
   assigned: loadRows.value.filter((r) => r.overAssigned).length,
 }));
-function tone(r: { ratio: number }) { return r.ratio >= 1 ? '#ef4444' : r.ratio >= 0.8 ? '#f59e0b' : '#10b981'; }
+/** 负载条统一一个颜色，在途达到上限（超限）时变橙 */
+function full(r: { inTransit: number; cap: number }) { return r.inTransit >= r.cap; }
 
 const allOpen = ref(false);
 const loadCols = [
@@ -56,11 +57,11 @@ const loadCols = [
 </script>
 
 <template>
-  <section class="block">
-    <div class="b-title">
-      处理人负载
-      <span class="b-sub">前 10 · 超限 {{ flagged.over }} 人 · 超额指派 {{ flagged.assigned }} 人</span>
-      <a-button class="hd-btn" type="link" size="small" @click="allOpen = true">全部处理人</a-button>
+  <section class="dx-card">
+    <div class="dx-sec-hd">
+      <span class="dx-sec-title">处理人负载</span>
+      <span class="dx-sec-sub">前 10 · 超限 {{ flagged.over }} 人 · 超额指派 {{ flagged.assigned }} 人</span>
+      <span class="dx-sec-extra"><a-button type="link" size="small" @click="allOpen = true">全部处理人</a-button></span>
     </div>
     <div class="filters">
       <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 150px" />
@@ -73,14 +74,14 @@ const loadCols = [
           <b>{{ r.name }}</b><span class="muted">{{ r.staffNo }}</span>
           <div class="hr-grp" :title="r.groups">{{ r.groups }}</div>
         </div>
-        <a-tag class="hr-sign" :color="SIGN_TONE[r.signIn]">{{ r.signIn }}</a-tag>
-        <div class="hr-bar">
-          <i :style="{ width: `${Math.min(100, r.ratio * 100)}%`, background: tone(r) }" />
+        <span class="dx-status hr-sign" :class="`is-${SIGN_TONE[r.signIn]}`">{{ r.signIn }}</span>
+        <div class="dx-bar hr-bar" :class="{ 'is-warn': full(r) }">
+          <i :style="{ width: `${Math.min(100, r.ratio * 100)}%` }" />
         </div>
-        <span class="hr-num" :class="{ full: r.inTransit >= r.cap }">{{ r.inTransit }} / {{ r.cap }}</span>
+        <span class="hr-num" :class="{ full: full(r) }">{{ r.inTransit }} / {{ r.cap }}</span>
         <span class="hr-flag">
-          <a-tag v-if="r.overAssigned" color="red">超额指派</a-tag>
-          <a-tag v-else-if="r.overLimit" color="orange">超限</a-tag>
+          <span v-if="r.overAssigned" class="dx-bad">超额指派</span>
+          <span v-else-if="r.overLimit" class="dx-warn">超限</span>
         </span>
       </div>
     </div>
@@ -89,11 +90,11 @@ const loadCols = [
       <a-table :columns="loadCols" :data-source="loadRows" row-key="name" size="middle" :pagination="stdPagination()">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'"><b>{{ record.name }}</b><span class="muted"> {{ record.staffNo }}</span></template>
-          <a-tag v-else-if="column.key === 'signIn'" :color="SIGN_TONE[record.signIn]">{{ record.signIn }}</a-tag>
+          <span v-else-if="column.key === 'signIn'" class="dx-status" :class="`is-${SIGN_TONE[record.signIn]}`">{{ record.signIn }}</span>
           <span v-else-if="column.key === 'load'" :class="{ 'load-full': record.inTransit >= record.cap }">在途 {{ record.inTransit }} / 上限 {{ record.cap }}</span>
           <template v-else-if="column.key === 'flag'">
-            <a-tag v-if="record.overAssigned" color="red">超额指派</a-tag>
-            <a-tag v-else-if="record.overLimit" color="orange">超限</a-tag>
+            <span v-if="record.overAssigned" class="dx-bad">超额指派</span>
+            <span v-else-if="record.overLimit" class="dx-warn">超限</span>
             <span v-else class="muted">—</span>
           </template>
         </template>
@@ -103,22 +104,17 @@ const loadCols = [
 </template>
 
 <style scoped>
-.block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; min-width: 0; }
-.b-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #1a6fff; display: flex; align-items: center; gap: 10px; min-height: 24px; flex-wrap: wrap; }
-.b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
-.hd-btn { margin-left: auto; }
 .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-.muted { color: #9ca3af; font-size: 12px; margin-left: 4px; }
+.muted { color: #86909c; font-size: 13px; margin-left: 4px; }
 .heat { display: flex; flex-direction: column; }
-.hr { display: grid; grid-template-columns: minmax(96px, 1.3fr) 52px minmax(60px, 2fr) 52px 72px; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #f0f0f0; font-size: 13px; }
+.hr { display: grid; grid-template-columns: minmax(96px, 1.3fr) 52px minmax(60px, 2fr) 52px 64px; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f2f3f5; font-size: 13px; }
 .hr:last-child { border-bottom: none; }
-.hr-who { min-width: 0; line-height: 1.3; }
-.hr-grp { font-size: 11px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hr-sign { margin: 0; justify-self: start; }
-.hr-bar { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
-.hr-bar i { display: block; height: 100%; border-radius: 4px; }
-.hr-num { text-align: right; color: #111827; font-variant-numeric: tabular-nums; }
-.hr-num.full, .load-full { color: #ea580c; }
-.hr-flag :deep(.ant-tag) { margin: 0; }
+.hr-who { min-width: 0; line-height: 1.4; color: #1f2329; }
+.hr-grp { font-size: 12px; color: #86909c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-sign { justify-self: start; }
+.hr-bar { height: 6px; border-radius: 3px; }
+.hr-num { text-align: right; color: #1f2329; font-variant-numeric: tabular-nums; }
+.hr-num.full, .load-full { color: #ff7d00; }
+.hr-flag { font-size: 13px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>
