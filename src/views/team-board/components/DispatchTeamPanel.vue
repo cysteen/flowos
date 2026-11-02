@@ -223,11 +223,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
   <div v-if="group" class="card dtp">
     <div class="card-hd">
       <h3 class="hd-title">本组派单</h3>
-      <span
-        v-if="effectiveTag"
-        class="dtp-pool-badge"
-        :style="{ color: MODE_TAG_STYLE[effectiveTag].color, background: MODE_TAG_STYLE[effectiveTag].bg, borderColor: MODE_TAG_STYLE[effectiveTag].border }"
-      >{{ effectiveTag }}</span>
       <div class="hd-actions">
         <div class="dtp-ctl">
           <span class="dtp-ctl-label">本组派单方式</span>
@@ -458,10 +453,6 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
 }
 .hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; flex: none; }
 .hd-actions { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
-.dtp-pool-badge {
-  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: -8px; flex: none;
-  font-size: 11px; font-weight: 500; border: 1px solid transparent; border-radius: 4px;
-}
 .dtp-body { display: flex; flex-direction: column; min-width: 0; background: #fff; }
 .dtp-tag {
   display: inline-flex; align-items: center; height: 18px; padding: 0 5px;
