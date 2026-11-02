@@ -670,7 +670,7 @@ interface PoolSeed {
 
 const POOL_SEEDS: PoolSeed[] = [
   { key: 'L-Q1', pool: 'line2', type: '咨询', priority: 'P2', title: '智能音箱在线播放频繁中断', customer: '邵明',
-    snap: SNAPS.line2[0], enteredAgo: 6, remain0: 410, status: '排队中' },
+    snap: SNAPS.line2[0], enteredAgo: 8, remain0: 410, status: '排队中' },
   { key: 'L-Q2', pool: 'line2', type: '咨询', priority: 'P2', title: '耳机升级固件后无法播放本地音乐', customer: '江珊',
     snap: SNAPS.line2[1], enteredAgo: 19, remain0: 440, status: '排队中' },
   { key: 'L-F1', pool: 'line2', type: '咨询', priority: 'P1', title: '录音笔转写结果出现乱码', customer: '冯涛',
