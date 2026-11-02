@@ -400,12 +400,12 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   latestHandling: [
     {
-      who: '王坐席', role: '二线专员', action: '提交处理结果', when: '今天 16:30',
+      who: '张三', role: '二线专员', action: '提交处理结果', when: '今天 16:30',
       text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
     },
     {
       who: '李一线', role: '一线坐席', action: '登记工单', when: '今天 10:05',
-      text: '登记问题详情与故障录屏，初判为固件层问题，升级二线（处理人 王坐席）加速排查。',
+      text: '登记问题详情与故障录屏，初判为固件层问题，升级二线（处理人 张三）加速排查。',
     },
   ],
   customer: {
@@ -470,7 +470,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     {
       no: 'IFLYZX-20260611-00001',
       title: '上门服务-更换主板',
-      time: '06-11 王坐席',
+      time: '06-11 张三',
       typeTag: '子单',
       statusTag: '待上门',
       typeColor: '#A855F7',
@@ -541,7 +541,7 @@ export const TIMELINE: TimelineEntry[] = [
   {
     id: 'e4', category: 'node', action: 'escalate', who: '李一线', role: '一线坐席',
     how: '升级', when: '今天 10:05',
-    what: '升级至二线 · 处理人 王坐席（原因：需固件层排查）。',
+    what: '升级至二线 · 处理人 张三（原因：需固件层排查）。',
   },
   {
     id: 'e5', category: 'dunning', action: 'dunning', who: '张小凡', role: '客户',
@@ -549,7 +549,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '什么时候能解决？已经影响使用两天了，很着急。',
   },
   {
-    id: 'e6', category: 'comm', action: 'phone', who: '王坐席', role: '二线专员',
+    id: 'e6', category: 'comm', action: 'phone', who: '张三', role: '二线专员',
     how: '电话外呼', when: '今天 10:40', recording: '03:25',
     what: '致电客户确认故障细节，记录复现步骤，承诺 2 小时内反馈。',
     asr: [
@@ -558,7 +558,7 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'e7', category: 'comm', action: 'sms', who: '王坐席', role: '二线专员',
+    id: 'e7', category: 'comm', action: 'sms', who: '张三', role: '二线专员',
     how: '二线短信', when: '今天 10:45',
     what: '【讯飞客服】您反馈的音箱跳歌问题已由二线跟进，预计今日 18:00 前反馈结果。',
   },
@@ -568,7 +568,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '收到，我在家，方便时给我来电即可。',
   },
   {
-    id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线专员',
+    id: 'e9', category: 'node', action: 'hold', who: '张三', role: '二线专员',
     how: '挂起', when: '今天 11:05',
     what: '已升级技术支持排查，挂起工单等待技术结论后恢复处理。',
   },
@@ -579,7 +579,7 @@ export const TIMELINE: TimelineEntry[] = [
   },
   {
     // 正文与 Tab① 表单预填（DEFAULT_PROCESS_DRAFT）一致；咨询 / 商机 / 建议单载入时按各自样例对齐（useTicketOperation）
-    id: SAMPLE_HANDLE_ENTRY_ID, category: 'handle', action: 'handle', who: '王坐席', role: '二线专员',
+    id: SAMPLE_HANDLE_ENTRY_ID, category: 'handle', action: 'handle', who: '张三', role: '二线专员',
     how: '工单处理', when: '今天 15:10',
     what: '登记处理进展（补充 2 项）',
     attachment: '固件升级日志.txt',
@@ -599,29 +599,29 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线专员',
+    id: 'er1', category: 'relate', action: 'relate', who: '张三', role: '二线专员',
     how: '升级投诉', when: '今天 16:02',
     what: '客户对处理结果不满、要求追责，升级为投诉，已生成新投诉单并双向关联。',
     relatedTicket: {
       no: 'IFLYTS-20260610-00003', title: '音箱跳歌问题处理不满·要求追责',
       type: '投诉', typeColor: '#EF4444',
       status: '未认领', statusColor: '#1A6FFF',
-      builder: '王坐席', createdAt: '今天 16:02',
+      builder: '张三', createdAt: '今天 16:02',
     },
   },
   {
-    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线专员',
+    id: 'er2', category: 'relate', action: 'relate', who: '张三', role: '二线专员',
     how: '升级售后', when: '今天 16:12',
     what: '需寄修硬件，升级售后，已生成关联售后单并双向关联，售后进度回流本单。',
     relatedTicket: {
       no: 'AS-20260610-002', title: '智能音箱 X1 寄修·主板检测',
       type: '售后', typeColor: '#EA580C',
       status: '处理中', statusColor: '#1A6FFF',
-      builder: '王坐席', createdAt: '今天 16:12',
+      builder: '张三', createdAt: '今天 16:12',
     },
   },
   {
-    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线专员',
+    id: 'e11', category: 'node', action: 'resolved', who: '张三', role: '二线专员',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',
   },
@@ -674,7 +674,7 @@ export const DEFAULT_PROCESS_DRAFT = {
       id: 'appt-demo-1',
       scheduledAt: '2026-07-16 14:00:00',
       done: false,
-      booker: '王坐席',
+      booker: '张三',
       demand: '预约联系用户',
     },
   ] as AppointmentRecord[],

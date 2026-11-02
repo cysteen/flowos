@@ -501,14 +501,14 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       name: '维修报告.pdf',
       size: '450 KB',
       uploadedAt: '2026-06-18 11:05:42',
-      uploadedBy: '王坐席',
+      uploadedBy: '张三',
     },
     {
       id: 'a6',
       name: '固件升级日志.txt',
       size: '12 KB',
       uploadedAt: '2026-06-18 16:32:10',
-      uploadedBy: '王坐席',
+      uploadedBy: '张三',
     },
   ],
   attachmentLinks: [

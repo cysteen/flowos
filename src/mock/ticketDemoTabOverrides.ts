@@ -26,7 +26,7 @@ export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>
       },
       {
         id: 's830-info',
-        who: '王坐席',
+        who: '张三',
         when: '今天 08:50',
         supplementType: '补充信息',
         content: '补充客户微信号，便于平台调解联系',

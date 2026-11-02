@@ -880,7 +880,7 @@ function onOk() {
           <div class="op-field">
             <div class="op-label req">升级方式</div>
             <a-radio-group v-model:value="escalate.techMode">
-              <a-radio value="pool">到技术支持池</a-radio>
+              <a-radio value="pool">到技术支持组池</a-radio>
               <a-radio value="person">指定技术支持</a-radio>
             </a-radio-group>
           </div>
