@@ -1068,7 +1068,7 @@ watch(teamId, () => {
       </div>
     </div>
 
-    <!-- 【1215】本组派单：本组开关 / 派单方式、成员派单设置、池内工单指派 -->
+    <!-- 【1215】本组派单：本组派单方式、成员派单设置、池内工单指派 -->
     <div ref="dispatchAnchor">
       <DispatchTeamPanel ref="dispatchPanelRef" />
     </div>
