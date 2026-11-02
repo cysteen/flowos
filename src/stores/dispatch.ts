@@ -41,7 +41,7 @@ import { useRefundStore } from './refund';
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 4;
+export const DISPATCH_CACHE_VERSION = 5;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -152,8 +152,9 @@ function seedAgents(now: number): DispatchAgent[] {
     a('何教支', 'E2008', ['二线专员'], ['edu'], { profile: { ...ANY, businessTypes: ['教育'] } }),
     a('许文静', 'E2301', ['二线刷机处理人'], ['edu-flash']),
     a('谭小智', 'E2401', ['小智工单处理人'], ['xiaozhi']),
-    // 技术支持：画像未配置，不接引擎派单、可领取（6.3）
-    a('陈技支', 'E3001', ['技术支持'], ['line2'], { profile: emptyProfile() }),
+    // 技术支持：三线技术支持组（技术支持池，12.5）成员。陈技支画像已配置接引擎派单；周技支画像未配置，不接引擎派单、可领取（6.3）
+    a('陈技支', 'E3001', ['技术支持'], ['tech']),
+    a('周技支', 'E3002', ['技术支持'], ['tech'], { profile: emptyProfile(), lastTakenAt: now - 70 * MIN }),
     a('王组长', 'E2101', ['班组长'], ['line2', DEFAULT_POOL_ID, 'hardware', 'edu'], { proficiency: '专家', personalSwitch: false }),
     a('秦督导', 'E2201', ['督导'], ['hardware'], { personalSwitch: false }),
     a('吴投诉', 'E2202', ['客诉专员'], ['edu', DEFAULT_POOL_ID], { personalSwitch: false }),

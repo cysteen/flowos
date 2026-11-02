@@ -17,12 +17,13 @@ import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { TECH_SUPPORT_POOL_GROUP_ID } from '@/views/tickets/composables/techEscalation';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
 
-/** 技术支持池（与 `techEscalation.TECH_SUPPORT_POOL_GROUP_ID` 同一个组） */
-export const TECH_POOL_ID = 'line2';
+/** 技术支持池（三线技术支持组，与 `techEscalation.TECH_SUPPORT_POOL_GROUP_ID` 同一个组） */
+export const TECH_POOL_ID = TECH_SUPPORT_POOL_GROUP_ID;
 
 export function techPoolLabel(): string {
   return useDispatchStore().poolLabel(TECH_POOL_ID);

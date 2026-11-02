@@ -1096,6 +1096,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: REFUND_POOL_GROUP_ID, label: REFUND_POOL_GROUP_NAME },
   // 【1215】智能派单：入池规则未命中的默认池（综合处理组池，PRD 3.1）
   { id: 'general', label: '综合处理组' },
+  // 【1215】三线技术支持组（技术支持池，PRD 9.5 / 12.5）：升级三线进本组池，成员为技术支持
+  { id: 'tech', label: '技术支持组' },
 ];
 
 /**
@@ -1114,6 +1116,9 @@ const HANDLER_GROUP: Record<string, string> = {
   许文静: 'edu-flash',
   // 1130 小智工单：小智工单处理组的小智坐席
   谭小智: XIAOZHI_POOL_GROUP_ID,
+  // 【1215】三线技术支持组的技术支持
+  陈技支: 'tech',
+  周技支: 'tech',
 };
 
 /** 处理人所在分组；不在名册内返回 undefined（按无权处理，fail-closed） */

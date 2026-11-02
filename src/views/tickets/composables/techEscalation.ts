@@ -8,8 +8,8 @@
 import { POOL_GROUPS, type Ticket } from '@/views/tickets/types/ticket';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 
-/** 技术支持组工单池（「二线技术支持组」分组，所选具体技术支持组记在分组名称里） */
-export const TECH_SUPPORT_POOL_GROUP_ID = 'line2';
+/** 技术支持组工单池（三线「技术支持组」分组，【1215】技术支持池；所选具体技术支持组记在分组名称里） */
+export const TECH_SUPPORT_POOL_GROUP_ID = 'tech';
 
 /** 升级通道是不是三线技术支持（与 opActions「升级」分支同一判据：通道名含「技术支持」） */
 export function isTechEscalateChannel(channel: unknown): boolean {
