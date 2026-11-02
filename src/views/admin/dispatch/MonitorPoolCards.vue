@@ -1,16 +1,20 @@
 <script setup lang="ts">
 // 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 工单池卡片（启用中的池，按池展示）、切换与恢复确认入口、切换记录
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
+import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import type { DispatchAuditEntry } from '@/views/tickets/types/dispatch';
+import type { Ticket } from '@/views/tickets/types/ticket';
+import { poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 
 const props = defineProps<{ poolIds: string[] | null }>();
 const store = useDispatchStore();
 const clock = useClock();
+const reactiveTickets = reactive(TICKETS) as Ticket[];
 
 const globalMode = computed(() => store.globalEffectiveMode());
 const stage = computed(() => store.rolloutStage());
@@ -34,6 +38,8 @@ const cards = computed(() => {
       ...p,
       configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
       backlog: p.waitingOriginal + p.queued + p.failed,
+      /** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态 */
+      pending: poolTicketsOfPool(p.id, reactiveTickets).length,
     }));
 });
 
@@ -113,7 +119,7 @@ const recordCols = [
           </div>
           <div class="pc-stats">
             <div class="pc-stat pc-stat-lead">
-              <span class="pc-stat-val" :class="c.backlog ? 'is-warn' : 'is-calm'">{{ c.backlog }}</span>
+              <span class="pc-stat-val" :class="c.backlog ? 'is-warn' : 'is-calm'">{{ c.pending }}</span>
               <span class="pc-stat-lb">池内待派</span>
             </div>
             <div class="pc-stat">

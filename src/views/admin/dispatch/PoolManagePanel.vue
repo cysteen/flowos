@@ -14,12 +14,21 @@ import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
+import { poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import './dispatchTheme.css';
 
 const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 
 const store = useDispatchStore();
 const clock = useClock();
+const reactiveTickets = reactive(TICKETS) as Ticket[];
+/** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态（与班组看板同口径） */
+const pendingCounts = computed(() => {
+  void clock.value;
+  void store.ticketStates;
+  return new Map(allRows.value.map((p) => [p.id, poolTicketsOfPool(p.id, reactiveTickets).length]));
+});
+const pendingOf = (id: string) => pendingCounts.value.get(id) ?? 0;
 
 const allRows = computed(() => {
   void clock.value;
@@ -205,7 +214,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
           <div class="pm-cond" :title="rulesOf(p.id)"><em>入池</em>{{ rulesOf(p.id) }}</div>
           <div class="pm-stats">
             <div class="pm-stat pm-stat-lead">
-              <span class="pm-stat-val" :class="backlogOf(p) ? 'is-warn' : 'is-calm'">{{ backlogOf(p) }}</span>
+              <span class="pm-stat-val" :class="backlogOf(p) ? 'is-warn' : 'is-calm'">{{ pendingOf(p.id) }}</span>
               <span class="pm-stat-lb">池内待派</span>
             </div>
             <div class="pm-stat">
@@ -218,7 +227,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
             </div>
           </div>
           <div class="pm-sub">
-            <span v-if="!backlogOf(p)" class="pm-sub-st muted">待派明细均为 0</span>
+            <span v-if="!backlogOf(p)" class="pm-sub-st muted">等原处理人、排队中、派单失败回池均为 0</span>
             <span v-else class="pm-sub-st">
               <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template>
             </span>
