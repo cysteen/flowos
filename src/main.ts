@@ -1,11 +1,16 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
+import dayjs from 'dayjs';
+import 'dayjs/locale/zh-cn';
 import App from './App.vue';
 import router from './router';
 import { useFlashStore } from './stores/flash';
 import { useDispatchStore } from './stores/dispatch';
 import './styles/global.css';
 import './styles/page-tabs.css';
+
+// 日期选择器的星期、月份随 dayjs locale 显示：与 App.vue 里 antd 的 zhCN 配套，须在挂载前设置
+dayjs.locale('zh-cn');
 
 const app = createApp(App);
 
