@@ -104,9 +104,9 @@ export interface MonitorStats {
 }
 
 const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
-  { name: '直派规则', color: '#8b5cf6', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
-  { name: '原处理人', color: '#0ea5e9', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
-  { name: '加权评分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && (l.path === '加权评分' || l.path === '组内放宽') },
+  { name: '按规则直派', color: '#8b5cf6', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
+  { name: '派回原处理人', color: '#0ea5e9', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
+  { name: '综合打分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && (l.path === '加权评分' || l.path === '组内放宽') },
   { name: '二线领取', color: '#10b981', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
   { name: '班组长指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || l.manual?.action === '改派') },
   { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },

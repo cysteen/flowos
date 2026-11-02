@@ -6,7 +6,8 @@
 import { computed, ref } from 'vue';
 import { DownOutlined, RightOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { RELAX_LEVEL_LABEL, type DispatchLogEntry, type ScoreFactorKey } from '@/views/tickets/types/dispatch';
+import { RELAX_LEVEL_LABEL, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import { FACTOR_LABEL, pathLabel, replacePathNames } from '@/views/admin/dispatch/dispatchLabels';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
 const props = defineProps<{ entry: TimelineEntry }>();
@@ -28,10 +29,6 @@ const log = computed<DispatchLogEntry | undefined>(() => {
     && Math.abs(ms(x.at) - at) <= 2000);
 });
 
-const FACTOR_LABEL: Record<ScoreFactorKey, string> = {
-  load: '负载', proficiency: '熟练度', urgency: '紧急度', recent: '近期接单量', idle: '空闲时长',
-};
-
 const factors = computed(() => {
   const s = log.value?.chosenScore;
   if (!s) return [];
@@ -39,7 +36,7 @@ const factors = computed(() => {
     .filter((f) => f.enabled)
     .map((f) => ({
       key: f.key,
-      label: f.key === 'recent' ? `近 ${store.config.recentHours} 小时接单量` : FACTOR_LABEL[f.key],
+      label: FACTOR_LABEL[f.key],
       weight: f.weight,
       value: s.factors[f.key].toFixed(2),
     }));
@@ -51,7 +48,7 @@ const reasonText = computed(() => {
   if (!l) return '';
   const parts = [`${l.trigger ?? '新单'}进入${l.poolLabel}（${l.ruleName}）`];
   if (l.path === '原处理人') parts.push('原处理人可接单，优先派回');
-  else if (l.candidateCount != null) parts.push(`候选 ${l.candidateCount} 人`);
+  else if (l.candidateCount != null) parts.push(`可接单 ${l.candidateCount} 人`);
   if (l.relaxLevel) parts.push(`产品放宽至${RELAX_LEVEL_LABEL[l.relaxLevel]}`);
   return parts.join('；');
 });
@@ -60,7 +57,7 @@ const open = ref(false);
 
 /** 正文：明细里已列出得分时去掉正文里的得分串 */
 const whatText = computed(() => {
-  const w = props.entry.what ?? '';
+  const w = replacePathNames(props.entry.what ?? '');
   return log.value?.chosenScore ? w.replace(/；综合得分[\s\S]*$/, '') : w;
 });
 </script>
@@ -68,7 +65,7 @@ const whatText = computed(() => {
 <template>
   <div v-if="whatText" class="what">{{ whatText }}</div>
   <div v-if="log" class="dd">
-    <div class="dd-row"><span class="dd-k">派单路径</span><span class="dd-v">{{ log.path }}</span></div>
+    <div class="dd-row"><span class="dd-k">派单路径</span><span class="dd-v">{{ pathLabel(log.path) }}</span></div>
     <div class="dd-row"><span class="dd-k">派单原因</span><span class="dd-v">{{ reasonText }}</span></div>
     <div v-if="log.chosenScore" class="dd-row">
       <span class="dd-k">综合得分</span>

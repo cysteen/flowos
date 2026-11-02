@@ -7,13 +7,14 @@ import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig,
+  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig,
   type DispatchConfig, type DispatchRole, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import {
   DEFAULT_RUN_THRESHOLDS, MODE_TONE, configFieldsText, opts, pickRunThresholds, rangeError, type RunThresholds,
 } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
+import { FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
@@ -72,10 +73,7 @@ const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; un
   { key: 'autoSyncMinutes', label: '自动转混合 · 数据未同步', prefix: '超过', unit: '分钟', min: 5, max: 120 },
   { key: 'autoEngineMinutes', label: '自动转混合 · 引擎无响应', prefix: '连续', unit: '分钟', min: 1, max: 30 },
   { key: 'resumeOkMinutes', label: '恢复提示 · 指标连续达标', unit: '分钟', min: 1, max: 60 },
-  { key: 'idleToBreakMinutes', label: '无操作转小休', unit: '分钟', min: 5, max: 240 },
 ];
-const AUTO_FIELDS = RUN_FIELDS.slice(0, 4);
-const RESUME_FIELDS = RUN_FIELDS.slice(4);
 function resetRun() { Object.assign(run, DEFAULT_RUN_THRESHOLDS); }
 function saveRun() {
   for (const fd of RUN_FIELDS) {
@@ -101,8 +99,8 @@ function pickOut(c: DispatchConfig): OutForm {
 const out = reactive<OutForm>(pickOut(store.config));
 const enabledFactorCount = computed(() => out.factors.filter((x) => x.enabled).length);
 const weightSum = computed(() => out.factors.filter((x) => x.enabled).reduce((s, x) => s + (x.weight || 0), 0));
-/** 门槛过滤（PRD 4.1，P0 项）：引擎固定判定，此处只展示 */
-const GATES = ['候选范围', '两级开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+/** 谁可以接单（门槛 PRD 4.1，P0 项）：引擎固定判定，此处只展示 */
+const GATES = GATE_ORDER.map((g) => GATE_LABEL[g]);
 function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
 function factorShare(w: number | null | undefined) {
   return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
@@ -242,33 +240,22 @@ watch(() => store.config, (c) => {
               </div>
             </div>
 
-            <div class="run-col">
-              <div class="run-block-hd">
-                <span class="run-block-title">自动转混合</span>
-                <span class="run-block-tip">触发自动转混合的指标阈值</span>
-              </div>
-              <div class="run-kv run-kv-grid">
-                <div v-for="fd in AUTO_FIELDS" :key="fd.key" class="run-kv-row">
-                  <span class="run-kv-label">{{ fd.label.replace('自动转混合 · ', '') }}</span>
-                  <span class="run-kv-ctl">
-                    <span v-if="fd.prefix" class="dpf-unit">{{ fd.prefix }}</span>
-                    <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
-                    <span class="dpf-unit">{{ fd.unit }}</span>
-                  </span>
+            <div class="run-col run-col-thresh">
+              <div class="run-thresh-sect">
+                <div class="run-block-hd">
+                  <span class="run-block-title">自动转混合与恢复</span>
+                  <span class="run-block-tip">触发自动转混合与提示恢复的指标阈值</span>
                 </div>
-              </div>
-
-              <div class="run-block-hd run-block-hd-sub">
-                <span class="run-block-title">恢复与小休</span>
-              </div>
-              <div class="run-kv run-kv-grid run-kv-grid-2">
-                <div v-for="fd in RESUME_FIELDS" :key="fd.key" class="run-kv-row">
-                  <span class="run-kv-label">{{ fd.label }}</span>
-                  <span class="run-kv-ctl">
-                    <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
-                    <span class="dpf-unit">{{ fd.unit }}</span>
-                  </span>
-                </div>
+                <ul class="run-thresh-list">
+                  <li v-for="fd in RUN_FIELDS" :key="fd.key" class="run-th-item">
+                    <span class="run-th-label">{{ fd.label.replace('自动转混合 · ', '') }}</span>
+                    <div class="run-th-ctl">
+                      <span v-if="fd.prefix" class="run-th-prefix">{{ fd.prefix }}</span>
+                      <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
+                      <span class="run-th-unit">{{ fd.unit }}</span>
+                    </div>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
@@ -289,12 +276,12 @@ watch(() => store.config, (c) => {
       <!-- 出池规则 -->
       <div v-else-if="active === 'outpool'" class="st-tab-pane">
         <section class="outpool-panel">
-      <p class="outpool-lead">在归属组成员中按以下步骤选处理人</p>
+      <p class="outpool-lead">系统在工单所属组的成员中，按以下顺序挑选处理人</p>
       <div class="cs-list">
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">1</span>
-          <div class="cs-ti"><div class="cs-name">门槛过滤<span class="cs-lk">固定</span></div><div class="cs-desc">任一不满足的坐席不进入候选集</div></div>
+          <div class="cs-ti"><div class="cs-name">谁可以接单</div><div class="cs-desc">以下条件都满足的坐席才会被派单</div></div>
         </div>
         <div class="cs-bd gates">
           <span v-for="g in GATES" :key="g" class="gate"><CheckCircleFilled />{{ g }}</span>
@@ -303,26 +290,26 @@ watch(() => store.config, (c) => {
       <div class="cs" :class="{ off: !out.originalFirst }">
         <div class="cs-hd">
           <span class="cs-seq">2</span>
-          <div class="cs-ti"><div class="cs-name">原处理人优先</div><div class="cs-desc">原处理人通过全部门槛即派回</div></div>
+          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div><div class="cs-desc">原处理人满足接单条件时直接派回</div></div>
           <div class="cs-op"><a-switch v-model:checked="out.originalFirst" /></div>
         </div>
         <div class="cs-bd">
         <div class="dpf-grid">
-          <div class="dpf-item"><span class="dpf-label">附加条件</span><div class="dpf-ctl"><a-checkbox v-model:checked="out.originalSameProblem">同一问题分类</a-checkbox></div></div>
+          <div class="dpf-item"><span class="dpf-label">原处理人范围</span><div class="dpf-ctl"><a-checkbox v-model:checked="out.originalSameProblem">仅限同一问题分类</a-checkbox></div></div>
           <div class="dpf-item">
-            <span class="dpf-label">时间窗 · 咨询及其他</span>
+            <span class="dpf-label">多少天内处理过算原处理人 · 咨询及其他</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.windowConsultDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">时间窗 · 投诉</span>
+            <span class="dpf-label">多少天内处理过算原处理人 · 投诉</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.windowComplaintDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
           </div>
         </div>
         <div class="dpf-grid one">
           <div class="dpf-item last">
-            <span class="dpf-label">投诉预留时长</span>
+            <span class="dpf-label">投诉单为原处理人保留</span>
             <div class="dpf-ctl">
-              <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟，且不超过首响 SLA 剩余的</span>
+              <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟，且不超过首次响应剩余时限的</span>
               <a-input-number v-model:value="out.reserveSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span>
             </div>
           </div>
@@ -332,13 +319,13 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">3</span>
-          <div class="cs-ti"><div class="cs-name">加权评分</div><div class="cs-desc">原处理人不可用时对候选集评分，取最高分</div></div>
+          <div class="cs-ti"><div class="cs-name">综合打分选人</div><div class="cs-desc">按以下因素给可接单的坐席打分，派给得分最高的人</div></div>
           <div class="cs-op"><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></div>
         </div>
         <div class="cs-bd">
         <div class="fc-list">
           <div v-for="fc in out.factors" :key="fc.key" class="fc-row" :class="{ off: !fc.enabled }">
-            <a-checkbox v-model:checked="fc.enabled" class="fc-name">{{ fc.key === 'recent' ? `近 ${out.recentHours} 小时接单量` : fc.label }}</a-checkbox>
+            <a-checkbox v-model:checked="fc.enabled" class="fc-name">{{ FACTOR_LABEL[fc.key] ?? fc.label }}</a-checkbox>
             <div class="fc-bar"><i :style="{ width: `${fc.enabled ? factorShare(fc.weight) : 0}%` }" /></div>
             <span class="fc-share">{{ fc.enabled ? `${factorShare(fc.weight)}%` : '—' }}</span>
             <div class="fc-w"><a-input-number v-model:value="fc.weight" :precision="0" :disabled="!fc.enabled" style="width: 88px" /><span class="dpf-unit">权重</span></div>
@@ -346,8 +333,8 @@ watch(() => store.config, (c) => {
         </div>
         <div class="dpf-grid one fc-extra">
           <div class="dpf-item">
-            <span class="dpf-label">近 N 小时</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
+            <span class="dpf-label">最近接单的统计范围</span>
+            <div class="dpf-ctl"><span class="dpf-unit">近</span><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
           </div>
         </div>
         </div>
@@ -355,16 +342,16 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">4</span>
-          <div class="cs-ti"><div class="cs-name">放宽与兜底</div><div class="cs-desc">候选集为空时留池排队、组内放宽，仍派不出则兜底回池</div></div>
+          <div class="cs-ti"><div class="cs-name">没人可接时</div><div class="cs-desc">先排队等待，必要时放宽产品范围；仍无人可接则退回工单池，由组内人工领取</div></div>
         </div>
         <div class="cs-bd">
         <div class="dpf-grid">
           <div class="dpf-item">
-            <span class="dpf-label">产品逐级放宽</span>
+            <span class="dpf-label">放宽产品范围</span>
             <div class="dpf-ctl"><a-switch v-model:checked="out.relaxEnabled" /></div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">最远层级</span>
+            <span class="dpf-label">最多放宽到</span>
             <div class="dpf-ctl">
               <a-radio-group v-model:value="out.relaxMaxLevel" :disabled="!out.relaxEnabled">
                 <a-radio :value="1">同产品分类</a-radio>
@@ -373,19 +360,19 @@ watch(() => store.config, (c) => {
             </div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">放宽 · 排队时长</span>
+            <span class="dpf-label">放宽产品范围 · 排队超过</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.relaxQueueMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">放宽 · 首响剩余低于</span>
+            <span class="dpf-label">放宽产品范围 · 首次响应剩余不足</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.relaxSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">兜底 · 首响剩余低于</span>
+            <span class="dpf-label">退回工单池 · 首次响应剩余不足</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.fallbackSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
           </div>
           <div class="dpf-item">
-            <span class="dpf-label">无首响 SLA · 兜底排队时长</span>
+            <span class="dpf-label">退回工单池 · 无首次响应时限时排队超过</span>
             <div class="dpf-ctl"><a-input-number v-model:value="out.noSlaFallbackMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
           </div>
         </div>
@@ -590,17 +577,33 @@ watch(() => store.config, (c) => {
 .run-block-title { font-size: 13px; font-weight: 600; color: #111827; margin-right: 8px; }
 .run-block-tip { font-size: 12px; color: #9ca3af; font-weight: normal; }
 .run-kv { display: flex; flex-direction: column; }
-.run-kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
-.run-kv-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .run-kv-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  min-height: 44px; padding: 6px 0; border-bottom: 1px solid #f2f3f5;
+  min-height: 40px; padding: 6px 0; border-bottom: 1px solid #f2f3f5;
 }
 .run-kv-row:last-child { border-bottom: none; }
-.run-kv-grid .run-kv-row:nth-last-child(-n + 2) { border-bottom: none; }
 .run-kv-label { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.4; }
-.run-kv-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; max-width: 58%; }
-.run-num { width: 88px !important; }
+.run-kv-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; }
+
+/* 阈值区：左指标名 + 右「前缀 + 数字 + 单位」单行 */
+.run-col-thresh { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.run-thresh-list { list-style: none; margin: 0; padding: 0; }
+.run-th-item {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f2f3f5;
+}
+.run-th-item:last-child { border-bottom: none; }
+.run-th-label { font-size: 12px; color: #374151; line-height: 1.35; font-weight: 500; }
+.run-th-ctl {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 6px;
+  min-width: 0; justify-content: flex-start;
+}
+.run-th-prefix, .run-th-unit { font-size: 12px; color: #9ca3af; white-space: nowrap; flex: none; }
+.run-num { width: 72px !important; flex: none; }
 
 @media (max-width: 960px) {
   .run-top { flex-direction: column; align-items: stretch; }
@@ -609,10 +612,9 @@ watch(() => store.config, (c) => {
   .run-top-id { order: 1; }
   .run-body { grid-template-columns: minmax(0, 1fr); }
   .run-col + .run-col { border-left: none; border-top: 1px solid #eef0f3; }
-  .run-kv-grid, .run-kv-grid-2 { grid-template-columns: minmax(0, 1fr); }
-  .run-kv-grid .run-kv-row:nth-last-child(-n + 2) { border-bottom: 1px solid #f2f3f5; }
-  .run-kv-grid .run-kv-row:last-child { border-bottom: none; }
-  .run-kv-ctl { max-width: none; flex: 1; justify-content: flex-start; }
+  .run-th-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .run-kv-row { flex-wrap: wrap; }
+  .run-kv-ctl { justify-content: flex-start; }
 }
 
 /* 出池规则 · 链式步骤卡（对齐 dispatch-config chain-row） */
@@ -631,7 +633,6 @@ watch(() => store.config, (c) => {
 }
 .cs-ti { flex: 1; min-width: 200px; }
 .cs-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; line-height: 1.4; }
-.cs-lk { font-size: 12px; font-weight: normal; color: #9ca3af; }
 .cs-desc { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.45; }
 .cs-op { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .cs-bd { margin: 10px 0 0 34px; }
@@ -641,7 +642,7 @@ watch(() => store.config, (c) => {
 .gate :deep(.anticon) { color: #10b981; }
 @media (max-width: 640px) { .cs-bd { margin-left: 0; } }
 
-/* 加权评分（对齐 factor-row） */
+/* 综合打分（对齐 factor-row） */
 .wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
 .fc-list { display: flex; flex-direction: column; gap: 8px; }
 .fc-row {

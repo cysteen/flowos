@@ -10,8 +10,9 @@ import {
   GATE_ORDER, RELAX_LEVEL_LABEL, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type ScoreFactorKey,
 } from '@/views/tickets/types/dispatch';
 import { PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
-import { MODE_TONE, opts } from './dispatchUi';
+import { MODE_TONE } from './dispatchUi';
 import { parseAt, trialActualOf } from './dispatchMetrics';
+import { FACTOR_LABEL, GATE_LABEL, failLabel, pathLabel } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; ticketNo?: string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
@@ -30,7 +31,8 @@ function trialOf(l: Partial<Pick<DispatchLogEntry, 'trial' | 'kind' | 'manual' |
 
 const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '组内放宽', '兜底回池', '留池'];
 const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无在班成员', '均达个人上限', '引擎异常', '首响已超时'];
-const FACTOR_LABEL: Record<ScoreFactorKey, string> = { load: '负载', proficiency: '熟练度', urgency: '紧急度', recent: '近 N 小时接单量', idle: '空闲时长' };
+const pathOpts = PATHS.map((p) => ({ value: p, label: pathLabel(p) }));
+const failOpts = FAILS.map((r) => ({ value: r, label: failLabel(r) }));
 
 const f = reactive<{ no: string; range: [Dayjs, Dayjs]; agents: string[]; pools: string[]; paths: DispatchPath[]; fails: DispatchFailReason[] }>({
   no: '', range: [dayjs().subtract(24, 'hour'), dayjs()], agents: [], pools: [], paths: [], fails: [],
@@ -90,7 +92,7 @@ const cols = [
 ];
 
 function gateItems(l: DispatchLogEntry) {
-  return GATE_ORDER.filter((g) => l.gateDrops?.[g] != null).map((g) => ({ gate: g, n: l.gateDrops![g]! }));
+  return GATE_ORDER.filter((g) => l.gateDrops?.[g] != null).map((g) => ({ gate: GATE_LABEL[g], n: l.gateDrops![g]! }));
 }
 function factorItems(l: DispatchLogEntry) {
   const s = l.chosenScore;
@@ -108,12 +110,12 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属组派单方式', '运行方式', '判定路径', '产品放宽层级', '候选集人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属组派单方式', '运行方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记', '试运行建议', '实际处理人'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
-    l.globalMode, l.groupMode, l.runMode, l.path ?? '', l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
-    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', l.failReason ?? '', l.overCap ?? '', l.trial?.suggested ?? '', trialOf(l)?.actual ?? '',
+    l.globalMode, l.groupMode, l.runMode, pathLabel(l.path), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
+    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '', l.trial?.suggested ?? '', trialOf(l)?.actual ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -132,8 +134,8 @@ function exportCsv() {
       <a-range-picker v-model:value="f.range" show-time format="YYYY-MM-DD HH:mm" style="width: 330px" :allow-clear="false" />
       <a-select v-model:value="f.agents" mode="multiple" placeholder="坐席" :options="agentOpts" show-search option-filter-prop="label" max-tag-count="responsive" style="width: 180px" />
       <a-select v-model:value="f.pools" mode="multiple" placeholder="归属池" :options="poolOpts" max-tag-count="responsive" style="width: 180px" />
-      <a-select v-model:value="f.paths" mode="multiple" placeholder="判定路径" :options="opts(PATHS)" max-tag-count="responsive" style="width: 160px" />
-      <a-select v-model:value="f.fails" mode="multiple" placeholder="失败原因" :options="opts(FAILS)" max-tag-count="responsive" style="width: 160px" />
+      <a-select v-model:value="f.paths" mode="multiple" placeholder="判定路径" :options="pathOpts" max-tag-count="responsive" style="width: 160px" />
+      <a-select v-model:value="f.fails" mode="multiple" placeholder="失败原因" :options="failOpts" max-tag-count="responsive" style="width: 160px" />
       <a-button type="primary" @click="query"><template #icon><SearchOutlined /></template>查询</a-button>
       <a-button @click="resetFilters(); query()">重置</a-button>
       <a-button class="lg-export" @click="exportCsv"><template #icon><DownloadOutlined /></template>导出</a-button>
@@ -160,7 +162,7 @@ function exportCsv() {
           <a-tag :color="MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]">{{ record.effectiveMode }}</a-tag>
         </template>
         <template v-else-if="column.key === 'path'">
-          <span v-if="record.path">{{ record.path }}</span>
+          <span v-if="record.path">{{ pathLabel(record.path) }}</span>
           <span v-else class="lg-sub">—</span>
           <div v-if="record.relaxLevel" class="lg-sub">产品放宽：{{ RELAX_LEVEL_LABEL[record.relaxLevel as 0 | 1 | 2] }}</div>
         </template>
@@ -176,7 +178,7 @@ function exportCsv() {
           <span v-else class="lg-sub">—</span>
         </template>
         <template v-else-if="column.key === 'fail'">
-          <span v-if="record.failReason" class="lg-fail">{{ record.failReason }}</span>
+          <span v-if="record.failReason" class="lg-fail">{{ failLabel(record.failReason) }}</span>
           <span v-else class="lg-sub">—</span>
         </template>
         <template v-else-if="column.key === 'flag'">
@@ -190,10 +192,10 @@ function exportCsv() {
       <template #expandedRowRender="{ record }">
         <div class="lg-detail">
           <div class="lg-sec">
-            <div class="lg-sec-t">门槛淘汰</div>
+            <div class="lg-sec-t">不满足接单条件</div>
             <div v-if="gateItems(record as DispatchLogEntry).length" class="lg-kvs">
               <div v-for="g in gateItems(record as DispatchLogEntry)" :key="g.gate" class="lg-kv"><span>{{ g.gate }}</span><b>{{ g.n }} 人</b></div>
-              <div class="lg-kv"><span>候选集</span><b>{{ record.candidateCount ?? 0 }} 人</b></div>
+              <div class="lg-kv"><span>可接单</span><b>{{ record.candidateCount ?? 0 }} 人</b></div>
             </div>
             <div v-else class="lg-sub">—</div>
           </div>
@@ -205,7 +207,7 @@ function exportCsv() {
             <div v-else class="lg-sub">—</div>
           </div>
           <div class="lg-sec">
-            <div class="lg-sec-t">中选得分明细<template v-if="record.chosenScore">（{{ record.chosenScore.name }} · {{ record.chosenScore.total.toFixed(1) }} 分）</template></div>
+            <div class="lg-sec-t">中选打分明细<template v-if="record.chosenScore">（{{ record.chosenScore.name }} · {{ record.chosenScore.total.toFixed(1) }} 分）</template></div>
             <div v-if="factorItems(record as DispatchLogEntry).length" class="lg-kvs">
               <div v-for="x in factorItems(record as DispatchLogEntry)" :key="x.label" class="lg-kv"><span>{{ x.label }}</span><b>{{ x.v }}</b></div>
             </div>
