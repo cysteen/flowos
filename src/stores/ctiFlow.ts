@@ -6,7 +6,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import {
-  DEFAULT_WORK_TYPE, OUTBOUND_ITEM, workTypeOf, workTypesOfGroup, type WorkTypeDef,
+  BREAK_ITEM, DEFAULT_WORK_TYPE, OUTBOUND_ITEM, workTypeOf, workTypesOfGroup, type WorkTypeDef,
 } from '@/mock/ctiWorkTypes';
 
 /**
@@ -69,6 +69,7 @@ export interface DistItem {
 
 export interface GroupDistribution {
   items: DistItem[];
+  /** 签入时长：各工作类型 + 外呼 + 小休（签出、未就绪不计） */
   totalMs: number;
   /** 线下类工作合计 */
   offlineMs: number;
@@ -77,12 +78,16 @@ export interface GroupDistribution {
   memberCount: number;
   /** 按人拆分：各类型时长（键同 items）、合计、状态存疑；只含区间内有流水的人 */
   byMember: Record<string, MemberDist>;
+  /** 小休按原因拆分（meeting / training / tea / meal） */
+  breakReasons: Record<string, number>;
 }
 
 export interface MemberDist {
   ms: Record<string, number>;
+  /** 签入时长：各工作类型 + 外呼 + 小休 */
   totalMs: number;
   suspectMs: number;
+  breakReasons: Record<string, number>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -384,14 +389,15 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     return { segs: [...segs, ...segments.value], ops: [...seedOps, ...ops.value] };
   }
 
-  /** 组级时长分布：本组各工作类型（含外呼）的时长与占比、线下类合计、状态存疑 */
+  /** 组级时长分布：本组各工作类型、外呼、小休的时长与占比（合计＝签入时长）、线下类合计、状态存疑 */
   function distribution(groupId: string, from: number, to: number, now: number = Date.now()): GroupDistribution {
     const { segs, ops: allOps } = allSegments(now);
     const types = workTypesOfGroup(groupId);
     const ms: Record<string, number> = {};
     let suspect = 0;
     const members = new Set<string>();
-    const byMember: Record<string, { ms: Record<string, number>; suspectMs: number }> = {};
+    const byMember: Record<string, { ms: Record<string, number>; suspectMs: number; breakReasons: Record<string, number> }> = {};
+    const breakReasons: Record<string, number> = {};
     const opsByWho = new Map<string, number[]>();
     allOps.forEach((o) => {
       if (!opsByWho.has(o.who)) opsByWho.set(o.who, []);
@@ -405,11 +411,18 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       let key: string | null = null;
       if (s.status === 'busy') key = OUTBOUND_ITEM.key;
       else if (s.status === 'ready') key = s.sub ?? DEFAULT_WORK_TYPE;
+      else if (s.status === 'break') key = BREAK_ITEM.key;
+      // 签出、未就绪不计入
       if (!key) return;
       members.add(s.who);
       ms[key] = (ms[key] ?? 0) + (b - a);
-      const mm = (byMember[s.who] ??= { ms: {}, suspectMs: 0 });
+      const mm = (byMember[s.who] ??= { ms: {}, suspectMs: 0, breakReasons: {} });
       mm.ms[key] = (mm.ms[key] ?? 0) + (b - a);
+      if (key === BREAK_ITEM.key) {
+        const r = s.sub ?? 'meeting';
+        breakReasons[r] = (breakReasons[r] ?? 0) + (b - a);
+        mm.breakReasons[r] = (mm.breakReasons[r] ?? 0) + (b - a);
+      }
       if (s.status === 'ready' && workTypeOf(key)?.offline) {
         // 线下子状态期间的工单操作：每次计其后 SUSPECT_WINDOW_MIN，重叠合并，截到本段
         let cover = 0;
@@ -429,12 +442,13 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     const defs = [
       ...types.map((t) => ({ key: t.key, label: t.label, color: t.color })),
       { key: OUTBOUND_ITEM.key, label: OUTBOUND_ITEM.label, color: OUTBOUND_ITEM.color },
+      { key: BREAK_ITEM.key, label: BREAK_ITEM.label, color: BREAK_ITEM.color },
     ];
-    // 历史段里本组已停用的类型也计入，避免合计少算
+    // 历史段里本组已停用的类型也计入，避免合计少算（插在外呼之前）
     Object.keys(ms).forEach((k) => {
       if (!defs.some((d) => d.key === k)) {
         const t = workTypeOf(k);
-        if (t) defs.splice(defs.length - 1, 0, { key: t.key, label: t.label, color: t.color });
+        if (t) defs.splice(defs.length - 2, 0, { key: t.key, label: t.label, color: t.color });
       }
     });
     const total = defs.reduce((s, d) => s + (ms[d.key] ?? 0), 0);
@@ -445,9 +459,11 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     Object.entries(byMember).forEach(([who, v]) => {
       const rowMs: Record<string, number> = {};
       keys.forEach((k) => { rowMs[k] = v.ms[k] ?? 0; });
-      memberRows[who] = { ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), suspectMs: v.suspectMs };
+      memberRows[who] = {
+        ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), suspectMs: v.suspectMs, breakReasons: v.breakReasons,
+      };
     });
-    return { items, totalMs: total, offlineMs, suspectMs: suspect, memberCount: members.size, byMember: memberRows };
+    return { items, totalMs: total, offlineMs, suspectMs: suspect, memberCount: members.size, byMember: memberRows, breakReasons };
   }
 
   return {

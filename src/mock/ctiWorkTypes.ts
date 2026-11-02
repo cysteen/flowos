@@ -37,6 +37,15 @@ export const WORK_TYPE_CATALOG: WorkTypeDef[] = [
 /** 外呼：统计单列一项，不进子状态菜单 */
 export const OUTBOUND_ITEM = { key: 'outbound', label: '外呼', color: '#F59E0B' } as const;
 
+/** 小休：统计放最后一项，中性灰，与工作类型区分；按原因（开会 / 培训 / 茶歇 / 用餐）拆分 */
+export const BREAK_ITEM = { key: 'break', label: '小休', color: '#A3ACB9' } as const;
+export const BREAK_REASONS: { key: string; label: string }[] = [
+  { key: 'meeting', label: '开会' },
+  { key: 'training', label: '培训' },
+  { key: 'tea', label: '茶歇' },
+  { key: 'meal', label: '用餐' },
+];
+
 export const DEFAULT_WORK_TYPE = 'ticket_work';
 
 /** 缺省清单（班组未单独配置时） */

@@ -14,6 +14,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { useCloseOnDeactivate } from '@/composables/useCloseOnDeactivate';
 import { groupMembersOf, SUSPECT_WINDOW_MIN, useCtiFlowStore } from '@/stores/ctiFlow';
+import { BREAK_ITEM, BREAK_REASONS } from '@/mock/ctiWorkTypes';
 
 const props = defineProps<{ groupId: string; memberOrder?: string[] }>();
 const flow = useCtiFlowStore();
@@ -87,6 +88,11 @@ const dist = computed(() => {
 
 const H = 3_600_000;
 
+/** 小休按原因列出小时数（divisor＝人数时为人均），如「开会 1.2 · 培训 0.0 · 茶歇 0.3 · 用餐 6.8」 */
+function breakText(reasons: Record<string, number>, divisor: number): string {
+  return BREAK_REASONS.map((r) => `${r.label} ${((reasons[r.key] ?? 0) / H / divisor).toFixed(1)}`).join(' · ');
+}
+
 /**
  * 一位小数的最大余数分配：各项显示值（单位 0.1）相加恰等于给定合计显示值。
  * 用于：组合计 → 各成员合计；成员合计 → 该成员各类型；人均合计 → 人均各类型；组存疑 → 各成员存疑；占比 → 100%。
@@ -122,7 +128,14 @@ const perCapita = computed(() => {
     total: (totalTenths / 10).toFixed(1),
     groupTotal: (tenths(d.totalMs / H) / 10).toFixed(1),
     suspect: (Math.round(tenths(d.suspectMs / H) / n.value) / 10).toFixed(1),
-    items: d.items.map((i, k) => ({ ...i, hText: h[k].toFixed(1), pText: `${p[k].toFixed(1)}%` })),
+    items: d.items.map((i, k) => {
+      const hText = h[k].toFixed(1);
+      const pText = `${p[k].toFixed(1)}%`;
+      const tip = i.key === BREAK_ITEM.key
+        ? `小休 人均 ${hText} 小时 · ${pText}（${breakText(d.breakReasons, n.value)}）`
+        : `${i.label} 人均 ${hText} 小时 · ${pText}`;
+      return { ...i, hText, pText, tip };
+    }),
   };
 });
 /** 图上只画有时长的项 */
@@ -157,12 +170,14 @@ const memberRows = computed(() => {
       cells: d.items.map((i, j) => ({
         key: i.key,
         h: cells[j].toFixed(1),
-        tip: `${i.label} ${cells[j].toFixed(1)} 小时 · 占本人 ${r?.totalMs ? (((r.ms[i.key] ?? 0) / r.totalMs) * 100).toFixed(1) : '0.0'}%`,
+        tip: i.key === BREAK_ITEM.key
+          ? `小休 ${cells[j].toFixed(1)} 小时（${breakText(r?.breakReasons ?? {}, 1)}）`
+          : `${i.label} ${cells[j].toFixed(1)} 小时 · 占本人 ${r?.totalMs ? (((r.ms[i.key] ?? 0) / r.totalMs) * 100).toFixed(1) : '0.0'}%`,
       })),
     };
   });
 });
-const gridCols = computed(() => `minmax(128px, 1.3fr) minmax(72px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(72px, 1fr)) minmax(80px, 0.9fr)`);
+const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(60px, 1fr)) minmax(72px, 0.9fr)`);
 
 function pctText(p: number): string {
   return `${p.toFixed(1)}%`;
@@ -226,19 +241,21 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
       </div>
 
       <div v-if="dist.totalMs > 0" class="wtp-bar" role="img" :aria-label="`工作时长分布，人均 ${perCapita.total} 小时`">
-        <a-tooltip v-for="i in barItems" :key="i.key" :title="`${i.label} 人均 ${i.hText} 小时 · ${i.pText}`">
+        <a-tooltip v-for="i in barItems" :key="i.key" :title="i.tip">
           <i class="wtp-seg" :style="{ flexGrow: i.ms, background: i.color }" />
         </a-tooltip>
       </div>
       <div v-else class="wtp-empty">暂无数据</div>
 
       <div class="wtp-legend" role="table" aria-label="各工作类型人均时长">
-        <div v-for="i in perCapita.items" :key="i.key" class="wtp-li" role="row">
-          <span class="wtp-sw" :style="{ background: i.color }" />
-          <span class="wtp-ln" role="cell">{{ i.label }}</span>
-          <span class="wtp-lh" role="cell">{{ i.hText }} 小时</span>
-          <span class="wtp-lp" role="cell">{{ i.pText }}</span>
-        </div>
+        <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined">
+          <div class="wtp-li" role="row">
+            <span class="wtp-sw" :style="{ background: i.color }" />
+            <span class="wtp-ln" role="cell">{{ i.label }}</span>
+            <span class="wtp-lh" role="cell">{{ i.hText }} 小时</span>
+            <span class="wtp-lp" role="cell">{{ i.pText }}</span>
+          </div>
+        </a-tooltip>
       </div>
 
       <div class="wtp-tbl" role="table" aria-label="成员工作时长明细（小时）">
@@ -264,7 +281,9 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
         <div class="wtp-trow wtp-avg" role="row" :style="{ gridTemplateColumns: gridCols }">
           <div class="wtp-td wtp-td-name" role="cell">人均</div>
           <div class="wtp-td num strong" role="cell">{{ perCapita.total }}</div>
-          <div v-for="i in perCapita.items" :key="i.key" class="wtp-td num" role="cell">{{ i.hText }}</div>
+          <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined">
+            <div class="wtp-td num" role="cell">{{ i.hText }}</div>
+          </a-tooltip>
           <div class="wtp-td num" role="cell">{{ perCapita.suspect }}</div>
         </div>
       </div>
@@ -345,7 +364,7 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 .wtp-thead, .wtp-trow { display: grid; align-items: center; }
 .wtp-thead { background: #f8fafc; }
 .wtp-th {
-  display: flex; align-items: center; gap: 5px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 4px; padding: 8px 8px;
   font-size: 12px; font-weight: 600; color: #64748b; white-space: nowrap;
 }
 .wtp-th:first-child { padding-left: 16px; }
@@ -353,7 +372,7 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 .wtp-th-sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .wtp-trow { border-bottom: 1px solid #f1f5f9; }
 .wtp-trow:hover { background: #f9fafb; }
-.wtp-td { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12px; color: #334155; }
+.wtp-td { display: flex; align-items: center; gap: 8px; padding: 10px 8px; font-size: 12px; color: #334155; }
 .wtp-td.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .wtp-td.strong { font-weight: 600; color: #0f172a; }
 .wtp-td-name { padding-left: 16px; min-width: 0; }
