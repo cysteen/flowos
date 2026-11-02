@@ -15,7 +15,7 @@
  *   X7 仅「今日指标」数量卡可聚焦趋势线；积压卡 → 优先级抽屉
  *   督办：不支持（平台无 WoAction / 消息事件），入口已移除
  */
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -61,6 +61,9 @@ import { boardTip } from '@/mock/teamBoardTips';
 import { useUserStore } from '@/stores/user';
 import { useDispatchStore } from '@/stores/dispatch';
 import { groupMembersOf, teamBoardGroups } from '@/stores/ctiFlow';
+import { TICKETS } from '@/mock/tickets';
+import type { Ticket } from '@/views/tickets/types/ticket';
+import { waitMinutesOf, waitText } from '@/views/tickets/composables/dispatchUi';
 
 const router = useRouter();
 const user = useUserStore();
@@ -86,7 +89,7 @@ const teamOptions = computed(() => leaderTeams.value.map((t) => ({ value: t.valu
 const currentTeam = computed(() => leaderTeams.value.find((t) => t.value === teamId.value)
   ?? leaderTeams.value[0] ?? { value: '', label: '', size: 0, members: [] });
 const ONLINE_OF_SIGN_IN: Record<string, MemberRow['online']> = { 签入: '在线', 小休: '小休', 签出: '离线' };
-const board = computed(() => getGroupBoardSnapshot({
+const generatedBoard = computed(() => getGroupBoardSnapshot({
   id: currentTeam.value.value,
   label: currentTeam.value.label,
   members: currentTeam.value.members.map((m) => {
@@ -94,6 +97,36 @@ const board = computed(() => getGroupBoardSnapshot({
     return { name: m.name, online: a ? ONLINE_OF_SIGN_IN[a.signIn] : undefined };
   }),
 }));
+
+/**
+ * 派单组且本人是该组班组长（即「本组派单」块会渲染）时，未分派只读派单池的真实待派单：
+ * 筛选口径与「本组派单 · 池内工单」列表逐字一致（本组、在池、无处理人、非归档、非草稿，含各派单状态），
+ * 故卡片数 ＝ 问候语 ＝ 待指派 ＝ 点「去指派」后池列表条数；最久等待取池内各单等待分钟的最大值，环比不显示。
+ * 其余情况（投诉风险组等非派单组、本人非该组班组长）沿用按人数生成与指派弹窗。
+ */
+const poolNow = ref(Date.now());
+const poolTimer = window.setInterval(() => { poolNow.value = Date.now(); }, 30_000);
+onBeforeUnmount(() => window.clearInterval(poolTimer));
+const poolTicketsSource = reactive(TICKETS) as Ticket[];
+const realPool = computed(() => {
+  const g = dispatch.groupOf(teamId.value);
+  if (!g || !g.leaders.includes(user.name)) return null;
+  void dispatch.ticketStates;
+  return poolTicketsSource.filter((t) => t.groupId === g.id && t.tab === 'pool' && t.assignee === null && !t.archived && !t.isDraft);
+});
+const board = computed(() => {
+  const b = generatedBoard.value;
+  const pool = realPool.value;
+  if (!pool) return b;
+  const maxWait = pool.reduce((m, t) => Math.max(m, waitMinutesOf(t, poolNow.value) ?? 0), 0);
+  return {
+    ...b,
+    focus: b.focus.map((f) => (f.key === 'unassigned'
+      ? { ...f, value: String(pool.length), delta: undefined, sub: pool.length ? `最久等待 ${waitText(maxWait)}` : undefined }
+      : f)),
+    todos: b.todos.map((t) => (t.key === 'assign' ? { ...t, count: pool.length } : t)),
+  };
+});
 
 /** 问候标题：与个人门户同语汇 */
 const greeting = computed(() => {
