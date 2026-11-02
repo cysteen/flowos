@@ -7,7 +7,9 @@
  * 上半部分为人均口径（组合计 ÷ 统计人数），下半部分为成员明细（顺序同组员明细默认顺序，不排序、不排名、不标高亮），末行「人均」与上半部分一致。可见性随「班组看板」菜单权限（config/roles.ts 各角色 menus 含 team-board，路由守卫按此放行），
  * 块内不另设角色判断；班组跟随看板顶部「班组」筛选（由看板传入 groupId），统计人数与筛选项「（N人）」同一口径。
  */
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import dayjs, { type Dayjs } from 'dayjs';
+import { HOME_PERF_RANGE_OPTS, type HomePerfRangeKey } from '@/mock/homeOverview';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { groupMembersOf, SUSPECT_WINDOW_MIN, useCtiFlowStore } from '@/stores/ctiFlow';
@@ -22,24 +24,63 @@ onBeforeUnmount(() => window.clearInterval(timer));
 /** 统计人数：本组组员（二线专员、每人只算第一个所属组） */
 const memberCount = computed(() => (props.groupId ? groupMembersOf(props.groupId).length : 0));
 
-type RangeKey = 'today' | '7d' | '14d';
-const RANGES: { key: RangeKey; label: string; days: number }[] = [
-  { key: 'today', label: '今日', days: 1 },
-  { key: '7d', label: '近7天', days: 7 },
-  { key: '14d', label: '近14天', days: 14 },
-];
-const range = ref<RangeKey>('7d');
+/*
+ * 时间筛选：与个人门户「我的效能」同一组件与选项（HOME_PERF_RANGE_OPTS：今天 / 本周 / 本月 / 自定义），
+ * 自定义的默认值（近 7 天）、打开方式（选中即弹出）与可选范围（不晚于今天、最长 31 天）照个人门户实现。
+ * 口径：今天＝当日；本周＝周一至今天；本月＝1 号至今天；自定义＝所选起止日期；均含当天。
+ */
+const rangeKey = ref<HomePerfRangeKey>('today');
+/** 空值用 undefined 而非 null：a-range-picker 的 value 只接受 [Dayjs, Dayjs] | undefined */
+const customRange = ref<[Dayjs, Dayjs] | undefined>(undefined);
+const pickerOpen = ref(false);
+
+watch(rangeKey, (key) => {
+  if (key === 'custom') {
+    if (!customRange.value) {
+      customRange.value = [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')];
+    }
+    pickerOpen.value = true;
+  } else {
+    pickerOpen.value = false;
+  }
+});
+
+/** 自定义区间最长 31 天 */
+function disabledRangeDate(current: Dayjs) {
+  if (!current) return false;
+  if (current.isAfter(dayjs().endOf('day'))) return true;
+  const picked = customRange.value;
+  if (picked?.[0] && !picked[1]) {
+    const start = picked[0];
+    const min = start.subtract(30, 'day');
+    const max = start.add(30, 'day');
+    return current.isBefore(min, 'day') || current.isAfter(max, 'day');
+  }
+  return false;
+}
+
+const span = computed<[number, number]>(() => {
+  const now = nowMs.value;
+  const today = dayjs(now).startOf('day');
+  if (rangeKey.value === 'week') {
+    // dayjs 的 day()：周日为 0；本周从周一算
+    const back = (today.day() + 6) % 7;
+    return [today.subtract(back, 'day').valueOf(), now];
+  }
+  if (rangeKey.value === 'month') return [today.startOf('month').valueOf(), now];
+  if (rangeKey.value === 'custom' && customRange.value) {
+    const [a, b] = customRange.value;
+    return [a.startOf('day').valueOf(), Math.min(b.endOf('day').valueOf(), now)];
+  }
+  return [today.valueOf(), now];
+});
 
 const dist = computed(() => {
   if (!props.groupId) return null;
   void flow.segments.length;
   void flow.ops.length;
-  const now = nowMs.value;
-  const d0 = new Date(now);
-  d0.setHours(0, 0, 0, 0);
-  const days = RANGES.find((r) => r.key === range.value)!.days;
-  const from = d0.getTime() - (days - 1) * 24 * 3_600_000;
-  return flow.distribution(props.groupId, from, now, now);
+  const [from, to] = span.value;
+  return flow.distribution(props.groupId, from, to, nowMs.value);
 });
 
 const H = 3_600_000;
@@ -137,15 +178,24 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
       <div class="hd-main">
         <h3 class="hd-title">工作时长分布</h3>
       </div>
-      <div class="seg">
-        <div
-          v-for="r in RANGES"
-          :key="r.key"
-          class="seg-i"
-          :class="{ on: range === r.key }"
-          @click="range = r.key"
-        >
-          {{ r.label }}
+      <div class="section-filters">
+        <div class="filter-item">
+          <span class="filter-label">时间</span>
+          <a-segmented
+            v-model:value="rangeKey"
+            size="small"
+            :options="HOME_PERF_RANGE_OPTS"
+          />
+          <a-range-picker
+            v-if="rangeKey === 'custom'"
+            v-model:value="customRange"
+            v-model:open="pickerOpen"
+            size="small"
+            :allow-clear="false"
+            :disabled-date="disabledRangeDate"
+            format="MM-DD"
+            class="range-picker"
+          />
         </div>
       </div>
     </div>
@@ -243,9 +293,22 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 .hd-main { display: flex; align-items: center; gap: 14px; min-width: 0; flex-wrap: wrap; }
 .hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; }
 
-.seg { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; gap: 2px; }
-.seg-i { padding: 3px 10px; font-size: 12px; color: #64748b; border-radius: 4px; cursor: pointer; }
-.seg-i.on { background: #fff; color: #1a6fff; font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }
+/* 时间筛选：样式照个人门户「我的效能」section-filters */
+.section-filters {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px;
+  padding: 6px 10px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+}
+.filter-item { display: inline-flex; align-items: center; gap: 8px; }
+.filter-label { flex: none; font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1; }
+.section-filters :deep(.ant-segmented) { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2px; }
+.section-filters :deep(.ant-segmented-item-label) {
+  font-size: 12px; font-weight: 500; color: #6b7280; line-height: 22px; min-height: 22px; padding: 0 10px;
+}
+.section-filters :deep(.ant-segmented-item-selected .ant-segmented-item-label) { color: #1a6fff; font-weight: 600; }
+.section-filters :deep(.ant-segmented-item-selected) { box-shadow: 0 1px 2px rgba(26, 111, 255, 0.12); }
+.range-picker { width: 168px; }
+.range-picker :deep(.ant-picker) { border-radius: 8px; height: 28px; }
+.range-picker :deep(.ant-picker-input > input) { font-size: 12px; color: #374151; font-weight: 500; }
 
 .wtp-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 14px; }
 .wtp-sum { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; }

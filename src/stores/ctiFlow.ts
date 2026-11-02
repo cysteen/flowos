@@ -14,7 +14,7 @@ import {
  * 外呼忙碌段同样记一段（子状态记 outbound）。另记「工单操作」时刻，供「状态存疑」统计。
  *
  * - 实时段落 localStorage（键带版本号），刷新后未结束的段以最后一次保存时刻收尾；
- * - 近两周种子按工作日 9:00–18:00 按人按日确定性生成，不入缓存（刷新、跨日都与当日对齐）；
+ * - 近 62 天种子按工作日 9:00–18:00 按人按日确定性生成，不入缓存（刷新、跨日都与当日对齐）；
  *   某人某日一旦有实时段，当日种子在其首段开始后截断，两份不重叠。
  * - 只给组级统计用，不出个人排名。
  */
@@ -28,8 +28,10 @@ export const SUSPECT_WINDOW_MIN = 10;
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
-const KEEP_DAYS = 15;
-const SEED_DAYS = 14;
+/** 实时段保留天数（与种子覆盖范围一致，覆盖「本月」与跨月的自定义区间）；只影响载入时的过滤，缓存结构不变 */
+const KEEP_DAYS = 62;
+/** 种子覆盖近 62 天（含今日）的工作日：至少覆盖本月与上个月 */
+const SEED_DAYS = 62;
 
 export interface FlowSegment {
   id: string;
@@ -255,22 +257,30 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
   fill(t, dayEnd);
 }
 
-/** 近两周（含今日）工作日种子；今日只生成到此刻 */
+/** 整日种子按「当日 + 成员名单」缓存：同一天内只生成一次，每次调用只按此刻截断 */
+let seedCache: { key: string; segs: FlowSegment[]; ops: FlowOp[] } | null = null;
+
+/** 近 62 天（含今日）工作日种子；今日只取到此刻 */
 function buildSeed(now: number): { segs: FlowSegment[]; ops: FlowOp[] } {
-  const out = { segs: [] as FlowSegment[], ops: [] as FlowOp[] };
   const today = dayStart(now);
   const members = flowMembers();
-  for (let i = SEED_DAYS - 1; i >= 0; i--) {
-    const d0 = dayStart(today - i * DAY + 12 * 60 * MIN);
-    const wd = new Date(d0).getDay();
-    if (wd === 0 || wd === 6) continue;
-    members.forEach((m) => seedDay(m, d0, out));
+  const key = `${today}|${members.map((m) => `${m.name}:${m.groupId}`).join(',')}`;
+  if (seedCache?.key !== key) {
+    const out = { segs: [] as FlowSegment[], ops: [] as FlowOp[] };
+    for (let i = SEED_DAYS - 1; i >= 0; i--) {
+      const d0 = dayStart(today - i * DAY + 12 * 60 * MIN);
+      const wd = new Date(d0).getDay();
+      if (wd === 0 || wd === 6) continue;
+      members.forEach((m) => seedDay(m, d0, out));
+    }
+    seedCache = { key, ...out };
   }
-  out.segs = out.segs
-    .filter((s) => s.start < now)
-    .map((s) => (s.end != null && s.end > now ? { ...s, end: now } : s));
-  out.ops = out.ops.filter((o) => o.at <= now);
-  return out;
+  return {
+    segs: seedCache.segs
+      .filter((s) => s.start < now)
+      .map((s) => (s.end != null && s.end > now ? { ...s, end: now } : s)),
+    ops: seedCache.ops.filter((o) => o.at <= now),
+  };
 }
 
 /* ------------------------------------------------------------------ */
