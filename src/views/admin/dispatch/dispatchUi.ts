@@ -22,18 +22,51 @@ export const CUSTOMER_TYPE_OPTS = opts(DISPATCH_CUSTOMER_TYPES);
 export const PRIORITY_OPTS = (['P0', 'P1', 'P2', 'P3'] as Priority[]).map((p) => ({ value: p, label: PRIORITY_LEVEL[p] }));
 
 /* ---------------- 问题分类树：只读引用问题分类管理，值为路径「一级 / 二级 / 三级」 ---------------- */
-export interface TreeOpt { value: string; title: string; children?: TreeOpt[] }
+export interface TreeOpt {
+  value: string;
+  title: string;
+  children?: TreeOpt[];
+  /** 问题分类：层级「一类 / 二类 / 三类」（下拉节点前缀） */
+  level?: string;
+  /** 问题分类：已选标签文字（完整路径；选上级时标「〈层级〉·整类」，即含全部下级） */
+  tagLabel?: string;
+}
+/** 问题分类层级名（入池规则条件、人员画像共用） */
+export const PROBLEM_LEVELS = ['一类', '二类', '三类'] as const;
+/** 问题分类已选标签：完整路径；有下级的上级节点标「〈层级〉·整类」 */
+export function problemTagLabel(path: string, hasChildren = splitProblemPath(path).length < 3): string {
+  const segs = splitProblemPath(path);
+  const text = segs.join(' / ');
+  return hasChildren ? `${text}（${PROBLEM_LEVELS[segs.length - 1] ?? ''}·整类）` : text;
+}
+/** 多选折叠占位：只在确有隐藏项时显示「+ N」 */
+export function maxTagPlaceholder(omitted: unknown[]): string {
+  return omitted.length ? `+ ${omitted.length}` : '';
+}
 /** 问题分类树选项（不分产品的并集，工单可用的分类）；在 computed / 模板里调用即随问题分类管理联动 */
 export function problemTreeOpts(): TreeOpt[] {
-  return Object.entries(useProblemTagsStore().dispatchTree).map(([l1, l2s]) => ({
-    value: l1,
-    title: l1,
-    children: Object.entries(l2s).map(([l2, l3s]) => ({
-      value: joinProblemPath([l1, l2]),
-      title: l2,
-      children: l3s.map((l3) => ({ value: joinProblemPath([l1, l2, l3]), title: l3 })),
-    })),
-  }));
+  return Object.entries(useProblemTagsStore().dispatchTree).map(([l1, l2s]) => {
+    const l2Entries = Object.entries(l2s);
+    return {
+      value: l1,
+      title: l1,
+      level: PROBLEM_LEVELS[0],
+      tagLabel: problemTagLabel(l1, l2Entries.length > 0),
+      children: l2Entries.map(([l2, l3s]) => {
+        const v2 = joinProblemPath([l1, l2]);
+        return {
+          value: v2,
+          title: l2,
+          level: PROBLEM_LEVELS[1],
+          tagLabel: problemTagLabel(v2, l3s.length > 0),
+          children: l3s.map((l3) => {
+            const v3 = joinProblemPath([l1, l2, l3]);
+            return { value: v3, title: l3, level: PROBLEM_LEVELS[2], tagLabel: problemTagLabel(v3, false) };
+          }),
+        };
+      }),
+    };
+  });
 }
 export function problemLabel(path: string): string {
   return splitProblemPath(path).join(' / ');

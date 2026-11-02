@@ -4,7 +4,7 @@
  * 不再借道迁移出来的入池规则；多组取并集。
  */
 import { PROBLEM_PATH_SEP, splitProblemPath, joinProblemPath, useProblemTagsStore } from '@/stores/problemTags';
-import { problemLabel, problemTreeOpts, type TreeOpt } from './dispatchUi';
+import { PROBLEM_LEVELS, problemLabel, problemTagLabel, problemTreeOpts, type TreeOpt } from './dispatchUi';
 
 /** 所属组在问题分类管理中处理的问题分类路径（「一级」「一级 / 二级」「一级 / 二级 / 三级」），已去重、整枝上卷 */
 export function problemPathsOfGroups(groupIds: readonly string[]): string[] {
@@ -39,7 +39,10 @@ export interface ScopedTreeOpt extends TreeOpt { stale?: boolean }
 export function scopedProblemTree(scope: readonly string[], keep: readonly string[] = []): ScopedTreeOpt[] {
   const tree: ScopedTreeOpt[] = prune(problemTreeOpts(), scope);
   for (const v of keep) {
-    if (!covered(v, scope)) tree.push({ value: v, title: problemLabel(v), stale: true });
+    if (!covered(v, scope)) {
+      const depth = splitProblemPath(v).length;
+      tree.push({ value: v, title: problemLabel(v), level: PROBLEM_LEVELS[depth - 1], tagLabel: problemTagLabel(v), stale: true });
+    }
   }
   return tree;
 }

@@ -9,7 +9,7 @@ import type { PoolRule } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
 import {
   BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRIORITY_OPTS, PRODUCT_TREE_OPTS, TICKET_SOURCE_OPTS, TICKET_TYPE_OPTS,
-  problemTreeOpts, productToValue, valueToProduct,
+  maxTagPlaceholder, problemTreeOpts, productToValue, valueToProduct,
 } from './dispatchUi';
 
 const props = defineProps<{ open: boolean; rule: PoolRule | null }>();
@@ -133,10 +133,16 @@ function submit() {
           tree-checkable
           :show-checked-strategy="SHOW_PARENT"
           :field-names="{ label: 'title', value: 'value', children: 'children' }"
+          tree-node-label-prop="tagLabel"
           placeholder="不限"
           allow-clear
           max-tag-count="responsive"
-        />
+          :max-tag-placeholder="maxTagPlaceholder"
+        >
+          <template #title="{ title, level }">
+            <span class="rm-lv">{{ level }}</span>{{ title }}
+          </template>
+        </a-tree-select>
       </div>
       <div class="op-field op-field-h">
         <span class="op-label">产品</span>
@@ -150,6 +156,7 @@ function submit() {
           placeholder="不限"
           allow-clear
           max-tag-count="responsive"
+          :max-tag-placeholder="maxTagPlaceholder"
         />
       </div>
       <div class="op-field op-field-h">
@@ -178,5 +185,9 @@ function submit() {
 
 <style scoped>
 .rm-grow { flex: 1; min-width: 0; }
+.rm-lv {
+  display: inline-block; margin-right: 6px; padding: 0 4px; font-size: 11px; line-height: 16px;
+  color: #6b7280; background: #f3f4f6; border-radius: 3px; vertical-align: 1px;
+}
 .op-field-h > .op-label { width: 98px; }
 </style>

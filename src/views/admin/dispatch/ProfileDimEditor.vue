@@ -3,7 +3,7 @@
 import { TreeSelect } from 'ant-design-vue';
 import { PROFILE_DIMS, type ProfileDimKey } from '@/views/tickets/types/dispatch';
 import {
-  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRODUCT_TREE_OPTS, TICKET_TYPE_OPTS, problemTreeOpts,
+  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRODUCT_TREE_OPTS, TICKET_TYPE_OPTS, maxTagPlaceholder, problemTagLabel, problemTreeOpts,
 } from './dispatchUi';
 import type { ProfileDraft } from './profileDraft';
 import { computed } from 'vue';
@@ -24,8 +24,8 @@ const staleProblems = computed(() => new Set(
 ));
 const problemTitles = computed(() => {
   const m = new Map<string, string>();
-  const walk = (ns: { value: string; title: string; children?: unknown[] }[]) => ns.forEach((n) => {
-    m.set(n.value, n.title);
+  const walk = (ns: { value: string; title: string; tagLabel?: string; children?: unknown[] }[]) => ns.forEach((n) => {
+    m.set(n.value, n.tagLabel ?? n.title);
     if (n.children) walk(n.children as typeof ns);
   });
   walk(problemTree.value);
@@ -68,14 +68,15 @@ const LIST_OPTS: Partial<Record<ProfileDimKey, { value: string; label: string }[
           :field-names="{ label: 'title', value: 'value', children: 'children' }"
           :placeholder="`请选择${d.label}`"
           max-tag-count="responsive"
+          :max-tag-placeholder="maxTagPlaceholder"
           size="small"
           class="pde-ctrl"
         >
-          <template #title="{ title, stale }">
-            <span :class="{ 'pde-stale': stale }">{{ title }}</span>
+          <template #title="{ title, stale, level }">
+            <span :class="{ 'pde-stale': stale }"><span v-if="level" class="pde-lv">{{ level }}</span>{{ title }}</span>
           </template>
           <template #tagRender="{ value, closable, onClose }">
-            <a-tag :closable="closable" :class="['pde-tag', { 'pde-tag-stale': staleProblems.has(value) }]" @close="onClose">{{ problemTitles.get(value) ?? value }}</a-tag>
+            <a-tag :closable="closable" :class="['pde-tag', { 'pde-tag-stale': staleProblems.has(value) }]" @close="onClose">{{ problemTitles.get(value) ?? problemTagLabel(value) }}</a-tag>
           </template>
         </a-tree-select>
         <a-tree-select
@@ -87,6 +88,7 @@ const LIST_OPTS: Partial<Record<ProfileDimKey, { value: string; label: string }[
           :field-names="{ label: 'title', value: 'value', children: 'children' }"
           :placeholder="`请选择${d.label}`"
           max-tag-count="responsive"
+          :max-tag-placeholder="maxTagPlaceholder"
           size="small"
           class="pde-ctrl"
         />
@@ -97,6 +99,7 @@ const LIST_OPTS: Partial<Record<ProfileDimKey, { value: string; label: string }[
           :options="LIST_OPTS[d.key]"
           :placeholder="`请选择${d.label}`"
           max-tag-count="responsive"
+          :max-tag-placeholder="maxTagPlaceholder"
           size="small"
           class="pde-ctrl"
         />
@@ -129,6 +132,10 @@ const LIST_OPTS: Partial<Record<ProfileDimKey, { value: string; label: string }[
 .pde-ctrl :deep(.ant-select-selector),
 .pde-ctrl :deep(.ant-select-selection-wrap) { min-height: 28px !important; }
 .pde-stale { color: #9ca3af; }
+.pde-lv {
+  display: inline-block; margin-right: 6px; padding: 0 4px; font-size: 11px; line-height: 16px;
+  color: #6b7280; background: #f3f4f6; border-radius: 3px; vertical-align: 1px;
+}
 .pde-tag { margin-inline-end: 4px; font-size: 12px; }
 .pde-tag-stale { color: #9ca3af; background: #f3f4f6; border-color: #e5e7eb; }
 .pde-hint { margin: 2px 0 0; font-size: 11px; line-height: 1.35; color: #d97706; }
