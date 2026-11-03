@@ -6,6 +6,7 @@ import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
+import OutboundNumberPopover from '@/components/cti/OutboundNumberPopover.vue';
 import {
   SearchOutlined,
   PhoneOutlined,
@@ -344,10 +345,6 @@ function openTicket(t: CustomerTicketRow) {
   router.push(`/tickets/${t.no}`);
 }
 
-function callOut(phone: string) {
-  message.success(`正在呼叫 ${phone}…`);
-}
-
 async function copyPhone(phone: string) {
   try {
     await navigator.clipboard.writeText(phone);
@@ -525,7 +522,9 @@ defineExpose({ runSearch });
               <div class="p-phone-row">
                 <span class="p-phone">{{ insight.profile.phone }}</span>
                 <button type="button" class="icon-btn" title="复制手机号" @click="copyPhone(insight.profile.phone)"><CopyOutlined /></button>
-                <button type="button" class="call-btn" @click="callOut(insight.profile.phone)"><PhoneOutlined />外呼</button>
+                <OutboundNumberPopover :phone="insight.profile.phone" :contact-label="`客户·${insight.profile.name}`">
+                  <button type="button" class="call-btn"><PhoneOutlined />外呼</button>
+                </OutboundNumberPopover>
               </div>
               <div v-if="otherContacts.length" class="p-contacts">
                 <span v-for="c in otherContacts" :key="c.kind + c.value" class="ct-way">

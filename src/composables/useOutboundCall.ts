@@ -9,7 +9,8 @@ export interface OutboundCallPayload {
 
 function validateCtiState(cti: ReturnType<typeof useCtiStore>): string | null {
   if (cti.workStatus === 'offline') return '请先签入';
-  if (cti.workStatus === 'break') return '请先切换为就绪';
+  // 外呼只能从「就绪」发起：未就绪、小休都要先切就绪
+  if (cti.workStatus === 'break' || cti.workStatus === 'logged_in') return '请先切换为就绪';
   if (cti.callSession) return '当前有进行中的外呼';
   return null;
 }

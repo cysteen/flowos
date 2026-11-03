@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
 import { message } from 'ant-design-vue';
+import OutboundNumberPopover from '@/components/cti/OutboundNumberPopover.vue';
 import { PlusOutlined, UserOutlined, PhoneOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
@@ -92,7 +93,6 @@ function downloadTemplate() {
   URL.revokeObjectURL(url);
   message.success('已下载导入模板');
 }
-function callOut(phone: string) { message.success(`正在呼叫 ${phone}…`); }
 </script>
 
 <template>
@@ -133,7 +133,9 @@ function callOut(phone: string) { message.success(`正在呼叫 ${phone}…`); }
             <div class="dh-sub"><PhoneOutlined /> {{ current.phone }} · {{ current.region }} · 自 {{ current.firstSeen }}</div>
             <div class="dh-tags"><a-tag v-for="t in current.tags" :key="t" color="blue">{{ t }}</a-tag></div>
           </div>
-          <a-button type="primary" @click="callOut(current.phone)"><template #icon><PhoneOutlined /></template>外呼</a-button>
+          <OutboundNumberPopover :phone="current.phone" :contact-label="`客户·${current.name}`">
+            <a-button type="primary"><template #icon><PhoneOutlined /></template>外呼</a-button>
+          </OutboundNumberPopover>
         </div>
         <a-tabs>
           <a-tab-pane key="t1" :tab="`历史工单 (${current.tickets})`">

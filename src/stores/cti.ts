@@ -250,11 +250,11 @@ export const useCtiStore = defineStore('cti', {
     startCall(payload: { ticketId: string; phone: string; contactLabel: string; outboundNumber: string }) {
       const { ticketId, phone, contactLabel, outboundNumber } = payload;
       if (!phone) return false;
-      if (this.workStatus === 'offline') return false;
-      if (this.workStatus === 'break') return false;
+      // 外呼只能从「就绪」发起（签出、未就绪、小休、通话中都不行）
+      if (this.workStatus !== 'ready') return false;
       if (this.callSession) return false;
 
-      this.workStatusBeforeCall = this.workStatus === 'busy' ? 'ready' : this.workStatus;
+      this.workStatusBeforeCall = this.workStatus;
       this.workStatus = 'busy';
       this.workStatusSince = Date.now();
       this.ensureClock();
@@ -314,11 +314,7 @@ export const useCtiStore = defineStore('cti', {
       this.callSession = null;
       const restore = this.workStatusBeforeCall ?? 'ready';
       this.workStatusBeforeCall = null;
-      if (restore !== 'offline') this.touchWorkStatus(restore);
-      else {
-        this.workStatus = 'offline';
-        this.logFlow();
-      }
+      this.touchWorkStatus(restore);
     },
   },
 });
