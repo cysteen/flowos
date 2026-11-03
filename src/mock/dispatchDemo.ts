@@ -340,7 +340,7 @@ type Builder = ReturnType<typeof makeBuilder>;
 
 const REASSIGN_REASONS = ['客户要求更换处理人', '原处理人临时外出培训', '需熟悉该产品的坐席跟进'];
 const TRANSFER_REASONS = ['该客户近期由其跟进', '跨组协助处理'];
-const QUEUE_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '无可接单成员', '无画像匹配成员', '无画像匹配成员'];
+const QUEUE_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '组内暂无已就绪成员', '无可接单成员', '无画像匹配成员'];
 
 /* ------------------------------------------------------------------ */
 /* 上线以来（前 13 天）                                                   */
@@ -717,7 +717,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       category: 'node', action: 'transfer', who: SYSTEM, role: '系统', systemActor: true, how, what, when: stamp(ms),
     } as Omit<TimelineEntry, 'id'>);
     const st: TicketDispatchState = {
-      ticketNo: no, poolId: s.pool, ruleId: null, enteredAt, status: s.status, relaxLevel: 0, queueSince: null,
+      ticketNo: no, poolId: s.pool, ruleId: null, enteredAt, status: s.status,
       firstRespTotalMin: Math.max(FIRST_RESP_LIMIT[s.priority], s.remain0), firstRespDueAt: enteredAt + s.remain0 * MIN, seq: 0,
     };
     const mode = s.pool === 'hardware' ? HW_MIXED : FORMAL;

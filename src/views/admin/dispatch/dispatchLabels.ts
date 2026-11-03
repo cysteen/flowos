@@ -25,13 +25,12 @@ export const PATH_LABEL: Record<DispatchPath, string> = {
   加权评分: '综合打分',
   预留: '为原处理人保留',
   排队: '排队等待',
-  组内放宽: '放宽产品范围',
-  兜底回池: '退回工单池',
   留池: '留在工单池',
 };
 
 /** 失败原因（13.1） */
 export const FAIL_LABEL: Record<DispatchFailReason, string> = {
+  组内暂无已就绪成员: '组内暂无已就绪成员',
   无画像匹配成员: '无画像相符的成员',
   无可接单成员: '无可接单成员',
   均达个人上限: '均达个人上限',
@@ -68,6 +67,6 @@ export function failLabel(r?: DispatchFailReason | null): string {
 }
 /** 履历正文里的路径名（如「（加权评分）」「（原处理人 · 本单退回）」）换成界面名称 */
 export function replacePathNames(text: string): string {
-  return text.replace(/（(直派规则|原处理人|加权评分|预留|排队|组内放宽|兜底回池|留池)( · [^）]+)?）/g,
+  return text.replace(/（(直派规则|原处理人|加权评分|预留|排队|留池)( · [^）]+)?）/g,
     (_, p: DispatchPath, rel?: string) => `（${PATH_LABEL[p]}${rel ?? ''}）`);
 }

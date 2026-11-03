@@ -20,8 +20,8 @@ export function stricterMode(...modes: PoolMode[]): PoolMode {
 }
 
 /** 留池工单的派单状态（1.3 / 10.1）。混合派单、人工派单下为空 */
-export type DispatchStatus = '等原处理人' | '排队中' | '派单失败回池';
-export const DISPATCH_STATUSES: DispatchStatus[] = ['等原处理人', '排队中', '派单失败回池'];
+export type DispatchStatus = '等原处理人' | '排队中';
+export const DISPATCH_STATUSES: DispatchStatus[] = ['等原处理人', '排队中'];
 
 /**
  * 坐席状态（11.5）：与顶栏话务条联动。签入后未点「就绪」为未就绪；点「就绪」后才接派单、可领取；
@@ -119,10 +119,6 @@ export function isProfileConfigured(p: AgentProfile): boolean {
   return PROFILE_DIMS.every((d) => p[d.key] !== null);
 }
 
-/** 产品逐级放宽层级（6.2）：0 精确、1 同产品分类、2 不限 */
-export type RelaxLevel = 0 | 1 | 2;
-export const RELAX_LEVEL_LABEL: Record<RelaxLevel, '精确' | '同产品分类' | '不限'> = { 0: '精确', 1: '同产品分类', 2: '不限' };
-
 /* ------------------------------------------------------------------ */
 /* 入池规则（第 3 章）                                                   */
 /* ------------------------------------------------------------------ */
@@ -188,7 +184,7 @@ export const STALL_REMIND_HOURS = 4;
 export interface DispatchGroup {
   id: string;
   label: string;
-  /** 班组长姓名（兜底回池通知、指派权限） */
+  /** 班组长姓名（滞留提醒、指派权限） */
   leaders: string[];
 }
 
@@ -355,13 +351,6 @@ export interface DispatchConfig {
   originalChain: OriginalRelationRule[];
   factors: ScoreFactor[];
   recentHours: number;
-  relaxEnabled: boolean;
-  /** 最远层级：同产品分类 / 不限 */
-  relaxMaxLevel: 1 | 2;
-  relaxQueueMinutes: number;
-  relaxSlaPercent: number;
-  fallbackSlaPercent: number;
-  noSlaFallbackMinutes: number;
   /* 个人上限 */
   roleBase: Record<DispatchRole, number>;
   proficiencyCoef: Record<Proficiency, number>;
@@ -372,12 +361,6 @@ export function defaultDispatchConfig(): DispatchConfig {
     originalChain: defaultOriginalChain(),
     factors: defaultScoreFactors(),
     recentHours: 2,
-    relaxEnabled: true,
-    relaxMaxLevel: 2,
-    relaxQueueMinutes: 15,
-    relaxSlaPercent: 50,
-    fallbackSlaPercent: 25,
-    noSlaFallbackMinutes: 30,
     roleBase: { ...DEFAULT_ROLE_BASE },
     proficiencyCoef: { ...DEFAULT_PROFICIENCY_COEF },
   };
@@ -429,13 +412,12 @@ export const IN_TRANSIT_COUNT_RULE: Record<TicketStatus, 'assignee' | 'none'> = 
 
 /**
  * 派单日志「时机」（A.1）。进池事件当场判定一次；其余都在每 5 分钟一轮的工单池扫描里判定：
- * 补单扫描、保留到期、放宽产品范围、切为自动派单（生效方式变为自动派单后的第一轮）。跨班次回收为 P1，类型先列出。
+ * 补单扫描、保留到期、切为自动派单（生效方式变为自动派单后的第一轮）。跨班次回收为 P1，类型先列出。
  */
 export type DispatchTrigger =
   | '新单'
   | '补单扫描'
   | '保留到期'
-  | '放宽产品范围'
   | '切为自动派单'
   | '跨班次回收'
   | '调剂到池'
@@ -446,10 +428,10 @@ export type DispatchTrigger =
   | '重新进池';
 
 /** 判定路径（13.1）。直派规则为 P1 */
-export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
+export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '留池';
 
-/** 失败原因（13.1） */
-export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '均达个人上限' | '系统异常';
+/** 失败原因（13.1）：排队原因与系统异常 */
+export type DispatchFailReason = '组内暂无已就绪成员' | '无画像匹配成员' | '无可接单成员' | '均达个人上限' | '系统异常';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
@@ -469,15 +451,6 @@ export interface ScoreDetail {
 
 /** 人工动作（13.1「人工动作」列） */
 export type ManualAction = '班组长指派' | '改派' | '调剂到人' | '调剂到池' | '升级三线指定人' | '二线领取' | '升级投诉直派';
-
-/** 人工换人（13.2）：引擎派出后发生即不计自动派单成功（分派监控统计卡） */
-export const DISPATCH_UNDO_ACTIONS: ManualAction[] = ['改派', '调剂到人', '调剂到池', '班组长指派'];
-
-/** 某单在判定序号 `afterSeq` 之后是否被跨班次回收或人工换人（自动派单成功率分子口径，13.2） */
-export function isDispatchUndone(logs: DispatchLogEntry[], ticketNo: string, afterSeq: number): boolean {
-  return logs.some((x) => x.ticketNo === ticketNo && x.seq > afterSeq
-    && ((x.kind === '人工' && !!x.manual && DISPATCH_UNDO_ACTIONS.includes(x.manual.action)) || x.trigger === '跨班次回收'));
-}
 
 /** 派单日志条目（13.1） */
 export interface DispatchLogEntry {
@@ -503,7 +476,6 @@ export interface DispatchLogEntry {
   originalRelation?: OriginalRelation;
   /** 关系链上因例外不派回、不保留的原处理人（4.2 例外清单） */
   originalExcluded?: { relation: OriginalRelation; name: string; reason: OriginalExclusion }[];
-  relaxLevel?: RelaxLevel;
   /** 逐项门槛淘汰人数 */
   gateDrops?: Partial<Record<GateKey, number>>;
   candidateCount?: number;
@@ -543,9 +515,6 @@ export interface TicketDispatchState {
   /** 进入派单时刻（ms） */
   enteredAt: number;
   status: DispatchStatus | null;
-  relaxLevel: RelaxLevel;
-  /** 本级排队起点（每放宽一级重新计时，4.4） */
-  queueSince: number | null;
   /** 预留目标坐席与到期时刻（4.2） */
   reserveFor?: string;
   reserveUntil?: number;

@@ -68,7 +68,6 @@ export function modeTagOf(mode: PoolMode): ModeTag | null {
 }
 
 export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, { color: string; bg: string; border: string }> = {
-  派单失败回池: { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
   排队中: { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
   等原处理人: { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
 };
@@ -80,8 +79,8 @@ export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border
 
 export const SIGN_IN_COLOR: Record<SignInStatus, string> = { 就绪: '#10B981', 未就绪: '#F97316', 小休: '#F59E0B', 签出: '#9CA3AF' };
 
-/** 列表排序（10.1）：派单失败回池在前，其后排队中、等原处理人，其余最后 */
-export const DISPATCH_STATUS_ORDER: Record<string, number> = { 派单失败回池: 0, 排队中: 1, 等原处理人: 2 };
+/** 列表排序（10.1）：排队中在前，其后等原处理人，其余最后 */
+export const DISPATCH_STATUS_ORDER: Record<string, number> = { 排队中: 1, 等原处理人: 2 };
 
 /** 等原处理人悬停（10.1）：「预留给 〈姓名〉，〈时:分〉 到期」 */
 export function reserveTipOf(no: string): string {
@@ -156,7 +155,7 @@ export function assignCandidatesOf(groupId: string, t: Ticket | null): AssignCan
         signIn: a.signIn,
         inTransit: v.inTransit,
         cap: v.cap,
-        matched: !!t && dispatch.profileMatches(a, t, 0),
+        matched: !!t && dispatch.profileMatches(a, t),
         full: v.inTransit >= v.cap,
       };
     });

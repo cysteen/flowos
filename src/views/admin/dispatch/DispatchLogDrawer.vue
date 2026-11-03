@@ -20,7 +20,7 @@ const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
 
 const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '留池'];
-const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无可接单成员', '均达个人上限', '系统异常'];
+const FAILS: DispatchFailReason[] = ['组内暂无已就绪成员', '无画像匹配成员', '无可接单成员', '均达个人上限', '系统异常'];
 const pathOpts = PATHS.map((p) => ({ value: p, label: pathLabel(p) }));
 const failOpts = FAILS.map((r) => ({ value: r, label: failLabel(r) }));
 

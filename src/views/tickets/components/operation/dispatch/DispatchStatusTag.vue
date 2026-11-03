@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 处理页页头派单状态标签（【1215】PRD 10.1）：工单在池中时显示「排队中」「等原处理人」「派单失败回池」；
+ * 处理页页头派单状态标签（【1215】PRD 10.1）：工单在池中时显示「排队中」「等原处理人」；
  * 已有处理人、已离池或混合派单 / 人工派单下无派单状态时不渲染。等原处理人悬停「预留给 〈姓名〉，〈时:分〉 到期」。
  */
 import { computed } from 'vue';
@@ -14,7 +14,6 @@ const store = useDispatchStore();
 const COLOR: Record<DispatchStatus, string> = {
   排队中: '#1A6FFF',
   等原处理人: '#7C3AED',
-  派单失败回池: '#EA580C',
 };
 
 const state = computed(() => store.ticketStateOf(props.ticketNo));
