@@ -524,7 +524,7 @@ async function onAssignSubmit(p: AssignSubmitPayload) {
       return;
     }
     const n = p.ticketIds.length;
-    const notReady = notReadyConfirmText(c.name, c.signIn, '指派');
+    const notReady = c.signIn === '小休' ? `${c.name}当前小休中，确定指派？` : notReadyConfirmText(c.name, c.signIn, '指派');
     if (notReady && !(await confirmAssign(notReady))) return;
     if (c.inTransit + n > c.cap
       && !(await confirmAssign(`${c.name}在途 ${c.inTransit} / 上限 ${c.cap}，${n > 1 ? `指派 ${n} 张` : '指派'}后将记超额指派，确定指派？`))) return;

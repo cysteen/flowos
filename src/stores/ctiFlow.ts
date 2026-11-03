@@ -69,7 +69,7 @@ export interface DistItem {
 
 export interface GroupDistribution {
   items: DistItem[];
-  /** 签入时长：各工作类型（外呼计入工单处理）+ 小休（签出、未就绪不计） */
+  /** 在岗时长：各工作类型（外呼计入工单处理）+ 小休（签出、未就绪不计） */
   totalMs: number;
   /** 线下类工作合计 */
   offlineMs: number;
@@ -84,7 +84,7 @@ export interface GroupDistribution {
 
 export interface MemberDist {
   ms: Record<string, number>;
-  /** 签入时长：各工作类型（外呼计入工单处理）+ 小休 */
+  /** 在岗时长：各工作类型（外呼计入工单处理）+ 小休 */
   totalMs: number;
   suspectMs: number;
   breakReasons: Record<string, number>;
@@ -210,7 +210,6 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
       if (r < 0.1) {
         const end = Math.min(to, t + ri(3, 12) * MIN);
         const no = pickTicket();
-        op(t, no);
         push('busy', OUTBOUND_SUB, t, end, no);
         t = end;
       } else if (r < 0.55) {
@@ -354,7 +353,7 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     save();
   }
 
-  /** 工单操作信号（打开 / 保存工单处理页、在工单上外呼） */
+  /** 工单操作信号（打开工单处理页、保存处理记录；外呼不算） */
   function noteOp(ticketNo: string | null) {
     const { who } = me();
     if (!who) return;
@@ -389,7 +388,7 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     return { segs: [...segs, ...segments.value], ops: [...seedOps, ...ops.value] };
   }
 
-  /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝签入时长；外呼通话计入工单处理）、线下类合计、状态存疑 */
+  /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝在岗时长；外呼通话计入工单处理）、线下类合计、状态存疑 */
   function distribution(groupId: string, from: number, to: number, now: number = Date.now()): GroupDistribution {
     const { segs, ops: allOps } = allSegments(now);
     const types = workTypesOfGroup(groupId);

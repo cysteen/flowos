@@ -274,7 +274,6 @@ export const useCtiStore = defineStore('cti', {
         holdAccumMs: 0,
       };
       this.logFlow();
-      if (ticketId) useCtiFlowStore().noteOp(ticketId);
       this.schedulePhaseTransitions();
       return true;
     },
