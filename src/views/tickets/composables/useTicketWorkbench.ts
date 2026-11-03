@@ -1,5 +1,5 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
-import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { isXiaozhiPooledRecord, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { useRefundStore } from '@/stores/refund';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -114,6 +114,8 @@ export function useTicketWorkbench() {
 
   function inPoolTabScope(t: Ticket): boolean {
     if (!inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value))) return false;
+    // 【1215】小智直通产研平台的记录单不进工单池列表（10.1 / 12.1）：不进入派单、不可领；查询中心仍可查
+    if (isXiaozhiPooledRecord(t)) return false;
     // 【1215】投诉对象为本人的工单不可见（10.1）
     return dispatch.ticketStates[t.no]?.complaintTarget !== user.name;
   }
@@ -490,7 +492,7 @@ export function useTicketWorkbench() {
   function claimTicket(id: string): boolean {
     return claimTicketWithResult(id).ok;
   }
-  /** 同 `claimTicket`，带提示文案（【1215】先到先得「该工单已被领取」、未签入「签入后可领取」） */
+  /** 同 `claimTicket`，带提示文案（【1215】先到先得「该工单已被领取」、未就绪「就绪后可领取」、签出「签入后可领取」） */
   function claimTicketWithResult(id: string): { ok: boolean; message: string } {
     const t = all.value.find((x) => x.id === id);
     if (!t) return { ok: false, message: '' };

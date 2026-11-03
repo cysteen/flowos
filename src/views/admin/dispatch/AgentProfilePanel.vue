@@ -39,6 +39,7 @@ function viewOf(name: string) {
     configured: v.profileConfigured,
     overLimit: v.overLimit,
     overAssigned: v.overAssigned,
+    full: v.full,
     loadFactor: v.cap ? v.inTransit / v.cap : 0,
   };
 }
@@ -98,7 +99,7 @@ function loadFactorColor(f: number) {
   if (f >= 0.8) return '#f59e0b';
   return '#10b981';
 }
-const SIGN_COLOR: Record<string, string> = { 签入: '#10b981', 小休: '#f59e0b', 签出: '#9ca3af' };
+const SIGN_COLOR: Record<string, string> = { 就绪: '#10b981', 未就绪: '#f97316', 小休: '#f59e0b', 签出: '#9ca3af' };
 
 function dimTags(text: string) { return text === '不限' || text === '未设' ? [] : text.split('、'); }
 
@@ -204,7 +205,8 @@ function rowClass(name: string) {
                   <span v-if="!record.configured" class="flag-muted">画像未配置</span>
                   <span v-if="record.overAssigned" class="dx-bad">超额指派</span>
                   <span v-else-if="record.overLimit" class="dx-warn">超限</span>
-                  <span v-if="record.configured && !record.overAssigned && !record.overLimit" class="flag-muted">—</span>
+                  <span v-else-if="record.full" class="dx-bad">满载</span>
+                  <span v-if="record.configured && !record.overAssigned && !record.overLimit && !record.full" class="flag-muted">—</span>
                 </span>
               </template>
             </a-table>
@@ -242,10 +244,11 @@ function rowClass(name: string) {
               <div class="kv"><span class="k">当前上限</span><span class="v">{{ cur.cap }}<span v-if="cur.capCustom" class="kv-tag">个人值</span></span></div>
               <div class="kv"><span class="k">默认值</span><span class="v">{{ cur.defaultCapText }}</span></div>
               <div class="dx-bar ld-bar lg" :class="{ 'is-warn': loadFull(cur) }"><i :style="{ width: `${loadPct(cur)}%` }" /></div>
-              <div v-if="cur.overAssigned || cur.overLimit || !cur.configured" class="pd-flags">
+              <div v-if="cur.overAssigned || cur.overLimit || cur.full || !cur.configured" class="pd-flags">
                 <span v-if="!cur.configured" class="flag-muted">画像未配置</span>
                 <span v-if="cur.overAssigned" class="dx-bad">超额指派</span>
                 <span v-else-if="cur.overLimit" class="dx-warn">超限</span>
+                <span v-else-if="cur.full" class="dx-bad">满载</span>
               </div>
             </div>
 

@@ -106,7 +106,7 @@ function saveCap() {
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
-const auditKinds = ['派单方式', '个人开关', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
+const auditKinds = ['派单方式', '个人开关', '入池规则', '工单池', '组成员', '人员画像', '熟练度', '个人上限', '派单策略'];
 const operatorOpts = computed(() => opts([...new Set(store.audits.map((a) => a.operator))]));
 const auditRows = computed(() => [...store.audits].reverse().filter((a) => {
   if (af.kind && a.kind !== af.kind) return false;

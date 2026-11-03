@@ -109,10 +109,12 @@ export const BALANCE_MIN_ON_DUTY_HOURS = 2;
 
 export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
-  /** 坐席当日在岗小时数（签入时长） */
+  /** 坐席当日在岗小时数（就绪时长） */
   onDutyHoursOf: (name: string) => number = () => 0,
   /** 工单当前派单状态（排队中 / 等原处理人的单尚无派单结果，不计入自动派单成功率分母，13.2） */
   dispatchStatusOf: (no: string) => string | null | undefined = () => null,
+  /** 池所属处理组（工单池筛选下均衡度取该组成员，14.1） */
+  poolGroupIdOf: (poolId: string) => string | undefined = (id) => id,
 ): MonitorStats {
   const from = rangeStart(range, now);
   const w: Window = { from, to: now + 1, poolIds };
@@ -150,8 +152,9 @@ export function computeStats(
   // 派单均衡度（13.2）：各坐席当日每在岗小时接单量（派单与领取）的标准差 / 平均值；仅计当日在岗 2 小时及以上的坐席，不含直派规则单
   const dayFrom = rangeStart('today', now);
   const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && l.path !== '直派规则');
+  const scopeGroupIds = poolIds?.map((id) => poolGroupIdOf(id) ?? id) ?? null;
   const pool = agents
-    .filter((a) => !a.disabled && (!poolIds || a.groupIds.some((g) => poolIds.includes(g))))
+    .filter((a) => !a.disabled && (!scopeGroupIds || a.groupIds.some((g) => scopeGroupIds.includes(g))))
     .map((a) => ({ a, hours: onDutyHoursOf(a.name) }))
     .filter((x) => x.hours >= BALANCE_MIN_ON_DUTY_HOURS);
   let balance: number | null = null;

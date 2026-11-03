@@ -38,7 +38,7 @@ const stats = computed(() => {
   void clock.value;
   const now = Date.now();
   return computeStats(store.logs, store.agents, range.value, poolScope.value, now, (name) => store.onDutyHoursOf(name, now),
-    (no) => store.dispatchStatusOf(no));
+    (no) => store.dispatchStatusOf(no), (id) => store.poolGroupIdOf(id));
 });
 
 const poolRows = computed(() => {

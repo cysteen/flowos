@@ -74,7 +74,7 @@ const members = computed(() => membersOf(selected.value));
 const countOf = (key: string) => membersOf(key).length;
 
 const TYPE_TONE: Record<string, string> = { 业务班组: 'blue', 审批组: 'orange', 虚拟组: 'purple' };
-const ST_TONE: Record<string, string> = { 在线: 'green', 签入: 'green', 小休: 'orange', 离线: 'default', 签出: 'default' };
+const ST_TONE: Record<string, string> = { 在线: 'green', 就绪: 'green', 未就绪: 'orange', 小休: 'orange', 离线: 'default', 签出: 'default' };
 const memCols = computed(() => [
   { title: '成员', dataIndex: 'name', key: 'name', width: 140 },
   { title: '组内角色', dataIndex: 'role', key: 'role', width: 110 },
@@ -137,8 +137,8 @@ function saveMember() {
   if (!mf.name) { message.error('请填写成员姓名'); return; }
   const a = dispatch.agentOf(mf.name);
   if (isDispatchGroup(selected.value)) {
-    if (!a) { message.error('该成员不是派单坐席，请先在用户管理中维护'); return; }
-    if (!a.groupIds.includes(selected.value)) a.groupIds = [...a.groupIds, selected.value];
+    if (!a) { message.error('该成员未在坐席画像中，请先在坐席画像中维护'); return; }
+    dispatch.setAgentGroup(a.name, selected.value, true);
   } else {
     (memberMap[selected.value] ??= []).push({ ...mf, id: 'u' + mSeq++ });
   }
@@ -170,7 +170,7 @@ function removeMember(m: Member) {
       const key = selected.value;
       const a = isDispatchGroup(key) ? dispatch.agentOf(m.name) : undefined;
       if (a) {
-        a.groupIds = a.groupIds.filter((id) => id !== key);
+        dispatch.setAgentGroup(a.name, key, false);
       } else {
         const arr = memberMap[key] ?? [];
         const i = arr.findIndex((x) => x.id === m.id);

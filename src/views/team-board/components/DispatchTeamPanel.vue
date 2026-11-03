@@ -3,7 +3,7 @@
  * 【1215】班组看板 · 本组派单（PRD 5.4 / 6.5 / 7.5 / 8 / 9.3）。
  *
  * 班组长视角：处理组为本组的各工单池（每池一行：池名、派单方式及切换、池内待派、最长等待）、
- * 本组成员（签入状态、在途 / 上限、超限 / 超额指派、熟练度、画像配置、个人开关）及其维护，
+ * 本组成员（坐席状态、在途 / 上限、超限 / 超额指派 / 满载、熟练度、画像配置、个人开关）及其维护，
  * 各池待领工单合并显示（带「所在池」）与组内指派。组跟随班组看板顶部「班组」筛选；
  * 所选组非派单组、本组名下没有启用中的池、或当前登录人非该组班组长时整块不渲染。
  */
@@ -306,6 +306,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
           <span class="num">{{ m.inTransit }} / {{ m.cap }}</span>
           <span v-if="m.overAssigned" class="flag red">超额指派</span>
           <span v-else-if="m.overLimit" class="flag orange">超限</span>
+          <span v-else-if="m.full" class="flag red">满载</span>
         </div>
         <div class="td">{{ m.agent.proficiency }}</div>
         <div class="td">

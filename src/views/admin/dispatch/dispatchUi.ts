@@ -135,7 +135,7 @@ export function profileSummary(p: AgentProfile): string {
 
 /* ---------------- 派单方式配色 ---------------- */
 export const MODE_TONE: Record<PoolMode, string> = { 自动派单: 'green', 混合派单: 'orange', 人工派单: 'red' };
-export const SIGN_TONE: Record<string, string> = { 签入: 'green', 小休: 'orange', 签出: 'default' };
+export const SIGN_TONE: Record<string, string> = { 就绪: 'green', 未就绪: 'orange', 小休: 'orange', 签出: 'default' };
 
 export function waitText(min: number): string {
   if (!min) return '—';
@@ -158,7 +158,6 @@ export const CONFIG_FIELD_LABEL: Record<string, string> = {
   noSlaFallbackMinutes: '退回工单池 · 无首次响应时限时排队超过',
   roleBase: '角色基准值',
   proficiencyCoef: '熟练度系数',
-  idleToBreakMinutes: '无操作转小休',
 };
 export function configFieldsText(raw: string): string {
   return raw.split('、').map((k) => CONFIG_FIELD_LABEL[k] ?? k).join('、');

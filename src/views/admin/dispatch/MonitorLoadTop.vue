@@ -22,7 +22,8 @@ const loadRows = computed(() => {
   void clock.value;
   return store.agents
     .filter((a) => !a.disabled)
-    .filter((a) => !props.poolIds || a.groupIds.some((g) => props.poolIds!.includes(g)))
+    // 工单池筛选：取所选池的处理组成员（14.1）
+    .filter((a) => !props.poolIds || props.poolIds.some((p) => a.groupIds.includes(store.poolGroupIdOf(p) ?? p)))
     .filter((a) => loadGroup.value === 'all' || a.groupIds.includes(loadGroup.value))
     .filter((a) => loadSign.value === 'all' || a.signIn === loadSign.value)
     .map((a) => {
@@ -45,7 +46,7 @@ function loadFactorColor(f: number) {
   if (f >= 0.8) return '#f59e0b';
   return '#10b981';
 }
-const SIGN_COLOR: Record<string, string> = { 签入: '#10b981', 小休: '#f59e0b', 签出: '#9ca3af' };
+const SIGN_COLOR: Record<string, string> = { 就绪: '#10b981', 未就绪: '#f97316', 小休: '#f59e0b', 签出: '#9ca3af' };
 
 const allOpen = ref(false);
 function goProfile() { router.push('/admin/dispatch-profile'); }
