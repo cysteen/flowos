@@ -3,7 +3,7 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-  CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, FileSearchOutlined, InboxOutlined, RollbackOutlined, SlidersOutlined,
+  CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, FileSearchOutlined, InboxOutlined, SlidersOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -38,7 +38,7 @@ const stats = computed(() => {
   void clock.value;
   const now = Date.now();
   return computeStats(store.logs, store.agents, range.value, poolScope.value, now, (name) => store.onDutyHoursOf(name, now),
-    (no) => store.dispatchStatusOf(no), (id) => store.poolGroupIdOf(id));
+    (id) => store.poolGroupIdOf(id));
 });
 
 const poolRows = computed(() => {
@@ -50,8 +50,8 @@ const backlogTableRows = computed(() => poolRows.value.filter((p) => p.enabled &
 const backlog = computed(() => {
   const rows = backlogTableRows.value;
   return {
-    count: rows.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0),
-    maxWait: rows.filter((p) => p.waitingOriginal + p.queued + p.failed).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
+    count: rows.reduce((s, p) => s + p.waitingOriginal + p.queued, 0),
+    maxWait: rows.filter((p) => p.waitingOriginal + p.queued).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
   };
 });
 
@@ -69,7 +69,6 @@ const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
 
 const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
   succ: { accent: '#1a6fff', iconBg: '#eff6ff' },
-  fb: { accent: '#0ea5e9', iconBg: '#f0f9ff' },
   wait: { accent: '#8b5cf6', iconBg: '#ede9fe' },
   resp: { accent: '#10b981', iconBg: '#ecfdf5' },
   bal: { accent: '#f59e0b', iconBg: '#fffbeb' },
@@ -86,10 +85,6 @@ const cards = computed(() => {
     {
       key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined, warn: false,
       delta: { text: `成功 ${s.successCount} / ${s.successBase} 单`, tone: 'muted' } as Delta,
-    },
-    {
-      key: 'fb', label: '兜底回池率', value: pct(s.fallbackRate), icon: RollbackOutlined, warn: false,
-      delta: { text: `进入派单 ${s.enteredCount} 单`, tone: 'muted' } as Delta,
     },
     {
       key: 'wait', label: '池等待中位数', value: minText(s.waitMedian), icon: FieldTimeOutlined, warn: false,
@@ -118,7 +113,6 @@ const backlogCols = [
   { title: '派单方式', key: 'mode', width: 90 },
   { title: '等原处理人', dataIndex: 'waitingOriginal', key: 'waitingOriginal', width: 96, align: 'right' as const },
   { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
-  { title: '派单失败回池', dataIndex: 'failed', key: 'failed', width: 106, align: 'right' as const },
   { title: '最长等待', key: 'maxWait', width: 110, align: 'right' as const },
 ];
 
@@ -181,8 +175,8 @@ const logOpen = ref(false);
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'poolLabel'" class="pool-name">{{ record.poolLabel }}</span>
             <span v-else-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
-            <span v-else-if="column.key === 'waitingOriginal' || column.key === 'queued' || column.key === 'failed'" :class="{ 'n-hot': record[column.key] > 0, 'n-zero': !record[column.key] }">{{ record[column.key] }}</span>
-            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued + record.failed ? record.maxWaitMin : 0) }}</span>
+            <span v-else-if="column.key === 'waitingOriginal' || column.key === 'queued'" :class="{ 'n-hot': record[column.key] > 0, 'n-zero': !record[column.key] }">{{ record[column.key] }}</span>
+            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued ? record.maxWaitMin : 0) }}</span>
           </template>
         </a-table>
       </section>
@@ -217,7 +211,7 @@ const logOpen = ref(false);
 .stat-block { padding: 16px 20px; }
 
 /* 统计卡：顶色条 + 右侧彩色图标 */
-.stat-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.stat-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .stat-card {
   min-width: 0;
   border: 1px solid #eef0f3;
@@ -277,7 +271,10 @@ const logOpen = ref(false);
 .n-zero { color: #86909c; }
 
 @container (max-width: 1080px) {
-  .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* 五张卡折成 3 + 2，第二行两张撑满 */
+  .stat-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .stat-card { grid-column: span 2; }
+  .stat-card:nth-last-child(-n + 2) { grid-column: span 3; }
 }
 @container (max-width: 1100px) {
   .monitor-table-row { grid-template-columns: minmax(0, 1fr); }
@@ -287,5 +284,7 @@ const logOpen = ref(false);
 }
 @container (max-width: 560px) {
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-card, .stat-card:nth-last-child(-n + 2) { grid-column: auto; }
+  .stat-card:last-child { grid-column: 1 / -1; }
 }
 </style>

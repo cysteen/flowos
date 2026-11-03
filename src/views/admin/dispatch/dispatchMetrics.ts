@@ -3,7 +3,7 @@
  * 只读：取 dispatch store 的派单日志与坐席、工单库的处理履历换算，不写任何数据。
  */
 import { TICKETS } from '@/mock/tickets';
-import { isDispatchUndone, type DispatchAgent, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import type { DispatchAgent, DispatchLogEntry } from '@/views/tickets/types/dispatch';
 
 const MIN = 60_000;
 
@@ -89,8 +89,6 @@ export interface MonitorStats {
   /** 自动派单成功率的分子 / 分母（工单数） */
   successCount: number;
   successBase: number;
-  fallbackRate: number | null;
-  enteredCount: number;
   pathShare: { name: string; count: number; pct: number; color: string }[];
   pathTotal: number;
 }
@@ -98,7 +96,7 @@ export interface MonitorStats {
 const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
   { name: '按规则直派', color: '#8b5cf6', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
   { name: '派回原处理人', color: '#0ea5e9', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
-  { name: '综合打分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && (l.path === '加权评分' || l.path === '组内放宽') },
+  { name: '综合打分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
   { name: '二线领取', color: '#10b981', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
   { name: '班组长指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || l.manual?.action === '改派') },
   { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },
@@ -112,8 +110,6 @@ export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
   /** 坐席当日在岗小时数（就绪时长） */
   onDutyHoursOf: (name: string) => number = () => 0,
-  /** 工单当前派单状态（排队中 / 等原处理人的单尚无派单结果，不计入自动派单成功率分母，13.2） */
-  dispatchStatusOf: (no: string) => string | null | undefined = () => null,
   /** 池所属处理组（工单池筛选下均衡度取该组成员，14.1） */
   poolGroupIdOf: (poolId: string) => string | undefined = (id) => id,
 ): MonitorStats {
@@ -122,22 +118,11 @@ export function computeStats(
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const inRange = scoped.filter((l) => inWindow(l, w));
 
-  // 进入派单：自动派单下有判定记录的工单（混合派单 / 人工派单留池的单不进入自动派单）
+  // 进入派单：判定时生效方式为自动派单的工单（混合派单 / 人工派单留池的单不进入自动派单）
   const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode === '自动派单');
   const entered = new Set(formal.map((l) => l.ticketNo));
-  // 自动派单成功率（13.2）：引擎派出后未被跨班次回收、未被人工换人
-  // （改派、调剂到人、调剂到池、班组长指派）的工单 ÷ 进入派单的工单；不含直派规则单；仍在排队 / 等原处理人的单不计入分母
-  const lastAssignSeq = new Map<string, number>();
-  for (const l of formal) {
-    if (isEngineAssign(l) && l.path !== '直派规则') lastAssignSeq.set(l.ticketNo, Math.max(lastAssignSeq.get(l.ticketNo) ?? 0, l.seq));
-  }
-  const success = new Set([...lastAssignSeq].filter(([no, seq]) => !isDispatchUndone(scoped, no, seq)).map(([no]) => no));
-  const succEntered = new Set([...entered].filter((no) => {
-    if (lastAssignSeq.has(no)) return true;
-    const st = dispatchStatusOf(no);
-    return st !== '排队中' && st !== '等原处理人';
-  }));
-  const fallback = new Set(formal.filter((l) => l.path === '兜底回池').map((l) => l.ticketNo));
+  // 自动派单成功率（13.2）：进入派单的工单中，已由系统派出的占比；不含直派规则单
+  const success = new Set(formal.filter((l) => isEngineAssign(l) && l.path !== '直派规则').map((l) => l.ticketNo));
 
   const seg = firstRespSegments(scoped, w);
   let firstRespDelta: number | null = null;
@@ -178,26 +163,24 @@ export function computeStats(
     waitDelta,
     respDelta,
     balance,
-    successRate: succEntered.size ? Math.round((success.size / succEntered.size) * 1000) / 10 : null,
+    successRate: entered.size ? Math.round((success.size / entered.size) * 1000) / 10 : null,
     successCount: success.size,
-    successBase: succEntered.size,
-    fallbackRate: entered.size ? Math.round((fallback.size / entered.size) * 1000) / 10 : null,
-    enteredCount: entered.size,
+    successBase: entered.size,
     pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),
     pathTotal,
   };
 }
 
-/* ---------------- 派单趋势（按日派出量、兜底量） ---------------- */
+/* ---------------- 派单趋势（按日派出量） ---------------- */
 
-/** 历史基线：各组池日均派出量与兜底量（今日之前的日期叠加派单日志实计） */
-const TREND_BASE: Record<string, { out: number; fb: number }> = {
-  line2: { out: 46, fb: 3 },
-  hardware: { out: 22, fb: 1.4 },
-  'edu-flash': { out: 0, fb: 0 },
-  xiaozhi: { out: 14, fb: 0.6 },
-  edu: { out: 20, fb: 1 },
-  general: { out: 24, fb: 1.6 },
+/** 历史基线：各组池日均派出量（今日之前的日期叠加派单日志实计） */
+const TREND_BASE: Record<string, { out: number }> = {
+  line2: { out: 46 },
+  hardware: { out: 22 },
+  'edu-flash': { out: 0 },
+  xiaozhi: { out: 14 },
+  edu: { out: 20 },
+  general: { out: 24 },
 };
 const DAY = 24 * 60 * MIN;
 
@@ -208,15 +191,12 @@ function dayWave(dayStart: number, salt: number): number {
   return x - Math.floor(x);
 }
 
-export interface TrendPoint { label: string; dayStart: number; out: number; fallback: number }
+export interface TrendPoint { label: string; dayStart: number; out: number }
 
 export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: string[] | null, now: number): TrendPoint[] {
   const today = rangeStart('today', now);
   const ids = poolIds ?? Object.keys(TREND_BASE);
-  const base = ids.reduce((s, id) => {
-    const b = TREND_BASE[id];
-    return b ? { out: s.out + b.out, fb: s.fb + b.fb } : s;
-  }, { out: 0, fb: 0 });
+  const baseOut = ids.reduce((s, id) => s + (TREND_BASE[id]?.out ?? 0), 0);
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const pts: TrendPoint[] = [];
   // 只取已结束的整日：近 N 天＝昨日往前 N 天
@@ -225,13 +205,11 @@ export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: stri
     const de = ds + DAY;
     const dayLogs = scoped.filter((l) => { const t = parseAt(l.at); return t >= ds && t < de; });
     const out = dayLogs.filter(isEngineAssign).length;
-    const fallback = new Set(dayLogs.filter((l) => l.kind === '判定' && l.path === '兜底回池').map((l) => l.ticketNo)).size;
     const wd = new Date(ds).getDay();
     const weekend = wd === 0 || wd === 6 ? 0.72 : 1;
-    const bOut = Math.round(base.out * weekend * (0.86 + dayWave(ds, 1) * 0.28));
-    const bFb = Math.round(base.fb * weekend * (0.5 + dayWave(ds, 2) * 1.1));
+    const bOut = Math.round(baseOut * weekend * (0.86 + dayWave(ds, 1) * 0.28));
     const d = new Date(ds);
-    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out, fallback: bFb + fallback });
+    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out });
   }
   return pts;
 }

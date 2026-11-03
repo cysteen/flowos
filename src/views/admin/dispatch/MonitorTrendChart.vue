@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 派单趋势：按日派出量、兜底量（近 7 天 / 30 天），纯 SVG 绘制
+// 分派监控 · 派单趋势：按日派出量（近 7 天 / 30 天），纯 SVG 绘制
 import { computed, ref } from 'vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { useClock } from './dispatchUi';
@@ -32,7 +32,7 @@ function niceStep(max: number): number {
 
 const chart = computed(() => {
   const pts = points.value;
-  const max = Math.max(1, ...pts.map((p) => p.out), ...pts.map((p) => p.fallback));
+  const max = Math.max(1, ...pts.map((p) => p.out));
   const step = niceStep(max);
   const yMax = Math.ceil(max / step) * step;
   const yTicks: number[] = [];
@@ -41,7 +41,6 @@ const chart = computed(() => {
   const x = (i: number) => (pts.length > 1 ? (i / (pts.length - 1)) * W : W / 2);
   const y = (v: number) => PAD_T + innerH - (v / yMax) * innerH;
   const outPts = pts.map((p, i) => ({ x: x(i), y: y(p.out) }));
-  const fbPts = pts.map((p, i) => ({ x: x(i), y: y(p.fallback) }));
   const line = (ps: { x: number; y: number }[]) => ps.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   const area = outPts.length > 1
     ? `${line(outPts)} L ${outPts[outPts.length - 1].x.toFixed(1)} ${H} L ${outPts[0].x.toFixed(1)} ${H} Z`
@@ -49,8 +48,8 @@ const chart = computed(() => {
   const long = pts.length > 7;
   const xIdx = long ? [0, 5, 10, 15, 20, 25, pts.length - 1] : pts.map((_, i) => i);
   return {
-    yTicks, outPts, fbPts, area,
-    outLine: line(outPts), fbLine: line(fbPts),
+    yTicks, outPts, area,
+    outLine: line(outPts),
     xLabels: xIdx.map((i) => ({ i, text: pts[i].label })),
     showDots: !long,
   };
@@ -59,8 +58,7 @@ const chart = computed(() => {
 const totals = computed(() => {
   const pts = points.value;
   const out = pts.reduce((s, p) => s + p.out, 0);
-  const fb = pts.reduce((s, p) => s + p.fallback, 0);
-  return { out, fb, avg: Math.round(out / pts.length) };
+  return { out, avg: Math.round(out / pts.length) };
 });
 
 const hover = ref<number | null>(null);
@@ -79,12 +77,11 @@ function hitStyle(i: number) {
   <section class="dx-card trend">
     <div class="dx-sec-hd">
       <span class="dx-sec-title">派单趋势</span>
-      <span class="dx-sec-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }} · 兜底 {{ totals.fb }}</span>
+      <span class="dx-sec-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }}</span>
       <a-segmented v-model:value="days" size="small" class="dispatch-time-seg dx-sec-extra" :options="[...TREND_RANGE_OPTS]" />
     </div>
     <div class="legend-line">
       <span class="lg"><i class="sw" style="background: #1a6fff" />派出量</span>
-      <span class="lg"><i class="sw" style="background: #f59e0b" />兜底回池</span>
     </div>
     <div class="line-chart">
       <div class="y-axis"><span v-for="t in chart.yTicks" :key="t">{{ t }}</span></div>
@@ -100,21 +97,17 @@ function hitStyle(i: number) {
             <line v-for="(t, i) in chart.yTicks" :key="`g${t}`" x1="0" :x2="W" :y1="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" :y2="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" class="grid" />
             <path v-if="chart.area" :d="chart.area" fill="url(#dispatchTrendFill)" />
             <path :d="chart.outLine" class="ln" stroke="#1a6fff" />
-            <path :d="chart.fbLine" class="ln" stroke="#f59e0b" />
             <line v-if="hover != null" :x1="chart.outPts[hover].x" :x2="chart.outPts[hover].x" :y1="PAD_T" :y2="H" class="cursor" />
           </svg>
           <template v-if="chart.showDots || hover != null">
             <template v-for="(p, i) in chart.outPts" :key="`o${i}`">
               <span v-if="chart.showDots || hover === i" class="dot" :style="{ left: `${leftPct(i)}%`, top: `${(p.y / H) * 100}%`, borderColor: '#1a6fff' }" />
             </template>
-            <template v-for="(p, i) in chart.fbPts" :key="`f${i}`">
-              <span v-if="chart.showDots || hover === i" class="dot sm" :style="{ left: `${leftPct(i)}%`, top: `${(p.y / H) * 100}%`, borderColor: '#f59e0b' }" />
-            </template>
           </template>
           <div class="hit-row">
             <a-tooltip v-for="(p, i) in points" :key="p.dayStart" placement="top" :mouse-enter-delay="0.05">
               <template #title>
-                <div class="tip"><b>{{ p.label }}</b><span>派出 {{ p.out }} 单</span><span>兜底回池 {{ p.fallback }} 单</span></div>
+                <div class="tip"><b>{{ p.label }}</b><span>派出 {{ p.out }} 单</span></div>
               </template>
               <div class="hit" :style="hitStyle(i)" @mouseenter="hover = i" @mouseleave="hover = null" />
             </a-tooltip>
@@ -145,7 +138,6 @@ function hitStyle(i: number) {
 .ln { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .cursor { stroke: #d1d5db; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 2px solid; transform: translate(-50%, -50%); pointer-events: none; }
-.dot.sm { width: 7px; height: 7px; }
 .hit-row { position: absolute; inset: 0; }
 .hit { position: absolute; top: 0; height: 100%; cursor: crosshair; }
 .x-axis { position: relative; height: 20px; margin-top: 6px; }
