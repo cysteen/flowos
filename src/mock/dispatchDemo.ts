@@ -340,7 +340,7 @@ type Builder = ReturnType<typeof makeBuilder>;
 
 const REASSIGN_REASONS = ['客户要求更换处理人', '原处理人临时外出培训', '需熟悉该产品的坐席跟进'];
 const TRANSFER_REASONS = ['该客户近期由其跟进', '跨组协助处理'];
-const FAIL_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '无在班成员', '首响已超时', '无画像匹配成员'];
+const FAIL_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '无可接单成员', '无画像匹配成员', '无画像匹配成员'];
 
 /* ------------------------------------------------------------------ */
 /* 上线以来（前 13 天）                                                   */
@@ -444,7 +444,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       } else if (sc < 0.78) {
         b.judge(t, ts, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
         assignAt = ts + b.between(2, 16) * MIN;
-        b.judge(t, assignAt, { trigger: '定时扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
+        b.judge(t, assignAt, { trigger: '补单扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
       } else if (sc < 0.82) {
         assignAt = ts;
         b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: r() < 0.7 ? 1 : 2, mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
@@ -452,7 +452,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
         const relation = relationOf(trigger, ts);
         b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
         assignAt = ts + b.between(3, 12) * MIN;
-        b.judge(t, assignAt, { trigger: '定时扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
+        b.judge(t, assignAt, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
       } else if (sc < 0.93) {
         const reason = b.pick(FAIL_REASONS);
         let fbAt = ts;
@@ -461,7 +461,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
           fbAt = ts + b.between(15, 22) * MIN;
         }
         b.judge(t, fbAt, {
-          trigger: reason === '均达个人上限' ? '定时扫描' : trigger, path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: reason,
+          trigger: reason === '均达个人上限' ? '放宽产品范围' : trigger, path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: reason,
           relaxLevel: reason === '无画像匹配成员' || reason === '均达个人上限' ? 2 : 0,
         });
         const byLeader = r() < 0.45;
@@ -581,11 +581,11 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     const trigger: DispatchTrigger = pool === 'tech' ? '升级三线' : i % 7 === 3 ? '售后转回' : '新单';
     if (via === 'q') {
       b.judge(t, enter, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
-      b.judge(t, take, { trigger: '定时扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+      b.judge(t, take, { trigger: '补单扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
     } else if (via === 'r') {
       const relation = relationOf(trigger, enter);
       b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
-      b.judge(t, take, { trigger: '定时扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
+      b.judge(t, take, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
     } else {
       const path: DispatchPath = via === 'o' ? '原处理人' : via === 'x' ? '组内放宽' : '加权评分';
       // 今日三次派回原处理人各取一种关系；一次综合打分前，同客户近期的原处理人因上次回访不满意不派回
@@ -681,6 +681,16 @@ const POOL_SEEDS: PoolSeed[] = [
     snap: SNAPS.hardware[1], enteredAgo: 16, remain0: 420, status: null },
 ];
 
+/**
+ * 硬件缺陷组池里的客服⇄售后种子单：未经派单进池，进池时间距今（分钟）。
+ * 售后业务时间线（建单、转出、回流时间）不动，池内等待时长从进池时间起算。
+ */
+export const POOL_ENTERED_AGO_MIN: Record<string, number> = {
+  'IFLYZX-20260924-00012': 26,
+  'IFLYZX-20260930-00041': 55,
+  'IFLYZX-20261003-00047': 38,
+};
+
 /** 预留目标（当日在班、当前不可用：满额或小休） */
 const RESERVE_FOR: Record<string, string> = { 'L-R1': '王坐席', 'G-R1': '刘洋', 'T-R1': '陈技支', 'H-R1': '李四' };
 
@@ -712,23 +722,23 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     if (s.key === 'L-Q1' || s.key === 'G-Q1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       st.queueSince = enteredAt;
-      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
+      sys('排队等待', `${pl}排队：相符成员均已满额`, enteredAt);
     } else if (s.key === 'L-Q2') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       const relaxAt = enteredAt + 15 * MIN;
-      b.judge(t, relaxAt, { trigger: '定时扫描', path: '排队', relaxLevel: 1, mode, status: '排队中' });
+      b.judge(t, relaxAt, { trigger: '放宽产品范围', path: '排队', relaxLevel: 1, mode, status: '排队中' });
       Object.assign(st, { relaxLevel: 1, queueSince: relaxAt });
-      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
+      sys('排队等待', `${pl}排队：相符成员均已满额`, enteredAt);
       sys('放宽产品范围', '产品放宽至同产品分类', relaxAt);
     } else if (s.key === 'L-F1') {
-      b.judge(t, enteredAt, { trigger: '售后转回', path: '兜底回池', mode, status: '派单失败回池', failReason: '首响已超时' });
-            sys('退回工单池', `退回工单池（首次响应已超时），已通知${label}班组长`, enteredAt);
+      b.judge(t, enteredAt, { trigger: '售后转回', path: '兜底回池', mode, status: '派单失败回池', failReason: '均达个人上限' });
+            sys('退回工单池', `退回工单池（均达个人上限），已通知${label}班组长`, enteredAt);
     } else if (s.key === 'G-F1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', relaxLevel: 2, mode, status: '排队中' });
       const fbAt = enteredAt + 15 * MIN;
-      b.judge(t, fbAt, { trigger: '定时扫描', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
+      b.judge(t, fbAt, { trigger: '放宽产品范围', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
       Object.assign(st, { relaxLevel: 2 });
-      sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
+      sys('排队等待', `${pl}排队：相符成员均已满额`, enteredAt);
       sys('退回工单池', `退回工单池（均达个人上限），已通知${label}班组长`, fbAt);
     } else if (s.key === 'T-F1') {
       const movedAt = enteredAt;

@@ -12,7 +12,7 @@ import { useRefundStore } from '@/stores/refund';
 import { useUserStore } from '@/stores/user';
 import type { WorkStatus } from '@/stores/cti';
 import { isFlashTicket } from '@/views/tickets/types/flash';
-import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { isXiaozhiPooledRecord, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
 import { IN_TRANSIT_COUNT_RULE, NOT_OWN_POOL_MESSAGE, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
@@ -37,22 +37,21 @@ function hm(ms: number): string {
 
 /**
  * 话务条工作状态 → 派单坐席状态：签出＝签出；小休＝小休；签入后未点就绪＝未就绪；就绪＝就绪；
- * 通话中沿用通话前的状态（未就绪时外呼不算就绪，`beforeCall` 取话务条记下的通话前状态）。
+ * 通话中算就绪（外呼只能从就绪发起）。
  */
-export function signInOfWorkStatus(s: WorkStatus, beforeCall?: WorkStatus | null): SignInStatus {
+export function signInOfWorkStatus(s: WorkStatus): SignInStatus {
   if (s === 'offline') return '签出';
   if (s === 'break') return '小休';
   if (s === 'logged_in') return '未就绪';
-  if (s === 'busy' && beforeCall === 'logged_in') return '未就绪';
   return '就绪';
 }
 
 /** 话务条状态变化后同步到派单：点就绪不立即来单，由下一轮工单池扫描派出 */
-export function syncSignInFromCti(name: string, s: WorkStatus, beforeCall?: WorkStatus | null) {
+export function syncSignInFromCti(name: string, s: WorkStatus, _beforeCall?: WorkStatus | null) {
   const dispatch = useDispatchStore();
   const a = dispatch.agentOf(name);
   if (!a) return;
-  const next = signInOfWorkStatus(s, beforeCall);
+  const next = signInOfWorkStatus(s);
   if (a.signIn === next) return;
   dispatch.setSignIn(name, next);
 }
@@ -93,6 +92,8 @@ export function reserveTipOf(no: string): string {
 
 /** 池内等待分钟：取进入派单时刻，未经派单进池的单从进池时间起算 */
 export function waitMinutesOf(t: Ticket, now: number = Date.now()): number | null {
+  // 小智直通产研的记录单不是待领任务，不计等待
+  if (isXiaozhiPooledRecord(t)) return null;
   const dispatch = useDispatchStore();
   const from = dispatch.ticketStates[t.no]?.enteredAt ?? dispatch.poolEnteredAtOf(t, NaN);
   if (!Number.isFinite(from)) return null;
@@ -123,7 +124,8 @@ export function claimDisabledTip(name: string, t?: Ticket): string {
 /** 指派、改派给非就绪坐席的二次确认（9.3）；就绪返回空串 */
 export function notReadyConfirmText(name: string, signIn: SignInStatus, verb: string): string {
   if (signIn === '就绪') return '';
-  return `${name}当前${signIn === '签出' ? '未签入' : '未就绪'}，确定${verb}？`;
+  const state: Record<Exclude<SignInStatus, '就绪'>, string> = { 小休: '小休中', 未就绪: '未就绪', 签出: '未签入' };
+  return `${name}当前${state[signIn]}，确定${verb}？`;
 }
 
 /* ------------------------------------------------------------------ */

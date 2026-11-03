@@ -162,17 +162,17 @@ export const DEFAULT_POOL_ID = 'general';
 export const DEFAULT_POOL_LABEL = '综合处理组';
 
 /**
- * 固定落点池及其用途：不可停用，处理组不能移出最后一名成员；这些组的固定落点始终是初始池，同组新建的池不作固定落点。
+ * 固定落点池及「停用」悬停提示：不可停用，处理组不能移出最后一名成员；这些组的固定落点始终是初始池，同组新建的池不作固定落点。
  */
-export const PROTECTED_POOL_USE: Record<string, string> = {
-  [DEFAULT_POOL_ID]: '未命中入池规则的工单进入此池',
-  tech: '升级三线的工单进入此池',
-  xiaozhi: '小智工单进入此池',
-  'edu-flash': '二线刷机工单进入此池',
-  edu: '个册退费工单进入此池',
+export const PROTECTED_POOL_TIP: Record<string, string> = {
+  [DEFAULT_POOL_ID]: '默认池是未匹配入池规则工单的落点，不可停用',
+  tech: '技术支持组池是升级三线的落点，不可停用',
+  xiaozhi: '小智工单处理组池是小智工单的落点，不可停用',
+  'edu-flash': '教育刷机处理组池是二线刷机单的落点，不可停用',
+  edu: '教育支持组池是个册退费工单的落点，不可停用',
 };
 export function isProtectedPool(id: string): boolean {
-  return id in PROTECTED_POOL_USE;
+  return id in PROTECTED_POOL_TIP;
 }
 
 /** 工单池扫描间隔（分钟）：固定，不可配 */
@@ -428,13 +428,14 @@ export const IN_TRANSIT_COUNT_RULE: Record<TicketStatus, 'assignee' | 'none'> = 
 /* ------------------------------------------------------------------ */
 
 /**
- * 触发类型（13.1）。进池事件当场判定一次；其余都在每 5 分钟一轮的工单池扫描里判定：
- * 定时扫描、预留到期、切为自动派单（生效方式变为自动派单后的第一轮）。跨班次回收为 P1，类型先列出。
+ * 派单日志「时机」（A.1）。进池事件当场判定一次；其余都在每 5 分钟一轮的工单池扫描里判定：
+ * 补单扫描、保留到期、放宽产品范围、切为自动派单（生效方式变为自动派单后的第一轮）。跨班次回收为 P1，类型先列出。
  */
 export type DispatchTrigger =
   | '新单'
-  | '定时扫描'
-  | '预留到期'
+  | '补单扫描'
+  | '保留到期'
+  | '放宽产品范围'
   | '切为自动派单'
   | '跨班次回收'
   | '调剂到池'
@@ -448,7 +449,7 @@ export type DispatchTrigger =
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
 
 /** 失败原因（13.1） */
-export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '无在班成员' | '均达个人上限' | '系统异常' | '首响已超时';
+export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '均达个人上限' | '系统异常';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
@@ -609,5 +610,3 @@ export interface OccupyResult {
 export const TAKEN_MESSAGE = '该工单已被领取';
 /** 非本人所在组的池只读（10.1） */
 export const NOT_OWN_POOL_MESSAGE = '非本组工单池，不可领取';
-/** 固定落点池的处理组不能移出最后一名成员 */
-export const LAST_MEMBER_MESSAGE = '该组是固定落点工单池的处理组，至少保留一名成员';

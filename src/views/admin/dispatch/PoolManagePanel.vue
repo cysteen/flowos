@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 工单池管理（PRD 14.3）：工单池在此新建（建池时选处理组），一个处理组可有多个池；
-// 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认，默认池不可停用）；
+// 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认，固定落点池不可停用）；
 // 停用的池另列「已停用」；池详情列池内待领工单，管理员可指派
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -8,7 +8,7 @@ import { message } from 'ant-design-vue';
 import { InboxOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
-import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
+import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, PROTECTED_POOL_TIP, isProtectedPool, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { MODE_TONE, useClock } from './dispatchUi';
@@ -151,7 +151,7 @@ const detailRows = computed(() => {
         status: st?.status ?? null,
         reserveFor: st?.status === '等原处理人' ? st.reserveFor : undefined,
         reserveUntil: st?.status === '等原处理人' && st.reserveUntil ? fmt(st.reserveUntil) : undefined,
-        enteredAt: st ? fmt(st.enteredAt) : '—',
+        enteredAt: fmt(st?.enteredAt ?? store.poolEnteredAtOf(t)),
         slaRemain: remain,
       };
     });
@@ -229,8 +229,8 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             <span class="pm-ops">
               <a-button type="link" size="small" class="pm-op" @click="detailId = p.id">池详情</a-button>
               <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
-              <a-tooltip :title="p.isDefault ? '默认池不可停用' : undefined">
-                <a-button type="link" size="small" danger class="pm-op" :disabled="p.isDefault" @click="openToggle(p.id, false)">停用</a-button>
+              <a-tooltip :title="PROTECTED_POOL_TIP[p.id]">
+                <a-button type="link" size="small" danger class="pm-op" :disabled="isProtectedPool(p.id)" @click="openToggle(p.id, false)">停用</a-button>
               </a-tooltip>
             </span>
           </div>

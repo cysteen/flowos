@@ -7,7 +7,7 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
-import type { DispatchRole } from '@/views/tickets/types/dispatch';
+import { isProfileConfigured, type DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
 // 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组，成员取派单坐席；工单池在工单池管理新建（建池时选处理组），
@@ -129,6 +129,7 @@ function saveGroup() {
 }
 
 // —— 成员 添加/移除/设组长 ——
+const PROFILE_FIRST_TIP = '请到坐席画像配置人员画像与熟练度后再参与派单';
 let mSeq = 14;
 const memModalOpen = ref(false);
 const mf = reactive<Member>({ id: '', name: '', role: '一线坐席', ext: '', status: '在线', tickets: 0 });
@@ -137,8 +138,9 @@ function saveMember() {
   if (!mf.name) { message.error('请填写成员姓名'); return; }
   const a = dispatch.agentOf(mf.name);
   if (isDispatchGroup(selected.value)) {
-    if (!a) { message.error('该成员未在坐席画像中，请先在坐席画像中维护'); return; }
+    if (!a) { message.error(PROFILE_FIRST_TIP); return; }
     dispatch.setAgentGroup(a.name, selected.value, true);
+    if (!isProfileConfigured(a.profile)) message.warning(PROFILE_FIRST_TIP);
   } else {
     (memberMap[selected.value] ??= []).push({ ...mf, id: 'u' + mSeq++ });
   }
@@ -162,6 +164,10 @@ function isLeader(m: Member): boolean {
   const dg = dispatch.groupOf(selected.value);
   return dg ? dg.leaders.includes(m.name) : m.role === '班组长';
 }
+/** 固定落点池的处理组不能移出最后一名成员 */
+function lastMemberTip(m: Member): string {
+  return isDispatchGroup(selected.value) ? dispatch.lastMemberTip(m.name, selected.value) : '';
+}
 function removeMember(m: Member) {
   Modal.confirm({
     title: '移除成员', icon: null, content: `确定将「${m.name}」移出本组？`,
@@ -170,7 +176,8 @@ function removeMember(m: Member) {
       const key = selected.value;
       const a = isDispatchGroup(key) ? dispatch.agentOf(m.name) : undefined;
       if (a) {
-        dispatch.setAgentGroup(a.name, key, false);
+        const r = dispatch.setAgentGroup(a.name, key, false);
+        if (!r.ok) { message.error(r.message); return; }
       } else {
         const arr = memberMap[key] ?? [];
         const i = arr.findIndex((x) => x.id === m.id);
@@ -254,7 +261,9 @@ function removeMember(m: Member) {
               <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
               <template v-else-if="column.key === 'op'">
                 <a-button type="link" size="small" :disabled="isLeader(record as Member)" @click="setLeader(record as Member)">设组长</a-button>
-                <a-button type="link" size="small" danger @click="removeMember(record as Member)">移除</a-button>
+                <a-tooltip :title="lastMemberTip(record as Member) || undefined">
+                  <a-button type="link" size="small" danger :disabled="!!lastMemberTip(record as Member)" @click="removeMember(record as Member)">移除</a-button>
+                </a-tooltip>
               </template>
             </template>
           </a-table>

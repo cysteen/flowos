@@ -34,10 +34,8 @@ export const PATH_LABEL: Record<DispatchPath, string> = {
 export const FAIL_LABEL: Record<DispatchFailReason, string> = {
   无画像匹配成员: '无画像相符的成员',
   无可接单成员: '无可接单成员',
-  无在班成员: '无已就绪成员',
   均达个人上限: '均达个人上限',
   系统异常: '系统异常',
-  首响已超时: '首次响应已超时',
 };
 
 /** 打分因素（4.3） */
