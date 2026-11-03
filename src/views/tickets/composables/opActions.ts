@@ -76,14 +76,13 @@ export type OpActionType =
 
 /**
  * 调剂（【1215】PRD 9.4）：`mode` 到人 / 到池。`scope` 保留给按旧形态读取的入口（到池＝cross）；
- * 到人时 `target` 为处理人姓名、`groupId` 为调剂后归属组（此人非归属组成员时）；到池时 `poolId` 为目标池。
+ * 到人时 `target` 为处理人姓名、`poolId` 为调剂后归属池（归属组随池）；到池时 `poolId` 为目标池。
  */
 export interface TransferPayload {
   scope: 'same' | 'cross';
   target: string;
   reason: string;
   mode?: 'person' | 'pool';
-  groupId?: string;
   poolId?: string;
 }
 /** 委派到人：逐人任务说明 */
@@ -779,7 +778,6 @@ export function applyOpAction(
         const r = applyTransferDispatch(detail, timeline, {
           mode: payload.data.mode,
           target: payload.data.target,
-          groupId: payload.data.groupId,
           poolId: payload.data.poolId,
           reason: payload.data.reason,
         }, operator, operatorRole);

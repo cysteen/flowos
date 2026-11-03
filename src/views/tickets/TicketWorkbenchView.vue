@@ -194,7 +194,7 @@ function matchesMeCell(t: Ticket): boolean {
   return myProfileConfigured.value && dispatch.matchesMe(t, user.name);
 }
 
-/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，混合派单 / 人工派单另标；点选即按组池筛选 */
+/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，派单方式按池在行内标；点选即按组池筛选 */
 const poolSegments = computed(() => {
   void dispatch.groups;
   void dispatch.config;
@@ -203,9 +203,14 @@ const poolSegments = computed(() => {
     id,
     label: dispatch.poolLabel(id),
     count: wb.tabRows.value.filter((t) => t.groupId === id).length,
-    tag: modeTagOf(dispatch.effectiveModeOf(id)),
   }));
 });
+/** 工单池行：所在池（一个处理组可有多个池，取工单实际所在的池）与其派单方式（10.1 / 5.2） */
+function poolCellOf(t: Ticket): { label: string; tag: ReturnType<typeof modeTagOf> } {
+  const id = dispatch.poolIdOf(t);
+  if (id) return { label: dispatch.poolLabel(id), tag: modeTagOf(dispatch.effectiveModeOf(id)) };
+  return { label: t.groupNames?.[0] ? `${t.groupNames[0]}池` : '—', tag: null };
+}
 function togglePoolSegment(id: string) {
   const cur = wb.poolDispatchFilter.value.pools;
   wb.setPoolDispatchFilter({ pools: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
@@ -213,7 +218,7 @@ function togglePoolSegment(id: string) {
 const dispatchStatusOptions = DISPATCH_STATUSES.map((s) => ({ value: s, label: s }));
 const poolFilterOptions = computed(() => poolSegments.value.map((p) => ({ value: p.id, label: p.label })));
 
-/** 工单池行内：「领取」未签入置灰（10.2）；班组长等另有「指派」 */
+/** 工单池行内：「领取」未就绪、未签入置灰（10.2）；班组长等另有「指派」 */
 function poolRowActionsDispatch(): { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] {
   const tip = claimDisabledTip(user.name);
   const acts: { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] = [
@@ -388,7 +393,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
           continue;
         }
         const r = applyTransferToRow(t, {
-          mode: data.mode, target: name, groupId: data.groupId, poolId: data.poolId, reason: data.reason,
+          mode: data.mode, target: name, poolId: data.poolId, reason: data.reason,
         }, actor.name, actor.role);
         if (r.handled) msg = r.message;
       }
@@ -495,16 +500,15 @@ const canAssign = computed(() => canAssignTicket(user.roleKey));
  */
 const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
+/** 候选取工单所在池的处理组成员（新建池的 id 不是组 id） */
 const assignGroupId = computed(() => {
   const t = assignTicket.value;
   if (!t) return null;
-  return dispatch.ticketStates[t.no]?.poolId ?? (dispatch.isDispatchPool(t.groupId) ? t.groupId! : null);
+  return dispatch.poolGroupIdOf(dispatch.poolIdOf(t)) ?? null;
 });
 
 function openAssign(t: Ticket) {
-  const st = dispatch.ticketStates[t.no];
-  const gid = st?.poolId ?? t.groupId;
-  if (!gid || !dispatch.isDispatchPool(gid)) {
+  if (!dispatch.poolIdOf(t)) {
     // 不进入派单的组池（一线客服组等）保持现行指派
     openLegacyAssign([t.id]);
     return;
@@ -624,7 +628,7 @@ function onAction(label: string, t: Ticket) {
     return;
   }
   if (label === '领取') {
-    // 【1215】先到先得 ＋ 未签入不可领；领取不校验画像、不受个人上限约束（10.2）
+    // 【1215】先到先得 ＋ 未就绪不可领；领取不校验画像、不受个人上限约束（10.2）
     const res = wb.claimTicketWithResult(t.id);
     if (res.ok) message.success(`已领取 ${t.no}`);
     else message.warning(res.message || '该工单已被领取');
@@ -866,11 +870,6 @@ function onConfirmSaveFilter(name: string) {
             @click="togglePoolSegment(p.id)"
           >
             <span>{{ p.label }} · {{ p.count }} 张</span>
-            <span
-              v-if="p.tag"
-              class="pdb-mode"
-              :style="{ color: MODE_TAG_STYLE[p.tag].color, background: MODE_TAG_STYLE[p.tag].bg, borderColor: MODE_TAG_STYLE[p.tag].border }"
-            >{{ p.tag }}</span>
           </button>
         </div>
         <div class="pdb-filters">
@@ -1016,9 +1015,16 @@ function onConfirmSaveFilter(name: string) {
               <span v-else class="dsp-empty">—</span>
             </template>
             <template #cell-dispatchPool="{ ticket }">
-              <span class="dsp-plain" :title="ticket.groupId ? dispatch.poolLabel(ticket.groupId) : '—'">
-                {{ ticket.groupId && dispatch.isDispatchPool(ticket.groupId) ? dispatch.poolLabel(ticket.groupId) : (ticket.groupNames?.[0] ? `${ticket.groupNames[0]}池` : '—') }}
-              </span>
+              <span class="dsp-plain" :title="poolCellOf(ticket).label">{{ poolCellOf(ticket).label }}</span>
+              <span
+                v-if="poolCellOf(ticket).tag"
+                class="pdb-mode"
+                :style="{
+                  color: MODE_TAG_STYLE[poolCellOf(ticket).tag!].color,
+                  background: MODE_TAG_STYLE[poolCellOf(ticket).tag!].bg,
+                  borderColor: MODE_TAG_STYLE[poolCellOf(ticket).tag!].border,
+                }"
+              >{{ poolCellOf(ticket).tag }}</span>
             </template>
             <template #cell-dispatchWait="{ ticket }">
               <span class="dsp-plain">{{ waitText(waitMinutesOf(ticket, nowMs)) }}</span>

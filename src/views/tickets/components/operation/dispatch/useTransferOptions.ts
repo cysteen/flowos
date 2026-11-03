@@ -1,10 +1,11 @@
 /**
  * 【1215】调剂 / 升级三线弹窗的候选项（PRD 9.4 / 9.5）。
  *
- * - 调剂到人：候选为全部坐席（停用除外、不含当前处理人），按组分段；每行「姓名 · 所属组 · 签入状态 · 在途 N / 上限 M」。
+ * - 调剂到人：候选为全部坐席（停用除外、不含当前处理人），按组分段；每行「姓名 · 所属组 · 坐席状态 · 在途 N / 上限 M」。
  *   调剂权限沿用现行：无跨组调剂权的角色只可选归属组成员，其余置灰；个册退费单只限本组成员。
+ *   选人后再选归属池：此人所在各组的启用池，每项「〈池名称〉 · 〈处理组〉」；无跨组调剂权时只置灰非归属组的池。
  * - 调剂到池：全部启用中的工单池（含当前归属池），每项「〈池名称〉 · 〈派单方式〉」；无跨组调剂权时只可选归属组的池。
- * - 升级三线 · 指定技术支持：技术支持组成员，每行「姓名 · 签入状态 · 在途 N / 上限 M」。
+ * - 升级三线 · 指定技术支持：技术支持组成员，每行「姓名 · 坐席状态 · 在途 N / 上限 M」。
  */
 import { computed } from 'vue';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -66,15 +67,25 @@ export function useTransferOptions(ticketNo: () => string, canCrossGroup: () => 
       .filter((g) => g.options.length);
   });
 
-  /** 所选处理人不是归属组成员时的归属组候选；只属一个组时直接取该组（不出选项） */
-  function groupChoicesFor(name?: string): { value: string; label: string }[] {
+  /** 工单当前所在池 */
+  const currentPoolId = computed(() => (row.value ? store.poolIdOf(row.value) : undefined));
+
+  /**
+   * 调剂到人的归属池候选：此人所在各组的启用池，每项「〈池名称〉 · 〈处理组〉」；无跨组调剂权时只置灰非归属组的池。
+   * 个册退费单只在本组内调剂、不换池，不出候选。
+   */
+  function poolChoicesFor(name?: string): Opt[] {
     const a = store.agentOf(name);
-    if (!a) return [];
-    const home = row.value?.groupId;
-    if (home && a.groupIds.includes(home)) return [];
-    return a.groupIds
-      .filter((id) => store.isDispatchGroup(id))
-      .map((id) => ({ value: id, label: store.groupOf(id)?.label ?? id }));
+    if (!a || refundOnly.value) return [];
+    return a.groupIds.flatMap((gid) => store.poolsOfGroup(gid, true).map((p) => {
+      const allowed = crossAllowed.value || homeGroupIds.value.includes(gid);
+      return {
+        value: p.id,
+        label: `${p.name} · ${store.groupOf(gid)?.label ?? gid}`,
+        disabled: !allowed,
+        title: allowed ? undefined : CROSS_GROUP_TIP,
+      };
+    }));
   }
 
   const poolOptions = computed<Opt[]>(() => store.enabledPools().map((p) => {
@@ -106,5 +117,5 @@ export function useTransferOptions(ticketNo: () => string, canCrossGroup: () => 
     return store.effectiveModeOf(poolId) !== '自动派单';
   }
 
-  return { row, personOptions, groupChoicesFor, poolOptions, techOptions, overCapOf, poolWaits, poolLabel: store.poolLabel };
+  return { row, personOptions, currentPoolId, poolChoicesFor, poolOptions, techOptions, overCapOf, poolWaits, poolLabel: store.poolLabel };
 }

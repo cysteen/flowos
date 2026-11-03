@@ -29,7 +29,7 @@ export interface DispatchDemo {
   overAssigned: Record<string, boolean>;
   /** 池内待派的真实工单行（注入工单库） */
   rows: Ticket[];
-  /** 坐席当日在岗、签入状态、接单时刻 */
+  /** 坐席当日在岗、坐席状态、接单时刻 */
   agentPatch: Record<string, Partial<DispatchAgent>>;
 }
 
@@ -759,7 +759,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     rows.push({
       id: `dispatch-seed-${80001 + i}`, no, type: s.type, channel: s.snap.ticketSource === 'IM' ? '在线客服' : '电话',
       title: s.title, smartMarks: s.type === '投诉' ? ['情绪'] : [], customer: s.customer, vip: false,
-      customerPhone: `1591200${pad(80 + i)}${pad(i * 7 % 100)}`,
+      customerPhone: seedPhoneOf(i),
       product: s.snap.product, productCategory: s.snap.productCategory, businessType: s.snap.businessType,
       ...(s.snap.problem ? (() => { const [l1, l2, l3] = splitProblemPath(s.snap.problem!); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
       ticketSource: s.snap.ticketSource,
@@ -772,7 +772,40 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     } as unknown as Ticket);
   });
   rows.push(surveyBadRow(now, b.groupLabel('line2')));
+  rows.push(...reserveHistoryRows(now, b));
   return { rows, states };
+}
+
+/** 四张等原处理人种子单的客户手机号（与 `buildPool` 同一算法） */
+function seedPhoneOf(i: number): string {
+  return `1591200${pad(80 + i)}${pad(i * 7 % 100)}`;
+}
+
+/** 等原处理人种子单的上一张工单标题：同一客户 2 天前由原处理人结案（关系「同客户近期」的依据，4.2） */
+const RESERVE_HISTORY_TITLE: Record<string, string> = {
+  'L-R1': '翻译机识别不准，首次来电反馈',
+  'G-R1': '门锁安装预约改期',
+  'T-R1': '质检系统单点登录失败排查',
+  'H-R1': '学习机 T20 花屏返修登记',
+};
+function reserveHistoryRows(now: number, b: Builder): Ticket[] {
+  const at = now - 2 * DAY;
+  return POOL_SEEDS.flatMap((s, i) => {
+    const title = RESERVE_HISTORY_TITLE[s.key];
+    if (!title) return [];
+    return [{
+      id: `dispatch-seed-history-${i + 1}`, no: `IFLYZX-${ymd(at)}-${79100 + i}`, type: '咨询', channel: s.snap.ticketSource === 'IM' ? '在线客服' : '电话',
+      title, smartMarks: [], customer: s.customer, vip: false, customerPhone: seedPhoneOf(i),
+      product: s.snap.product, productCategory: s.snap.productCategory, businessType: s.snap.businessType,
+      ...(s.snap.problem ? (() => { const [l1, l2, l3] = splitProblemPath(s.snap.problem!); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
+      ticketSource: s.snap.ticketSource,
+      nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+      slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
+      assignee: RESERVE_FOR[s.key], tab: 'done', groupId: s.pool, groupNames: [b.groupLabel(s.pool)],
+      responded: true,
+      createdAt: stamp(at - 5 * HOUR), updatedAt: stamp(at),
+    } as unknown as Ticket];
+  });
 }
 
 /**
@@ -827,7 +860,7 @@ function buildAudits(tl: Timeline, today: { hwMixedAt: number; t0: number; now: 
 /* 入口                                                                 */
 /* ------------------------------------------------------------------ */
 
-/** 坐席当前签入状态（小休 / 签出起点距今分钟）；其余签入 */
+/** 坐席当前状态（小休 / 签出起点距今分钟）；其余就绪 */
 const AWAY: Record<string, { signIn: '小休' | '签出'; agoMin: number }> = {
   刘洋: { signIn: '小休', agoMin: 25 },
   李四: { signIn: '小休', agoMin: 20 },
@@ -835,7 +868,9 @@ const AWAY: Record<string, { signIn: '小休' | '签出'; agoMin: number }> = {
   徐璐: { signIn: '签出', agoMin: 50 },
 };
 /** 当日未签入 */
-const OFF_TODAY = ['秦督导', '吴投诉'];
+const OFF_TODAY = ['吴投诉'];
+/** 刚签入、尚未点就绪（不被派单、不可领取） */
+const NOT_READY = ['秦督导'];
 
 export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: DispatchGroup[], rules: PoolRule[]): DispatchDemo {
   const tl = timelineOf(now);
@@ -858,10 +893,12 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
     const away = AWAY[a.name];
     if (OFF_TODAY.includes(a.name)) {
       Object.assign(p, { signIn: '签出', signedInToday: false, signInSince: null, onDutyMs: 0 });
+    } else if (NOT_READY.includes(a.name)) {
+      Object.assign(p, { signIn: '未就绪', signedInToday: true, signInSince: null, onDutyMs: 0 });
     } else if (away) {
       Object.assign(p, { signIn: away.signIn, signedInToday: true, signInSince: null, onDutyMs: Math.max(0, now - away.agoMin * MIN - t0) });
     } else {
-      Object.assign(p, { signIn: '签入', signedInToday: true, signInSince: t0, onDutyMs: 0 });
+      Object.assign(p, { signIn: '就绪', signedInToday: true, signInSince: t0, onDutyMs: 0 });
     }
     if (mine.length) Object.assign(p, { lastTakenAt: mine[mine.length - 1], recentTakes: mine });
     agentPatch[a.name] = p;

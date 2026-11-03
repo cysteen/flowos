@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// 指派弹窗（PRD 9.3）：候选为工单所在池的处理组成员；未签入、将超上限二次确认；先到先得
+// 指派弹窗（PRD 9.3）：候选为工单所在池的处理组成员；未就绪、未签入、将超上限二次确认；先到先得
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { UserSwitchOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
+import { notReadyConfirmText } from '@/views/tickets/composables/dispatchUi';
 import { useTicketWorkbench } from '@/views/tickets/composables/useTicketWorkbench';
 import type { Ticket } from '@/views/tickets/types/ticket';
 
@@ -59,9 +60,10 @@ function submit() {
       });
     } else doAssign(c.name);
   };
-  if (c.signIn !== '签入') {
+  const notReady = notReadyConfirmText(c.name, c.signIn, '指派');
+  if (notReady) {
     Modal.confirm({
-      title: '指派', content: `${c.name}当前未签入，确定指派？`, okText: '确定', cancelText: '取消',
+      title: '指派', content: notReady, okText: '确定', cancelText: '取消',
       onOk: () => confirmOver(),
     });
   } else confirmOver();

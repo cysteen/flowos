@@ -111,7 +111,7 @@ function nowStamp(): string {
  * 小智单 → 小智服务 `claimFromPool`；刷机单 → 刷机服务 `claimFromPool`；其余 → `claimPoolTicket`。
  */
 export function claimTicketByType(t: Ticket, roleKey: string, userName: string): { ok: boolean; message: string } {
-  // 【1215】先到先得 ＋ 未签入不可领（10.2）；领取不校验画像、不受个人上限约束
+  // 【1215】先到先得 ＋ 未就绪不可领（10.2）；领取不校验画像、不受个人上限约束
   const dispatch = useDispatchStore();
   const me = currentHandlerName(roleKey, userName);
   const gate = dispatch.checkClaim(t, me);

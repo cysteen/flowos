@@ -38,22 +38,27 @@ function parseStamp(s?: string): number {
 }
 
 /* ------------------------------------------------------------------ */
-/* 话务条 → 签入状态（11.5：签入即在班）                                  */
+/* 话务条 → 坐席状态（11.5：就绪即在班）                                  */
 /* ------------------------------------------------------------------ */
 
-/** 话务条工作状态 → 派单签入状态：签出＝签出；小休＝小休；签入后（未就绪 / 就绪 / 通话中）＝签入 */
-export function signInOfWorkStatus(s: WorkStatus): SignInStatus {
+/**
+ * 话务条工作状态 → 派单坐席状态：签出＝签出；小休＝小休；签入后未点就绪＝未就绪；就绪＝就绪；
+ * 通话中沿用通话前的状态（未就绪时外呼不算就绪，`beforeCall` 取话务条记下的通话前状态）。
+ */
+export function signInOfWorkStatus(s: WorkStatus, beforeCall?: WorkStatus | null): SignInStatus {
   if (s === 'offline') return '签出';
   if (s === 'break') return '小休';
-  return '签入';
+  if (s === 'logged_in') return '未就绪';
+  if (s === 'busy' && beforeCall === 'logged_in') return '未就绪';
+  return '就绪';
 }
 
-/** 话务条状态变化后同步到派单：签入后由 store 先看预留、再选排队单（4.3 名额释放选单） */
-export function syncSignInFromCti(name: string, s: WorkStatus) {
+/** 话务条状态变化后同步到派单：点就绪后由 store 先看预留、再选排队单（4.3 名额释放选单） */
+export function syncSignInFromCti(name: string, s: WorkStatus, beforeCall?: WorkStatus | null) {
   const dispatch = useDispatchStore();
   const a = dispatch.agentOf(name);
   if (!a) return;
-  const next = signInOfWorkStatus(s);
+  const next = signInOfWorkStatus(s, beforeCall);
   if (a.signIn === next) return;
   dispatch.setSignIn(name, next);
 }
@@ -80,7 +85,7 @@ export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border
   人工派单: { color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
 };
 
-export const SIGN_IN_COLOR: Record<SignInStatus, string> = { 签入: '#10B981', 小休: '#F59E0B', 签出: '#9CA3AF' };
+export const SIGN_IN_COLOR: Record<SignInStatus, string> = { 就绪: '#10B981', 未就绪: '#F97316', 小休: '#F59E0B', 签出: '#9CA3AF' };
 
 /** 列表排序（10.1）：派单失败回池在前，其后排队中、等原处理人，其余最后 */
 export const DISPATCH_STATUS_ORDER: Record<string, number> = { 派单失败回池: 0, 排队中: 1, 等原处理人: 2 };
@@ -109,21 +114,20 @@ export function waitText(min: number | null): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* 置灰判据（5.4）                                                       */
+/* 置灰判据（10.2）                                                      */
 /* ------------------------------------------------------------------ */
 
-/** 本组派单方式切换置灰提示；可操作返回空串 */
-export function groupModeDisabledTip(_groupId?: string): string {
-  const dispatch = useDispatchStore();
-  if (dispatch.globalEffectiveMode() === '人工派单') return '全局为人工派单，本组派单方式不可切换';
-  return '';
-}
-
-/** 当前登录人作为派单坐席时是否可领取（未签入置灰「签入后可领取」） */
+/** 当前登录人是否可领取（10.2）：未就绪、小休置灰「就绪后可领取」，签出置灰「签入后可领取」 */
 export function claimDisabledTip(name: string): string {
   const a = useDispatchStore().agentOf(name);
-  if (a && a.signIn !== '签入') return '签入后可领取';
-  return '';
+  if (!a || a.signIn === '就绪') return '';
+  return a.signIn === '签出' ? '签入后可领取' : '就绪后可领取';
+}
+
+/** 指派、改派给非就绪坐席的二次确认（9.3）；就绪返回空串 */
+export function notReadyConfirmText(name: string, signIn: SignInStatus, verb: string): string {
+  if (signIn === '就绪') return '';
+  return `${name}当前${signIn === '签出' ? '未签入' : '未就绪'}，确定${verb}？`;
 }
 
 /* ------------------------------------------------------------------ */

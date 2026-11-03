@@ -78,8 +78,10 @@ export interface DispatchOutcome {
   /** 组名，写履历用 */
   groupLabel: string;
   assignee: string | null;
-  /** 派到人时的判定路径（原处理人 / 加权评分 / 组内放宽），写履历用 */
+  /** 派到人时的判定路径（界面叫法），写履历用 */
   reason?: string;
+  /** 引擎派到人时的「系统派单」履历正文（13.1） */
+  dispatchText?: string;
 }
 
 /** 分派上下文：售后转回时带本单上一处理人（【1215】11.1：原处理人取本单上一处理人，不受时间窗限制） */
@@ -377,7 +379,7 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
   const cleared: Ticket = { ...t, assignee: null };
   const to = dispatch(cleared, { trigger: '售后转回', prevAssignee: prev });
   // 《【1025】》§3.3：「回流重新派单（原处理人 〈姓名〉）」：派至 〈处理人〉 或 进入 〈组名〉 工单池 · 未认领
-  const dest = to.assignee ? `派至 ${to.assignee}${to.reason ? `（${to.reason}）` : ''}` : `进入 ${to.groupLabel} 工单池 · 未认领`;
+  const dest = to.assignee ? `派至 ${to.assignee}${to.reason && !to.dispatchText ? `（${to.reason}）` : ''}` : `进入 ${to.groupLabel} 工单池 · 未认领`;
   const timeline = withEntries(t, [
     returnedEntry,
     {
@@ -386,6 +388,11 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
       what: dest,
       when: e.at,
     },
+    // 引擎派到人：与其他派出同一个「系统派单」节点，处理页带派单明细（13.1）
+    ...(to.dispatchText ? [{
+      category: 'node' as const, action: 'transfer' as const, who: '系统', role: '系统' as const, systemActor: true,
+      how: '系统派单', what: to.dispatchText, when: e.at,
+    }] : []),
   ]);
   return {
     ticket: {

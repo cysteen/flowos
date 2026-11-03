@@ -23,9 +23,12 @@ export function stricterMode(...modes: PoolMode[]): PoolMode {
 export type DispatchStatus = '等原处理人' | '排队中' | '派单失败回池';
 export const DISPATCH_STATUSES: DispatchStatus[] = ['等原处理人', '排队中', '派单失败回池'];
 
-/** 坐席状态（11.5）：与顶栏话务条联动，话务条签入、小休、签出即为派单签入状态 */
-export type SignInStatus = '签入' | '小休' | '签出';
-export const SIGN_IN_STATUSES: SignInStatus[] = ['签入', '小休', '签出'];
+/**
+ * 坐席状态（11.5）：与顶栏话务条联动。签入后未点「就绪」为未就绪；点「就绪」后才接派单、可领取；
+ * 「在班」＝就绪。未就绪、小休、签出都不被派单、不可领取。
+ */
+export type SignInStatus = '未就绪' | '就绪' | '小休' | '签出';
+export const SIGN_IN_STATUSES: SignInStatus[] = ['就绪', '未就绪', '小休', '签出'];
 
 /** 熟练度（6.4）。新增坐席默认熟练 */
 export type Proficiency = '初级' | '熟练' | '专家';
@@ -222,9 +225,9 @@ export interface DispatchAgent {
   lastTakenAt: number | null;
   /** 近期派单与领取时刻（ms，近 N 小时接单量因子；只留 24 小时内） */
   recentTakes: number[];
-  /** 本次签入起点（ms）；非签入为 null（在岗时长，13.2 派单均衡度） */
+  /** 本次就绪起点（ms）；非就绪为 null（在岗时长，13.2 派单均衡度） */
   signInSince?: number | null;
-  /** 当日已累计在岗时长（ms，不含本次签入中的时长） */
+  /** 当日已累计在岗时长（ms，不含本次就绪中的时长） */
   onDutyMs?: number;
   /** `onDutyMs` 所属日期（YYYY-MM-DD），跨日清零 */
   onDutyDay?: string;
@@ -328,8 +331,6 @@ export function migrateOriginalChain(raw: Record<string, unknown> | null | undef
 export interface DispatchConfig {
   /** 全局派单方式（5.4，管理员在分派监控手动切换；人工派单＝全局不派单） */
   globalMode: PoolMode;
-  /** 无操作转小休 N 分钟 */
-  idleToBreakMinutes: number;
   /* 出池规则 */
   /** 步骤 ② 优先派回原处理人：关系链三行（4.2） */
   originalChain: OriginalRelationRule[];
@@ -349,7 +350,6 @@ export interface DispatchConfig {
 export function defaultDispatchConfig(): DispatchConfig {
   return {
     globalMode: '人工派单',
-    idleToBreakMinutes: 30,
     originalChain: defaultOriginalChain(),
     factors: defaultScoreFactors(),
     recentHours: 2,
@@ -420,13 +420,14 @@ export type DispatchTrigger =
   | '售后转回'
   | '回访打回'
   | '恢复重派'
-  | '池停用';
+  | '池停用'
+  | '重新进池';
 
 /** 判定路径（13.1）。直派规则为 P1 */
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
 
 /** 失败原因（13.1） */
-export type DispatchFailReason = '无画像匹配成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
+export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
@@ -556,7 +557,7 @@ export interface TicketDispatchState {
 /* 审计（3.1 / 5.4 / 6.5 / 7.5 / 8.3）                                   */
 /* ------------------------------------------------------------------ */
 
-export type DispatchAuditKind = '个人开关' | '派单方式' | '入池规则' | '工单池' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
+export type DispatchAuditKind = '个人开关' | '派单方式' | '入池规则' | '工单池' | '组成员' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
 export interface DispatchAuditEntry {
   id: string;
   at: string;

@@ -11,7 +11,7 @@ export const GATE_LABEL: Record<GateKey, string> = {
   候选范围: '所属组成员',
   个人开关: '已开启自动派单',
   角色: '岗位可接此类工单',
-  在班: '已签入',
+  在班: '已就绪',
   投诉回避: '不是被投诉人',
   画像已配置: '已设置人员画像',
   画像匹配: '画像与工单相符',
@@ -33,7 +33,8 @@ export const PATH_LABEL: Record<DispatchPath, string> = {
 /** 失败原因（13.1） */
 export const FAIL_LABEL: Record<DispatchFailReason, string> = {
   无画像匹配成员: '无画像相符的成员',
-  无在班成员: '无已签入成员',
+  无可接单成员: '无可接单成员',
+  无在班成员: '无已就绪成员',
   均达个人上限: '均达个人上限',
   引擎异常: '系统异常',
   首响已超时: '首次响应已超时',

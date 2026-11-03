@@ -403,7 +403,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
       return;
     }
     const r = applyTransferToRow(t, {
-      mode: data.mode, target: name, groupId: data.groupId, poolId: data.poolId, reason: data.reason,
+      mode: data.mode, target: name, poolId: data.poolId, reason: data.reason,
     }, actor.name, actor.role);
     if (r.handled) {
       message.success(r.message);

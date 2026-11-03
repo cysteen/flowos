@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * 【1215】班组长指派 / 改派弹窗（PRD 9.3）：标题「指派」/「改派」，按钮 [ 取消 ] [ 确定 ]；改派另有必填「改派原因」。
- * 候选为工单所在池的处理组（本组）成员（不含当前处理人），每行「姓名 · 签入状态 · 在途 N / 上限 M」，
- * 画像匹配标「匹配」，超限 / 已满标橙色；不校验画像与个人开关，未签入、将超上限二次确认。
+ * 候选为工单所在池的处理组（本组）成员（不含当前处理人），每行「姓名 · 坐席状态 · 在途 N / 上限 M」，
+ * 画像匹配标「匹配」，超限 / 已满标橙色；不校验画像与个人开关，未就绪、未签入、将超上限二次确认。
  * 跨组走调剂，本弹窗不出跨组选项。
  */
 import { computed, ref, watch } from 'vue';
@@ -12,13 +12,13 @@ import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vu
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { useDispatchStore } from '@/stores/dispatch';
 import {
-  SIGN_IN_COLOR, assignCandidatesOf, assignInTeam, reassignInTeam, type AssignCandidate,
+  SIGN_IN_COLOR, assignCandidatesOf, assignInTeam, notReadyConfirmText, reassignInTeam, type AssignCandidate,
 } from '@/views/tickets/composables/dispatchUi';
 
 const props = withDefaults(defineProps<{
   open: boolean;
   ticket: Ticket | null;
-  /** 归属池（＝组）id */
+  /** 工单所在池的处理组 id（候选取该组成员） */
   groupId: string | null;
   /** 指派：池内未领取工单；改派：已派出、已领取的在途工单（9.3） */
   mode?: 'assign' | 'reassign';
@@ -91,7 +91,8 @@ async function onOk() {
       return;
     }
   }
-  if (c.signIn !== '签入' && !(await confirmStep(`${c.name}当前未签入，确定${verb.value}？`))) return;
+  const notReady = notReadyConfirmText(c.name, c.signIn, verb.value);
+  if (notReady && !(await confirmStep(notReady))) return;
   if (c.inTransit + 1 > c.cap
     && !(await confirmStep(`${c.name}在途 ${c.inTransit} / 上限 ${c.cap}，${verb.value}后将记超额指派，确定${verb.value}？`))) return;
   const res = isReassign.value ? reassignInTeam(t, c.name, reason.value, fromAssignee.value) : assignInTeam(t, c.name);

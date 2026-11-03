@@ -245,8 +245,12 @@ export const useRefundStore = defineStore('refund', () => {
     });
     r.refund!.state.manager = undefined;
     // 【1215】进教育支持组池即进入派单（12.4）；调用方落完履历与快照后再判定。
-    // 到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发（正常态仅兜底回池时发），见下方登记
-    queueMicrotask(() => useDispatchStore().dispatchTicket(r, '新单', { poolId: REFUND_POOL_GROUP_ID }));
+    // 到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发（自动派单仅兜底回池时发），见下方登记。
+    // 只有首次进池记「新单」；驳回、下送后再次进池记「重新进池」，不再发到组通知
+    queueMicrotask(() => {
+      const dispatch = useDispatchStore();
+      dispatch.dispatchTicket(r, dispatch.ticketStates[r.no] ? '重新进池' : '新单', { poolId: REFUND_POOL_GROUP_ID });
+    });
   }
 
   /* ---------------- 建单 ---------------- */

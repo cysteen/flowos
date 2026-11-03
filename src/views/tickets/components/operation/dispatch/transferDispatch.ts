@@ -1,8 +1,8 @@
 /**
  * 【1215】智能派单 · 处理页「调剂」「升级 · 三线技术支持」接入派单（PRD 9.4 / 9.5 / 12.5）。
  *
- * - 调剂到人：指定人直派，不经门槛与评分；可超个人上限（记超额指派）；此人非归属组成员时归属组随之改为此人所在组
- *   （属多组时由调剂人在弹窗里选一个）；落库后 `recordManualTake('调剂到人')`。
+ * - 调剂到人：指定人直派，不经门槛与评分；可超个人上限（记超额指派）；归属池由调剂人在此人所在各组的启用池中选一个，
+ *   归属组随池；落库后 `recordManualTake('调剂到人')`。
  * - 调剂到池：清空处理人、改归属池，`redispatchToPool('调剂到池')` 重新派送。
  * - 升级三线：到技术支持池 → `redispatchToPool('升级三线')`；指定技术支持 → 直派并 `recordManualTake('升级三线指定人')`。
  *   二线仍为主责（工单行 `primaryOwner`），三线退回沿用现行逻辑。
@@ -117,9 +117,7 @@ export interface TransferDispatchInput {
   mode: 'person' | 'pool';
   /** 到人：处理人姓名 */
   target?: string;
-  /** 到人：调剂后的归属组（此人非归属组成员时） */
-  groupId?: string;
-  /** 到池：目标池（工单池 id，启用中的池） */
+  /** 到人：调剂后的归属池；到池：目标池（工单池 id，启用中的池） */
   poolId?: string;
   reason: string;
 }
@@ -166,7 +164,8 @@ export function applyTransferDispatch(
   const name = input.target ?? '';
   if (!name) return { message: '', handled: false };
   const target = reactive(row) as Ticket;
-  const newGroup = input.groupId && input.groupId !== target.groupId ? store.groupOf(input.groupId) : undefined;
+  const newPool = store.poolOf(input.poolId);
+  const newGroup = newPool && newPool.groupId !== target.groupId ? store.groupOf(newPool.groupId) : undefined;
   Object.assign(target, {
     assignee: name,
     tab: 'mine',
@@ -180,6 +179,7 @@ export function applyTransferDispatch(
     category: 'node', action: 'transfer', who: operator, role,
     how: '调剂到人', what: `调剂到人 → ${name}${reason ? `；原因：${reason}` : ''}`,
   });
+  if (newPool) store.setTicketPool(target.no, newPool.id);
   store.recordManualTake(target, name, '调剂到人', operator, reason);
   writeOverCapEntry(target, timeline, name);
   syncDetail(detail, target, { handler: true });

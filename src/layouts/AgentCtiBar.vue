@@ -59,13 +59,13 @@ const heartbeat = window.setInterval(() => { if (cti.isSignedIn) flow.heartbeat(
 onBeforeUnmount(() => window.clearInterval(heartbeat));
 
 /**
- * 【1215】话务条「签入 / 小休 / 签出」联动派单签入状态（11.5：签入即在班）。
+ * 【1215】话务条状态联动派单坐席状态（11.5）：签入后未点就绪＝未就绪，不被派单、不可领取；点就绪后才派单（就绪即在班）。
  * 以话务条为准：挂载（刷新、重新登录）时即按话务条当前状态回写派单侧，之后跟随变化，两边始终一致（G1）。
- * 签入后由派单 store 先看预留给本人的单、再选排队单。
+ * 点就绪后由派单 store 先看预留给本人的单、再选排队单。
  */
 watch(
   () => [user.name, cti.workStatus] as const,
-  ([name, s]) => syncSignInFromCti(name, s),
+  ([name, s]) => syncSignInFromCti(name, s, cti.workStatusBeforeCall),
   { immediate: true },
 );
 

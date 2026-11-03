@@ -81,7 +81,7 @@ const user = useUserStore();
 const transfer = reactive({
   mode: 'person' as 'person' | 'pool',
   target: undefined as string | undefined,
-  groupId: undefined as string | undefined,
+  personPoolId: undefined as string | undefined,
   poolId: undefined as string | undefined,
   reason: '',
 });
@@ -96,12 +96,15 @@ const transfer = reactive({
 const canCrossGroup = computed(() => CROSS_GROUP_TRANSFER_ROLES.includes(user.roleKey));
 
 const transferOpts = useTransferOptions(() => props.ticketNo, () => canCrossGroup.value);
-/** 所选处理人不是归属组成员时的归属组候选：只属一个组时直接取该组，属多组时由调剂人选择 */
-const transferGroupChoices = computed(() => transferOpts.groupChoicesFor(transfer.target));
-const showTransferGroup = computed(() => transfer.mode === 'person' && transferGroupChoices.value.length > 1);
+/** 调剂到人的归属池候选（9.4）：只有一个可选时直接取它、不出选项；此人是归属组成员时默认工单当前所在池，否则由调剂人选 */
+const transferPoolChoices = computed(() => transferOpts.poolChoicesFor(transfer.target));
+const transferPoolSelectable = computed(() => transferPoolChoices.value.filter((o) => !o.disabled));
+const showTransferPool = computed(() => transfer.mode === 'person' && transferPoolSelectable.value.length > 1);
 watch(() => transfer.target, () => {
-  const choices = transferGroupChoices.value;
-  transfer.groupId = choices.length === 1 ? choices[0].value : undefined;
+  const selectable = transferPoolSelectable.value;
+  const cur = transferOpts.currentPoolId.value;
+  transfer.personPoolId = selectable.length === 1 ? selectable[0].value
+    : selectable.some((o) => o.value === cur) ? cur : undefined;
 });
 let delegateTaskSeq = 0;
 function createDelegateTask(name = '', task = '') {
@@ -369,7 +372,7 @@ function defaultApprovalGroup() {
 function resetForms() {
   transfer.mode = 'person';
   transfer.target = props.defaultTransferTarget || undefined;
-  transfer.groupId = undefined;
+  transfer.personPoolId = undefined;
   transfer.poolId = undefined;
   transfer.reason = '';
   escalate.techMode = 'pool';
@@ -415,7 +418,7 @@ function validate(): boolean {
     case '调剂':
       if (transfer.mode === 'person') {
         if (!transfer.target) { message.warning('请选择处理人'); return false; }
-        if (showTransferGroup.value && !transfer.groupId) { message.warning('请选择调剂后的归属组'); return false; }
+        if (showTransferPool.value && !transfer.personPoolId) { message.warning('请选择调剂后的归属池'); return false; }
       } else if (!transfer.poolId) {
         message.warning('请选择目标池');
         return false;
@@ -516,7 +519,7 @@ function transferPayload() {
       target: transferOpts.poolLabel(transfer.poolId ?? ''), reason,
     };
   }
-  return { mode: 'person' as const, scope: 'same' as const, target: transfer.target ?? '', groupId: transfer.groupId, reason };
+  return { mode: 'person' as const, scope: 'same' as const, target: transfer.target ?? '', poolId: transfer.personPoolId, reason };
 }
 
 function escalatePayload() {
@@ -635,9 +638,14 @@ function onOk() {
             :options="transferOpts.personOptions.value"
           />
         </div>
-        <div v-if="showTransferGroup" class="op-field">
-          <div class="op-label req">归属组</div>
-          <a-radio-group v-model:value="transfer.groupId" :options="transferGroupChoices" />
+        <div v-if="showTransferPool" class="op-field">
+          <div class="op-label req">归属池</div>
+          <a-select
+            v-model:value="transfer.personPoolId"
+            placeholder="请选择归属池"
+            style="width:100%"
+            :options="transferPoolChoices"
+          />
         </div>
       </template>
       <div v-else class="op-field">

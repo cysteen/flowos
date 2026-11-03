@@ -23,7 +23,7 @@ import {
   type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { buildDispatchDemo } from '@/mock/dispatchDemo';
-import { FACTOR_LABEL, failLabel } from '@/views/admin/dispatch/dispatchLabels';
+import { FACTOR_LABEL, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
 import { useFlashStore } from './flash';
@@ -45,7 +45,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 15;
+export const DISPATCH_CACHE_VERSION = 16;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -129,7 +129,7 @@ function dayStartOf(ms: number): number {
 }
 
 function seedAgents(now: number): DispatchAgent[] {
-  // 在岗时长种子：签入的坐席本班已签入约 3.5 小时（不早于当日零点）；小休的坐席当日累计 1.5 小时
+  // 在岗时长种子：就绪的坐席本班已就绪约 3.5 小时（不早于当日零点）；小休的坐席当日累计 1.5 小时
   const shiftStart = Math.max(dayStartOf(now), now - 210 * MIN);
   const a = (
     name: string, staffNo: string, roles: DispatchRole[], groupIds: string[],
@@ -137,14 +137,14 @@ function seedAgents(now: number): DispatchAgent[] {
   ): DispatchAgent => {
     const row: DispatchAgent = {
       name, staffNo, roles, groupIds,
-      signIn: '签入', signedInToday: true, disabled: false,
+      signIn: '就绪', signedInToday: true, disabled: false,
       profile: { ...ANY }, proficiency: '熟练', capOverride: null,
       // 二线及以上专员开、管理角色关（8.1）
       personalSwitch: roles.some((r) => !MANAGEMENT_ROLES.includes(r)),
       lastTakenAt: now - 60 * MIN, recentTakes: [],
       ...o,
     };
-    const on = row.signIn === '签入';
+    const on = row.signIn === '就绪';
     return {
       ...row,
       signInSince: on ? shiftStart : null,
@@ -172,7 +172,7 @@ function seedAgents(now: number): DispatchAgent[] {
     a('刘洋', 'E2005', ['二线专员'], [DEFAULT_POOL_ID], { signIn: '小休', proficiency: '初级' }),
     a('陈坐席', 'E2006', ['二线专员'], ['hardware'], { lastTakenAt: now - 40 * MIN, recentTakes: [now - 40 * MIN] }),
     a('李四', 'E2007', ['二线专员'], ['hardware'], {
-      signIn: '小休', proficiency: '初级', profile: { ...ANY, products: [{ category: '智能硬件' }] },
+      signIn: '小休', proficiency: '初级', profile: { ...ANY, products: [{ category: '智能硬件' }, { category: '学习硬件' }] },
     }),
     a('何教支', 'E2008', ['二线专员'], ['edu'], { profile: { ...ANY, businessTypes: ['教育'] } }),
     a('许文静', 'E2301', ['二线刷机处理人'], ['edu-flash']),
@@ -226,6 +226,8 @@ interface Persisted {
   rules: PoolRule[];
   ticketStates: Record<string, TicketDispatchState>;
   overAssigned: Record<string, boolean>;
+  /** 领取后在途超过上限的坐席（标「满载」，不算超限、超额指派，7.4） */
+  overClaimed: Record<string, boolean>;
   logs: DispatchLogEntry[];
   audits: DispatchAuditEntry[];
   seq: number;
@@ -276,8 +278,10 @@ interface GateOutcome {
   passed: DispatchAgent[];
   /** 画像匹配且在班、仅因个人上限被挡的成员（排队判据） */
   blockedByCap: DispatchAgent[];
-  /** 在班成员数（失败原因判据） */
+  /** 就绪成员数（失败原因判据，不看个人开关） */
   onDuty: number;
+  /** 就绪且画像相符的成员数（不看个人开关、投诉回避）：有人而候选仍为空即「无可接单成员」 */
+  matchedReady: number;
   drops: Partial<Record<GateKey, number>>;
 }
 
@@ -315,6 +319,10 @@ export interface DispatchOptions {
   prevHandler?: string | null;
   /** 承接子单、升级投诉：原单号（关系「关联单」） */
   relatedNo?: string | null;
+  /** 调剂到池前本单有处理人（受理短信只发一次，11.6） */
+  hadHandler?: boolean;
+  /** 等原处理人期间目标坐席恢复可用：只派给他，不重走关系链（4.2） */
+  reserveTarget?: string;
 }
 
 /** 池视图（供工单池管理、分派监控、班组看板） */
@@ -356,6 +364,8 @@ export interface DispatchAgentView {
   overLimit: boolean;
   /** 超额指派（7.3） */
   overAssigned: boolean;
+  /** 满载（7.4）：在途 ≥ 上限，含领取后超过上限；已标超限、超额指派的不再标 */
+  full: boolean;
 }
 
 export const useDispatchStore = defineStore('dispatch', () => {
@@ -372,6 +382,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const rules = ref<PoolRule[]>(cached?.rules ?? seedRules(now0));
   const ticketStates = ref<Record<string, TicketDispatchState>>(cached?.ticketStates ?? {});
   const overAssigned = ref<Record<string, boolean>>(cached?.overAssigned ?? {});
+  const overClaimed = ref<Record<string, boolean>>(cached?.overClaimed ?? {});
   const logs = ref<DispatchLogEntry[]>(cached?.logs ?? []);
   const audits = ref<DispatchAuditEntry[]>(cached?.audits ?? []);
   let seq = cached?.seq ?? 0;
@@ -466,6 +477,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         rules: rules.value,
         ticketStates: ticketStates.value,
         overAssigned: overAssigned.value,
+        overClaimed: overClaimed.value,
         logs: logs.value.slice(-LOG_LIMIT),
         audits: audits.value.slice(-AUDIT_LIMIT),
         seq,
@@ -640,6 +652,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const dc = defaultCapOf(a);
     const over = inTransit > cap;
     const assignedFlag = !!overAssigned.value[a.name] && over;
+    const claimedFlag = !!overClaimed.value[a.name] && over;
     return {
       agent: a,
       inTransit,
@@ -647,8 +660,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
       defaultCap: dc,
       defaultCapText: `${dc}（${role}基准 ${config.value.roleBase[role]} × ${a.proficiency} ${config.value.proficiencyCoef[a.proficiency]}）`,
       profileConfigured: isProfileConfigured(a.profile),
-      overLimit: over && !assignedFlag,
+      overLimit: over && !assignedFlag && !claimedFlag,
       overAssigned: assignedFlag,
+      full: inTransit >= cap && (!over || (claimedFlag && !assignedFlag)),
     };
   }
 
@@ -797,17 +811,18 @@ export const useDispatchStore = defineStore('dispatch', () => {
       list = next;
     };
     const poolGroupId = poolGroupIdOf(st.poolId);
+    const ready = list.filter((a) => !!poolGroupId && a.groupIds.includes(poolGroupId) && !a.disabled && a.roles.length > 0 && a.signIn === '就绪');
+    const matchedReady = ready.filter((a) => profileMatches(a, t, level)).length;
     step('候选范围', (a) => !!poolGroupId && a.groupIds.includes(poolGroupId));
     step('个人开关', (a) => a.personalSwitch);
     step('角色', (a) => !a.disabled && a.roles.length > 0);
-    step('在班', (a) => a.signIn === '签入');
-    const onDuty = list.length;
+    step('在班', (a) => a.signIn === '就绪');
     step('投诉回避', (a) => !st.complaintTarget || a.name !== st.complaintTarget);
     step('画像已配置', (a) => isProfileConfigured(a.profile));
     step('画像匹配', (a) => profileMatches(a, t, level));
     const matched = list;
     step('个人上限', (a) => inTransitOf(a.name, t.no) < capOf(a));
-    return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty, drops };
+    return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty: ready.length, matchedReady, drops };
   }
 
   /* ---------------- 评分（4.3） ---------------- */
@@ -947,6 +962,22 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { hit: undefined, waiting, excluded };
   }
 
+  /** 保留前提（4.2）：原处理人只是暂时不可用（未就绪、小休、签出、满额）；画像不符、个人开关关闭等不保留 */
+  function reservable(t: Ticket, a: DispatchAgent): boolean {
+    return !a.disabled && a.signedInToday && a.personalSwitch && profileMatches(a, t, 0);
+  }
+
+  /** 此人是本单关系链上的原处理人时返回命中的关系（名额释放选单用）；命中例外或画像不符返回空 */
+  function originalRelationOf(t: Ticket, st: TicketDispatchState, name: string, now: number): OriginalRelation | undefined {
+    if (!gates(t, st, 0, { only: name }).passed.length) return undefined;
+    for (const rule of config.value.originalChain) {
+      if (!rule.enabled) continue;
+      const c = candidateOf(rule, t, st, '名额释放', now);
+      if (c?.name === name && !exclusionOf(t, st, c)) return c.relation;
+    }
+    return undefined;
+  }
+
   function reserveUntilOf(t: Ticket, st: TicketDispatchState, rule: OriginalRelationRule, now: number): number {
     const remain = slaRemainMin(t, st, now);
     const cap = remain == null ? rule.reserveMinutes : Math.min(rule.reserveMinutes, (remain * rule.reserveSlaPercent) / 100);
@@ -955,8 +986,21 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /* ---------------- 判定（第 2、4 章） ---------------- */
 
-  function decide(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, mode: PoolMode, now: number): Decision {
+  function decide(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, mode: PoolMode, now: number, reserveTarget?: string): Decision {
     if (mode === '人工派单') return { path: '留池', assignee: null, status: null, relaxLevel: st.relaxLevel };
+
+    // 等原处理人期间目标坐席恢复可用：只派给他（4.2）
+    if (reserveTarget && st.status === '等原处理人') {
+      const g = gates(t, st, 0, { only: reserveTarget });
+      const a = agentOf(reserveTarget);
+      if (a && g.passed.length) {
+        const pool = gates(t, st, st.relaxLevel).passed;
+        return {
+          path: '原处理人', assignee: a.name, status: null, relaxLevel: 0, originalRelation: st.reserveRelation,
+          score: score(t, st, a, pool.length ? pool : [a], 0, now), drops: g.drops, candidateCount: 1,
+        };
+      }
+    }
 
     // 首响已超时（4.4）：进入派单或判定时已超时，直接兜底回池，不按「无首响 SLA」排队
     if (mode === '自动派单' && firstRespOverdue(t, st, now)) {
@@ -979,13 +1023,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
         score: score(t, st, a, pool.length ? pool : [a], 0, now), drops: g.drops, candidateCount: 1, ...ex,
       };
     }
-    // 人不在时保留：链上均无可用者 → 预留给次序最靠前、策略为保留且当日签入过的关系人；一张单只预留一次
+    // 人不在时保留：链上均无可用者 → 预留给次序最靠前、策略为保留、当日签入过且只是暂时不可用的关系人；一张单只预留一次
     const reserving = st.status === '等原处理人' && !!st.reserveUntil && now < st.reserveUntil && trigger !== '预留到期';
     if (!st.reservedOnce || reserving) {
       const r = chain.waiting.find((c) => {
         const a = agentOf(c.name)!;
         if (reserving) return c.name === st.reserveFor;
-        return c.rule.absent === '保留' && (!RESERVE_COMPLAINT_ONLY[c.relation] || t.type === '投诉') && a.signedInToday && !a.disabled;
+        return c.rule.absent === '保留' && (!RESERVE_COMPLAINT_ONLY[c.relation] || t.type === '投诉') && reservable(t, a);
       });
       if (r) {
         return {
@@ -998,11 +1042,19 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { ...decideScore(t, st, now), ...ex };
   }
 
+  /** 候选集为空的失败原因（13.1） */
+  function emptyReasonOf(g: GateOutcome): DispatchFailReason {
+    if (g.blockedByCap.length) return '均达个人上限';
+    if (g.matchedReady > 0) return '无可接单成员';
+    return g.onDuty === 0 ? '无在班成员' : '无画像匹配成员';
+  }
+
   /** 步骤 ③ ④：综合打分、放宽、排队、兜底（4.3 / 4.4） */
   function decideScore(t: Ticket, st: TicketDispatchState, now: number): Decision {
 
-    // 候选集为空时（4.4）：首响剩余 < 兜底阈值 → 兜底；无画像匹配在班成员或首响剩余 < 放宽阈值 → 放宽一级；
-    // 有匹配成员但均达上限 → 排队；放宽至最远层级仍无 → 兜底
+    // 候选集为空时（4.4）：有就绪且画像相符的成员、去掉个人上限仍无人可接（全部关闭个人开关或是被投诉人）→ 直接兜底；
+    // 首响剩余 < 兜底阈值 → 兜底；无画像相符的就绪成员或首响剩余 < 放宽阈值 → 放宽一级；
+    // 有相符成员但均达上限 → 排队；放宽至最远层级仍无 → 兜底
     const ratio = slaRemainRatio(t, st, now);
     let level: RelaxLevel = st.relaxLevel;
     const maxLevel: RelaxLevel = config.value.relaxEnabled ? config.value.relaxMaxLevel : 0;
@@ -1017,10 +1069,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
           drops: g.drops, candidateCount: g.passed.length,
         };
       }
-      const failReason: DispatchFailReason = g.blockedByCap.length ? '均达个人上限' : g.onDuty === 0 ? '无在班成员' : '无画像匹配成员';
+      const failReason = emptyReasonOf(g);
       const fallback: Decision = {
         path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: level, drops: g.drops, candidateCount: 0, failReason,
       };
+      if (failReason === '无可接单成员') return fallback;
       if (ratio != null && ratio * 100 < config.value.fallbackSlaPercent) return fallback;
       const relaxNow = !g.blockedByCap.length || (ratio != null && ratio * 100 < config.value.relaxSlaPercent);
       if (relaxNow && level < maxLevel) {
@@ -1149,8 +1202,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /* ---------------- 派单引擎（对外） ---------------- */
 
   function ensureState(t: Ticket, trigger: DispatchTrigger, opts: DispatchOptions, now: number): TicketDispatchState {
+    // 恢复重派、重新进池按新进入派单处理：放宽层级归零、可再保留一次（5.1）；首响截止与进入时刻沿用，见下
+    const resumed = trigger === '恢复重派';
     const fresh = trigger === '新单' || trigger === '调剂到池' || trigger === '升级三线' || trigger === '售后转回' || trigger === '回访打回'
-      || trigger === '池停用';
+      || trigger === '池停用' || trigger === '重新进池' || resumed;
     const prev = ticketStates.value[t.no];
     if (prev && !fresh && isPoolEnabled(prev.poolId)) {
       if (opts.complaintTarget) prev.complaintTarget = opts.complaintTarget;
@@ -1159,6 +1214,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 指定池已停用：按入池规则重新确定归属池（14.3）
     let poolId = opts.poolId && isPoolEnabled(opts.poolId) ? opts.poolId : undefined;
     let ruleId: string | null = null;
+    let designated = !!opts.poolId && poolId === opts.poolId && (trigger === '调剂到池' || trigger === '升级三线');
     if (!poolId) {
       // 售后转回 / 回访打回 / 恢复重派：回本单所在池（启用中）；新单、池停用重新入池按入池规则
       const cur = trigger === '售后转回' || trigger === '回访打回' || trigger === '恢复重派' ? poolIdOf(t) : undefined;
@@ -1169,22 +1225,34 @@ export const useDispatchStore = defineStore('dispatch', () => {
         ruleId = r.ruleId;
       }
     }
-    const fr = firstRespOf(t, now);
+    // 回本单所在池的几种触发：命中规则不丢（沿用上次；无上次时按入池规则核对，不一致记指定池）
+    if (resumed || trigger === '售后转回' || trigger === '回访打回') {
+      if (prev && prev.poolId === poolId) {
+        ruleId = prev.ruleId;
+        designated = !!prev.designatedPool;
+      } else if (!ruleId) {
+        const r = resolvePool(t);
+        if (r.poolId === poolId) ruleId = r.ruleId;
+        else designated = poolId !== DEFAULT_POOL_ID;
+      }
+    }
+    const fr = resumed && prev?.firstRespDueAt != null ? null : firstRespOf(t, now);
     const st: TicketDispatchState = {
       ticketNo: t.no,
       poolId,
       ruleId,
-      enteredAt: now,
+      enteredAt: resumed ? prev?.enteredAt ?? now : now,
       status: null,
       relaxLevel: 0,
       queueSince: null,
       ...(fr ? { firstRespTotalMin: fr.limitMin, firstRespDueAt: now + fr.remainMin * MIN } : {}),
-      ...(opts.poolId && poolId === opts.poolId && (trigger === '调剂到池' || trigger === '升级三线') ? { designatedPool: true } : {}),
+      ...(resumed && prev?.firstRespDueAt != null ? { firstRespTotalMin: prev.firstRespTotalMin, firstRespDueAt: prev.firstRespDueAt } : {}),
+      ...(designated ? { designatedPool: true } : {}),
       complaintTarget: opts.complaintTarget ?? prev?.complaintTarget,
-      prevHandler: opts.prevHandler ?? undefined,
-      relatedNo: opts.relatedNo ?? undefined,
+      prevHandler: opts.prevHandler ?? (resumed ? prev?.prevHandler : undefined),
+      relatedNo: opts.relatedNo ?? (resumed ? prev?.relatedNo : undefined),
       seq: prev?.seq ?? 0,
-      everAssigned: prev?.everAssigned,
+      everAssigned: prev?.everAssigned || !!opts.prevHandler || !!opts.hadHandler || undefined,
     };
     ticketStates.value = { ...ticketStates.value, [t.no]: st };
     return ticketStates.value[t.no];
@@ -1214,7 +1282,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
     let d: Decision;
     try {
-      d = decide(t, st, trigger, effectiveMode, now);
+      d = decide(t, st, trigger, effectiveMode, now, opts.reserveTarget);
     } catch {
       d = { path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, failReason: '引擎异常' };
     }
@@ -1309,12 +1377,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
     // 通知
     if (actualAssign) {
-      const source = trigger === '新单' ? '系统派单' : '系统重派';
-      notify(t.no, 'assign', '派发提醒', [actualAssign], `工单 ${t.no} 已派给你，分派来源：${source}。`);
-      if (!st.everAssigned && !isFlashTicket(t) && !isXiaozhiTicket(t) && !isRefundTicket(t)) {
-        notify(t.no, 'accepted', '受理短信', [t.customer], `您的问题已受理，工单号 ${t.no}。`, '短信');
-      }
-      st.everAssigned = true;
+      notifyAssigned(t, st, actualAssign);
       st.status = null;
     } else if (status === '派单失败回池' && prevStatus !== '派单失败回池') {
       const leaders = g?.leaders ?? [];
@@ -1340,6 +1403,21 @@ export const useDispatchStore = defineStore('dispatch', () => {
     };
   }
 
+  /** 本单此前到过人手：派单侧记过、上一处理人 / 主责有值、售后转回过或已首响（接入派单前的种子单没有派单状态） */
+  function hadHandlerBefore(t: Ticket, st: TicketDispatchState): boolean {
+    return !!st.everAssigned || !!st.prevHandler || !!t.lastHandler || !!t.primaryOwner || !!t.returnedFromAftersale || !!t.responded;
+  }
+
+  /** 派到人的通知（2.3 / 11.6）：派发提醒；受理短信每张单只在首次派到人时发一次（刷机、小智、退费单除外） */
+  function notifyAssigned(t: Ticket, st: TicketDispatchState, name: string) {
+    const first = !hadHandlerBefore(t, st);
+    notify(t.no, 'assign', '派发提醒', [name], `工单 ${t.no} 已派给你，分派来源：${first ? '系统派单' : '系统重派'}。`);
+    if (first && !isFlashTicket(t) && !isXiaozhiTicket(t) && !isRefundTicket(t)) {
+      notify(t.no, 'accepted', '受理短信', [t.customer], `您的问题已受理，工单号 ${t.no}。`, '短信');
+    }
+    st.everAssigned = true;
+  }
+
   /**
    * 派单引擎主入口：对一张进入派单的工单执行一次判定并落库（派出 / 留池并标派单状态）。
    * 工单已有处理人时不派（先到先得），返回留池结果。
@@ -1362,13 +1440,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function redispatchToPool(ticket: Ticket, poolId: string, trigger: '调剂到池' | '升级三线' = '调剂到池', operator?: string, reason?: string): DispatchResult | null {
     const t = reactive(ticket) as Ticket;
     const keep = t.nodeStatus === '已升级技术支持';
+    const hadHandler = !!t.assignee;
     // 落池前把首响结论落成显式值：子状态改「未认领」后不再能由子状态推出（9.4 首响已记成的不重计）
     Object.assign(t, { responded: isFirstResponded(t), assignee: null, tab: 'pool', groupId: poolGroupIdOf(poolId) ?? poolId, ...(keep ? {} : { nodeStatus: '未认领' }) });
     if (trigger === '调剂到池') {
       manualLog(t, '调剂到池', operator ?? operatorName(), poolLabel(poolId), reason);
       writeTimeline(t, '调剂到池', `调剂到池 → ${poolLabel(poolId)}${reason ? `；原因：${reason}` : ''}`, Date.now());
     }
-    return run(t, trigger, { poolId }, true);
+    return run(t, trigger, { poolId, hadHandler }, true);
   }
 
   /** 售后回传 resolver（`aftersaleEvents.dispatchByCurrentRule` 经注册调用）：只判定、不改入参工单行 */
@@ -1379,10 +1458,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (r.assignee) recordTake(r.assignee, Date.now());
     // 归属组＝池所属处理组；所在池记在派单侧（ticketStates）
     const g = poolGroupOf(r.poolId);
-    const rel = r.path === '原处理人' ? r.log.originalRelation : undefined;
     return {
       groupId: g?.id ?? r.poolId, groupLabel: g?.label ?? r.poolId, assignee: r.assignee,
-      reason: r.assignee ? (rel ? `${r.path} · ${rel}` : r.path) : undefined,
+      reason: r.assignee ? pathWithRelation(r.path, r.log.originalRelation) : undefined,
+      dispatchText: r.assignee ? r.reason : undefined,
     };
   }
 
@@ -1394,12 +1473,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return t.assignee ? { ok: false, message: TAKEN_MESSAGE } : { ok: true, message: '' };
   }
 
-  /** 领取前置（10.2）：占用校验 ＋ 未签入不可领；不校验画像、不受个人上限约束 */
+  /** 领取前置（10.2）：占用校验 ＋ 就绪才可领；不校验画像、不受个人上限约束 */
   function checkClaim(t: Pick<Ticket, 'assignee'> | undefined, name: string): OccupyResult {
     const occ = checkOccupy(t);
     if (!occ.ok) return occ;
     const a = agentOf(name);
-    if (a && a.signIn !== '签入') return { ok: false, message: '签入后可领取' };
+    if (a && a.signIn !== '就绪') return { ok: false, message: a.signIn === '签出' ? '签入后可领取' : '就绪后可领取' };
     return occ;
   }
 
@@ -1434,9 +1513,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const a = agentOf(assignee);
     let overCap: DispatchLogEntry['overCap'];
     // 本单已落到此人名下：在途按「除本单外的在途 ＋ 本单」计（新建单此刻尚未落工单库、子状态仍为未认领）
-    if (a && action !== '二线领取' && inTransitOf(a.name, t.no) + 1 > capOf(a)) {
-      overCap = '超额指派';
-      overAssigned.value = { ...overAssigned.value, [a.name]: true };
+    if (a && inTransitOf(a.name, t.no) + 1 > capOf(a)) {
+      if (action === '二线领取') {
+        overClaimed.value = { ...overClaimed.value, [a.name]: true };
+      } else {
+        overCap = '超额指派';
+        overAssigned.value = { ...overAssigned.value, [a.name]: true };
+      }
     }
     recordTake(assignee, Date.now());
     manualLog(t, action, operator ?? operatorName(), assignee, reason, overCap);
@@ -1479,7 +1562,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return raw ? (reactive(raw) as Ticket) : undefined;
   }
 
-  /** 某坐席名额释放 / 恢复可用：先看预留给他的单，再按评分在其可接的排队单中选一张（4.3 名额释放选单） */
+  /** 某坐席名额释放 / 恢复可用：先看预留给他的单，再看以他为原处理人的排队单，最后按评分在其可接的排队单中选一张（4.3 名额释放选单） */
   function releaseCapacity(name: string): DispatchResult | null {
     const a = agentOf(name);
     if (!a) return null;
@@ -1490,9 +1573,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (st.status !== '等原处理人' || st.reserveFor !== name) continue;
       const t = poolTicket(st.ticketNo);
       if (!t || t.assignee) continue;
-      if (gates(t, st, 0, { only: name }).passed.length) return dispatchTicket(t, '名额释放');
+      if (gates(t, st, 0, { only: name }).passed.length) return dispatchTicket(t, '名额释放', { reserveTarget: name });
     }
-    let best: { t: Ticket; st: TicketDispatchState; s: ScoreDetail } | undefined;
+    let best: { t: Ticket; st: TicketDispatchState; s: ScoreDetail; rel?: OriginalRelation } | undefined;
     for (const st of states) {
       const gid = poolGroupIdOf(st.poolId);
       if (st.status !== '排队中' || st.fallbackDone || !gid || !a.groupIds.includes(gid)) continue;
@@ -1501,20 +1584,25 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (!t || t.assignee) continue;
       const g = gates(t, st, st.relaxLevel);
       if (!g.passed.some((x) => x.name === name)) continue;
-      const s = score(t, st, a, g.passed, st.relaxLevel, now);
-      if (!best || s.total > best.s.total || (s.total === best.s.total && st.enteredAt < best.st.enteredAt)) best = { t, st, s };
+      const rel = originalRelationOf(t, st, name, now);
+      const s = score(t, st, a, g.passed, rel ? 0 : st.relaxLevel, now);
+      const better = !best || (!!rel && !best.rel)
+        || (!!rel === !!best.rel && (s.total > best.s.total || (s.total === best.s.total && st.enteredAt < best.st.enteredAt)));
+      if (better) best = { t, st, s, rel };
     }
     if (!best) return null;
-    const { t, st, s } = best;
+    const { t, st, s, rel } = best;
     // 直接派给该坐席
     st.seq = nextTicketSeq(t.no);
     const g = poolGroupOf(st.poolId);
-    const reasonText = `系统派单 → ${name}（${st.relaxLevel > 0 ? '组内放宽' : '加权评分'}）${st.relaxLevel > 0 ? `；产品放宽至${RELAX_LEVEL_LABEL[st.relaxLevel]}` : ''}；${factorText(s)}`;
+    if (rel) st.relaxLevel = 0;
+    const path: DispatchPath = rel ? '原处理人' : st.relaxLevel > 0 ? '组内放宽' : '加权评分';
+    const reasonText = `系统派单 → ${name}（${rel ? `${path} · ${rel}` : path}）${st.relaxLevel > 0 ? `；产品放宽至${RELAX_LEVEL_LABEL[st.relaxLevel]}` : ''}；${factorText(s)}`;
     pushLog({
       id: nextId('dl'), ticketNo: t.no, seq: st.seq, at: stamp(now), kind: '判定', trigger: '名额释放',
       poolId: st.poolId, poolLabel: poolLabel(st.poolId), ruleName: ruleNameOf(st),
       globalMode: globalEffectiveMode(), groupMode: poolModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId),
-      path: st.relaxLevel > 0 ? '组内放宽' : '加权评分', relaxLevel: st.relaxLevel, candidateCount: 1,
+      path, ...(rel ? { originalRelation: rel } : {}), relaxLevel: st.relaxLevel, candidateCount: 1,
       chosen: { name, staffNo: a.staffNo, groupLabel: g?.label ?? '' }, chosenScore: s, status: null,
       snapshot: snapshotOf(t, st, now),
     });
@@ -1523,19 +1611,18 @@ export const useDispatchStore = defineStore('dispatch', () => {
     recordTake(name, now);
     writeTimeline(t, '系统派单', reasonText, now);
     commitSpecial(t);
-    notify(t.no, 'assign', '派发提醒', [name], `工单 ${t.no} 已派给你，分派来源：系统重派。`);
+    notifyAssigned(t, st, name);
     st.status = null;
     st.queueSince = null;
-    st.everAssigned = true;
     ticketStates.value = { ...ticketStates.value };
     persist();
     return {
-      assignee: name, poolId: st.poolId, poolLabel: poolLabel(st.poolId), path: st.relaxLevel > 0 ? '组内放宽' : '加权评分',
+      assignee: name, poolId: st.poolId, poolLabel: poolLabel(st.poolId), path,
       status: null, reason: reasonText, log: logs.value[logs.value.length - 1],
     };
   }
 
-  /** 坐席恢复可用（签入、开个人开关、名额释放）时调用 */
+  /** 坐席恢复可用（点就绪、开个人开关、名额释放）时调用 */
   function onAgentAvailable(name: string) {
     let guard = 0;
     while (guard < 20 && releaseCapacity(name)) guard += 1;
@@ -1554,11 +1641,17 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (!st.status || st.fallbackDone) continue;
       if (st.status === '等原处理人') {
         const target = st.reserveFor;
-        if (target && gates(t, st, 0, { only: target }).passed.length) dispatchTicket(t, '名额释放');
+        if (target && gates(t, st, 0, { only: target }).passed.length) dispatchTicket(t, '名额释放', { reserveTarget: target });
         else if (st.reserveUntil && now >= st.reserveUntil) dispatchTicket(t, '预留到期');
         continue;
       }
       if (st.status === '排队中') {
+        // 排队期间可接的成员全部关闭个人开关（去掉个人上限仍无人可接）：不再等，直接退回工单池
+        const queued = gates(t, st, st.relaxLevel);
+        if (!queued.passed.length && emptyReasonOf(queued) === '无可接单成员') {
+          fallback(t, st, '无可接单成员', now);
+          continue;
+        }
         const ratio = slaRemainRatio(t, st, now);
         const queuedMin = st.queueSince ? (now - st.queueSince) / MIN : 0;
         const maxLevel: RelaxLevel = config.value.relaxEnabled ? config.value.relaxMaxLevel : 0;
@@ -1570,7 +1663,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
           ? st.relaxLevel >= maxLevel && queuedMin >= config.value.noSlaFallbackMinutes
           : ratio * 100 < config.value.fallbackSlaPercent || (relaxDue && st.relaxLevel >= maxLevel);
         if (fallbackDue) {
-          fallback(t, st, '均达个人上限', now);
+          fallback(t, st, emptyReasonOf(queued), now);
         } else if (relaxDue && st.relaxLevel < maxLevel) {
           st.relaxLevel = (st.relaxLevel + 1) as RelaxLevel;
           st.queueSince = now;
@@ -1584,7 +1677,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
         delete next[a.name];
         overAssigned.value = next;
       }
-      if (a.signIn === '签入' && a.personalSwitch) onAgentAvailable(a.name);
+      if (inTransitOf(a.name) <= capOf(a) && overClaimed.value[a.name]) {
+        const next = { ...overClaimed.value };
+        delete next[a.name];
+        overClaimed.value = next;
+      }
+      if (a.signIn === '就绪' && a.personalSwitch) onAgentAvailable(a.name);
     }
     persist();
   }
@@ -1666,6 +1764,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         st.fallbackDone = false;
         st.poolId = pid;
       }
+      // 按新进入派单处理：放宽层级归零、可再保留一次，命中规则不丢（ensureState）
       dispatchTicket(reactive(raw) as Ticket, '恢复重派', { poolId: pid });
       n += 1;
     }
@@ -1880,7 +1979,30 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { ok: true, message: '已删除' };
   }
 
-  /* ---------------- 坐席维护（6.5 / 7.5 / 8.1 / 11.5） ---------------- */
+  /* ---------------- 坐席维护（6.5 / 7.5 / 8.1 / 11.4 / 11.5） ---------------- */
+
+  /** 加入 / 移出处理组（11.4）：记审计；加入后画像相符即可接本组的池 */
+  function setAgentGroup(name: string, groupId: string, joined: boolean, operator?: string): OccupyResult {
+    const a = agentOf(name);
+    if (!a) return { ok: false, message: '' };
+    if (a.groupIds.includes(groupId) === joined) return { ok: true, message: '' };
+    audit('组成员', a.name, joined ? '—' : groupOf(groupId)?.label ?? groupId, joined ? `加入${groupOf(groupId)?.label ?? groupId}` : '移出', operator);
+    a.groupIds = joined ? [...a.groupIds, groupId] : a.groupIds.filter((id) => id !== groupId);
+    persist();
+    if (joined) onAgentAvailable(a.name);
+    return { ok: true, message: '' };
+  }
+
+  /** 调剂到人后的归属池（9.4）：只改派单侧记录，处理人与归属组由调用方落到工单行 */
+  function setTicketPool(no: string, poolId: string) {
+    const prev = ticketStates.value[no];
+    if (prev?.poolId === poolId) return;
+    const base: TicketDispatchState = prev ?? {
+      ticketNo: no, poolId, ruleId: null, enteredAt: Date.now(), status: null, relaxLevel: 0, queueSince: null, seq: 0,
+    };
+    ticketStates.value = { ...ticketStates.value, [no]: { ...base, poolId, ruleId: null, designatedPool: true } };
+    persist();
+  }
 
   function profileText(p: AgentProfile): string {
     return PROFILE_DIMS.map((d) => {
@@ -1980,22 +2102,22 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { ok: true, message: `已${on ? '开启' : '关闭'}${a.name}的自动派单` };
   }
 
-  /** 签入状态（11.5）：签入即在班（P0）；签入后触发预留与排队选单 */
+  /** 坐席状态（11.5）：就绪即在班（P0），点就绪后触发预留与排队选单；「当日签入过」从进入未就绪或就绪起算 */
   function setSignIn(name: string, status: SignInStatus) {
     const a = agentOf(name);
     if (!a || a.signIn === status) return;
     const now = Date.now();
-    // 在岗时长（13.2）：签入期间累计；离开签入时把本次签入时长并入当日累计
+    // 在岗时长（13.2）：就绪期间累计；离开就绪时把本次时长并入当日累计
     rollOnDuty(a, now);
-    if (a.signIn === '签入' && a.signInSince) a.onDutyMs = (a.onDutyMs ?? 0) + Math.max(0, now - a.signInSince);
-    a.signInSince = status === '签入' ? now : null;
+    if (a.signIn === '就绪' && a.signInSince) a.onDutyMs = (a.onDutyMs ?? 0) + Math.max(0, now - a.signInSince);
+    a.signInSince = status === '就绪' ? now : null;
     a.signIn = status;
-    if (status === '签入') a.signedInToday = true;
+    if (status === '就绪' || status === '未就绪') a.signedInToday = true;
     persist();
-    if (status === '签入') onAgentAvailable(a.name);
+    if (status === '就绪') onAgentAvailable(a.name);
   }
 
-  /** 跨日清零当日在岗累计；本次签入跨日时从当日零点起算 */
+  /** 跨日清零当日在岗累计；本次就绪跨日时从当日零点起算 */
   function rollOnDuty(a: DispatchAgent, now: number) {
     const today = dayKey(now);
     if (a.onDutyDay === today) return;
@@ -2004,13 +2126,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (a.signInSince) a.signInSince = Math.max(a.signInSince, dayStartOf(now));
   }
 
-  /** 当日在岗小时数（签入时长，13.2 派单均衡度「每在岗小时」） */
+  /** 当日在岗小时数（就绪时长，13.2 派单均衡度「每在岗小时」） */
   function onDutyHoursOf(name: string, now: number = Date.now()): number {
     const a = agentOf(name);
     if (!a) return 0;
     const sameDay = a.onDutyDay === dayKey(now);
     const acc = sameDay ? a.onDutyMs ?? 0 : 0;
-    const since = a.signIn === '签入' && a.signInSince ? Math.max(a.signInSince, dayStartOf(now)) : null;
+    const since = a.signIn === '就绪' && a.signInSince ? Math.max(a.signInSince, dayStartOf(now)) : null;
     return (acc + (since ? Math.max(0, now - since) : 0)) / (60 * MIN);
   }
 
@@ -2031,10 +2153,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (next.noSlaFallbackMinutes <= next.relaxQueueMinutes) return { ok: false, message: '退回工单池的排队时长须大于放宽产品范围的排队时长' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
-    // 小休阈值
-    if (!Number.isInteger(next.idleToBreakMinutes) || next.idleToBreakMinutes < 5 || next.idleToBreakMinutes > 240) {
-      return { ok: false, message: '请输入 5–240 的整数' };
-    }
     // 全局派单方式走 setGlobalMode（带审计与重派），不随派单策略保存
     const { globalMode, ...rest } = next;
     void globalMode;
@@ -2134,7 +2252,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   return {
     // state
-    config, groups, pools, agents, rules, ticketStates, overAssigned, logs, audits,
+    config, groups, pools, agents, rules, ticketStates, overAssigned, overClaimed, logs, audits,
     // 读
     groupOf, isDispatchGroup, poolOf, isDispatchPool, isPoolEnabled, poolGroupIdOf, poolGroupOf, poolLabel, poolsOfGroup, enabledPools,
     poolIdOf, globalEffectiveMode, poolModeOf, effectiveModeOf, membersOf, poolMembersOf,
@@ -2152,7 +2270,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 入池规则
     addPoolRule, updatePoolRule, setPoolRuleEnabled, removePoolRule,
     // 坐席
-    setProfile, batchSetProfile, setProficiency, setCapOverride, setPersonalSwitch, setSignIn,
+    setProfile, batchSetProfile, setProficiency, setCapOverride, setPersonalSwitch, setSignIn, setAgentGroup, setTicketPool,
     // 配置
     updateConfig,
   };
