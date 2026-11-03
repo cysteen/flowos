@@ -400,12 +400,12 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
     const volume = { single: weekend ? 8 : 13, multi: weekend ? 13 : 21 }[stageAt(from)];
     const times = Array.from({ length: volume }, () => from + r() * (to - from)).sort((x, y) => x - y);
 
-    // 派单服务异常当日：引擎异常判定（管理员切为混合派单前）
+    // 派单服务异常当日：系统异常判定，留原池（管理员切为混合派单前）
     if (ds <= tl.mixedStart && tl.mixedStart < ds + DAY) {
       for (const m of [1, 2, 4]) {
         const at = tl.mixedStart - (5 - m) * MIN;
         const t = newTk(m === 2 ? 'general' : 'line2', at);
-        b.judge(t, at, { trigger: '新单', path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: '系统异常' });
+        b.judge(t, at, { trigger: '新单', path: '留池', mode: FORMAL, status: null, failReason: '系统异常' });
         const who = b.pick(b.eligible(t.pool));
         const take = at + b.between(8, 20) * MIN;
         b.manual(t, take, '班组长指派', LEADER, GLOBAL_MIXED, { target: who.name, firstRespAt: respAt(take) });

@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 19;
+export const DISPATCH_CACHE_VERSION = 20;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -412,6 +412,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   let lastScanAt = cached?.lastScanAt ?? now0;
   let resumePoolIds = new Set<string>(cached?.resumePoolIds ?? []);
   let stallNoticed: Record<string, boolean> = cached?.stallNoticed ?? {};
+  const errorNoticed = new Set<string>();
 
   /** 无缓存时铺运行中种子：近两周派单日志与审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
   const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value, rules.value);
@@ -1319,13 +1320,16 @@ export const useDispatchStore = defineStore('dispatch', () => {
     try {
       d = decide(t, st, trigger, effectiveMode, now, opts.reserveTarget);
     } catch {
-      // 判定异常：留原池，通知班组长和管理员，下一轮重判
-      d = { path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, failReason: '系统异常' };
+      // 系统判断出错：留原池、派单状态不变，通知班组长和管理员，下一轮重新判断
+      d = {
+        path: '留池', assignee: null, status: st.status, relaxLevel: st.relaxLevel, failReason: '系统异常',
+        reserveFor: st.reserveFor, reserveUntil: st.reserveUntil, originalRelation: st.reserveRelation,
+      };
     }
     const actualAssign = d.assignee;
     const status: DispatchStatus | null = d.status;
     // 扫描没派出：退回工单池的单已通知过人工，留在原状态继续尝试；派单状态不变的不写日志、不写履历、不发通知
-    if (trigger === '补单扫描' && !actualAssign
+    if (trigger === '补单扫描' && !actualAssign && d.failReason !== '系统异常'
       && (st.status === '派单失败回池' || (st.status === status && st.relaxLevel === d.relaxLevel))) {
       if (d.noReady) st.queueSince = now;
       if (st.status === '派单失败回池' && d.relaxLevel > st.relaxLevel) st.relaxLevel = d.relaxLevel;
@@ -1418,17 +1422,22 @@ export const useDispatchStore = defineStore('dispatch', () => {
     }
 
     // 通知
-    if (actualAssign) {
+    if (d.failReason === '系统异常') {
+      // 同一张单连续出错只通知一次
+      if (!errorNoticed.has(t.no)) {
+        errorNoticed.add(t.no);
+        const receivers = ['全部管理员', ...(g?.leaders ?? [])];
+        const content = `${t.no}自动派单未派出（系统异常），系统将在下一轮重新判断。`;
+        notify(t.no, 'timeout', '系统异常', receivers, content, '站内信');
+        notify(t.no, 'timeout', '系统异常', receivers, content, 'IM');
+      }
+    } else if (actualAssign) {
       notifyAssigned(t, st, actualAssign);
       st.status = null;
     } else if (status === '派单失败回池' && prevStatus !== '派单失败回池') {
-      const failed = d.failReason === '系统异常';
-      const leaders = failed ? ['全部管理员', ...(g?.leaders ?? [])] : g?.leaders ?? [];
-      const content = failed
-        ? `${t.no}自动派单未派出（系统异常），系统将在下一轮重新判断。`
-        : `${t.no}自动派单未派出（${failLabel(d.failReason)}），请指派或调剂。`;
-      notify(t.no, 'timeout', '退回工单池通知', leaders, content, '站内信');
-      notify(t.no, 'timeout', '退回工单池通知', leaders, content, 'IM');
+      const content = `${t.no}自动派单未派出（${failLabel(d.failReason)}），请指派或调剂。`;
+      notify(t.no, 'timeout', '退回工单池通知', g?.leaders ?? [], content, '站内信');
+      notify(t.no, 'timeout', '退回工单池通知', g?.leaders ?? [], content, 'IM');
       notifyPoolArrival(t, st.poolId);
     } else if (!actualAssign && POOL_ENTRY_TRIGGERS.includes(trigger) && effectiveMode !== '自动派单' && !poolOf(st.poolId)?.isDefault) {
       // 混合派单、人工派单：进池且未派出即发（新单、调剂到池、升级三线、售后转回、回访打回、池停用重新入池），进入默认池不发；
@@ -1436,6 +1445,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       notifyPoolArrival(t, st.poolId);
     }
 
+    if (d.failReason !== '系统异常') errorNoticed.delete(t.no);
     ticketStates.value = { ...ticketStates.value };
     persist();
     return {
