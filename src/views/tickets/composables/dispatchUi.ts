@@ -15,7 +15,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
-import { IN_TRANSIT_COUNT_RULE, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
+import { IN_TRANSIT_COUNT_RULE, NOT_OWN_POOL_MESSAGE, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
 
@@ -29,12 +29,6 @@ function stamp(ms: number = Date.now()): string {
 function hm(ms: number): string {
   const d = new Date(ms);
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function parseStamp(s?: string): number {
-  if (!s) return NaN;
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
-  if (!m) return NaN;
-  return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)).getTime();
 }
 
 /* ------------------------------------------------------------------ */
@@ -53,7 +47,7 @@ export function signInOfWorkStatus(s: WorkStatus, beforeCall?: WorkStatus | null
   return '就绪';
 }
 
-/** 话务条状态变化后同步到派单：点就绪后由 store 先看预留、再选排队单（4.3 名额释放选单） */
+/** 话务条状态变化后同步到派单：点就绪不立即来单，由下一轮工单池扫描派出 */
 export function syncSignInFromCti(name: string, s: WorkStatus, beforeCall?: WorkStatus | null) {
   const dispatch = useDispatchStore();
   const a = dispatch.agentOf(name);
@@ -97,10 +91,10 @@ export function reserveTipOf(no: string): string {
   return st.reserveUntil ? `预留给 ${st.reserveFor}，${hm(st.reserveUntil)} 到期` : `预留给 ${st.reserveFor}`;
 }
 
-/** 池内等待分钟：取进入派单时刻，未进入过派单的按最近更新 / 建单时刻 */
+/** 池内等待分钟：取进入派单时刻，未经派单进池的单从进池时间起算 */
 export function waitMinutesOf(t: Ticket, now: number = Date.now()): number | null {
-  const st = useDispatchStore().ticketStates[t.no];
-  const from = st?.enteredAt ?? (parseStamp(t.updatedAt) || parseStamp(t.createdAt));
+  const dispatch = useDispatchStore();
+  const from = dispatch.ticketStates[t.no]?.enteredAt ?? dispatch.poolEnteredAtOf(t, NaN);
   if (!Number.isFinite(from)) return null;
   return Math.max(0, Math.floor((now - from) / MIN));
 }
@@ -117,9 +111,11 @@ export function waitText(min: number | null): string {
 /* 置灰判据（10.2）                                                      */
 /* ------------------------------------------------------------------ */
 
-/** 当前登录人是否可领取（10.2）：未就绪、小休置灰「就绪后可领取」，签出置灰「签入后可领取」 */
-export function claimDisabledTip(name: string): string {
-  const a = useDispatchStore().agentOf(name);
+/** 当前登录人是否可领取（10.1 / 10.2）：非本组的池只读；未就绪、小休置灰「就绪后可领取」，签出置灰「签入后可领取」 */
+export function claimDisabledTip(name: string, t?: Ticket): string {
+  const dispatch = useDispatchStore();
+  if (t && !dispatch.isOwnPool(t, name)) return NOT_OWN_POOL_MESSAGE;
+  const a = dispatch.agentOf(name);
   if (!a || a.signIn === '就绪') return '';
   return a.signIn === '签出' ? '签入后可领取' : '就绪后可领取';
 }
@@ -134,7 +130,7 @@ export function notReadyConfirmText(name: string, signIn: SignInStatus, verb: st
 /* 组内指派（9.3）                                                        */
 /* ------------------------------------------------------------------ */
 
-/** 指派候选行：「姓名 · 签入状态 · 在途 〈N〉 / 上限 〈M〉」，画像匹配标「匹配」，超限 / 已满标橙色 */
+/** 指派候选行：「姓名 · 坐席状态 · 在途 〈N〉 / 上限 〈M〉」，画像匹配标「匹配」，超限 / 已满标橙色 */
 export interface AssignCandidate {
   name: string;
   staffNo: string;

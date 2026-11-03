@@ -9,7 +9,7 @@ import type {
 /** 接单条件（门槛 4.1） */
 export const GATE_LABEL: Record<GateKey, string> = {
   候选范围: '所属组成员',
-  个人开关: '已开启自动派单',
+  个人开关: '已开启接收派单',
   角色: '岗位可接此类工单',
   在班: '已就绪',
   投诉回避: '不是被投诉人',
@@ -36,7 +36,7 @@ export const FAIL_LABEL: Record<DispatchFailReason, string> = {
   无可接单成员: '无可接单成员',
   无在班成员: '无已就绪成员',
   均达个人上限: '均达个人上限',
-  引擎异常: '系统异常',
+  系统异常: '系统异常',
   首响已超时: '首次响应已超时',
 };
 
@@ -52,7 +52,7 @@ export const FACTOR_LABEL: Record<ScoreFactorKey, string> = {
 /** 原处理人例外（4.2 不派回、不保留） */
 export const EXCLUSION_LABEL: Record<OriginalExclusion, string> = {
   被投诉人: '被投诉人是原处理人',
-  不在所属组或已停用: '原处理人不在所属组或已停用',
+  不在归属组或已停用: '原处理人不在归属组或已停用',
   上次回访不满意: '上次回访不满意',
   小智退回: '小智工单产研退回、确认未解决',
 };

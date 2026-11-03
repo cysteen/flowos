@@ -157,9 +157,28 @@ export interface PoolRule {
   updatedAt: string;
 }
 
-/** 默认池：综合处理组池（3.1 未命中落默认池） */
+/** 默认池：综合处理组池（3.1 未命中落默认池，也是兜底池） */
 export const DEFAULT_POOL_ID = 'general';
 export const DEFAULT_POOL_LABEL = '综合处理组';
+
+/**
+ * 固定落点池及其用途：不可停用，处理组不能移出最后一名成员；这些组的固定落点始终是初始池，同组新建的池不作固定落点。
+ */
+export const PROTECTED_POOL_USE: Record<string, string> = {
+  [DEFAULT_POOL_ID]: '未命中入池规则的工单进入此池',
+  tech: '升级三线的工单进入此池',
+  xiaozhi: '小智工单进入此池',
+  'edu-flash': '二线刷机工单进入此池',
+  edu: '个册退费工单进入此池',
+};
+export function isProtectedPool(id: string): boolean {
+  return id in PROTECTED_POOL_USE;
+}
+
+/** 工单池扫描间隔（分钟）：固定，不可配 */
+export const SCAN_INTERVAL_MINUTES = 5;
+/** 未领取工单滞留超过此时长（小时）汇总提醒班组长 */
+export const STALL_REMIND_HOURS = 4;
 
 /* ------------------------------------------------------------------ */
 /* 人 · 组 · 池                                                          */
@@ -288,7 +307,7 @@ export interface OriginalRelationRule {
 }
 
 /** 不派回、不预留的情况（4.2 例外清单） */
-export type OriginalExclusion = '被投诉人' | '不在所属组或已停用' | '上次回访不满意' | '小智退回';
+export type OriginalExclusion = '被投诉人' | '不在归属组或已停用' | '上次回访不满意' | '小智退回';
 
 export function defaultOriginalChain(): OriginalRelationRule[] {
   return [
@@ -408,18 +427,20 @@ export const IN_TRANSIT_COUNT_RULE: Record<TicketStatus, 'assignee' | 'none'> = 
 /* 派单判定与日志（13.1）                                                */
 /* ------------------------------------------------------------------ */
 
-/** 触发类型（13.1）。跨班次回收为 P1，类型先列出 */
+/**
+ * 触发类型（13.1）。进池事件当场判定一次；其余都在每 5 分钟一轮的工单池扫描里判定：
+ * 定时扫描、预留到期、切为自动派单（生效方式变为自动派单后的第一轮）。跨班次回收为 P1，类型先列出。
+ */
 export type DispatchTrigger =
   | '新单'
+  | '定时扫描'
   | '预留到期'
-  | '名额释放'
-  | '组内放宽'
+  | '切为自动派单'
   | '跨班次回收'
   | '调剂到池'
   | '升级三线'
   | '售后转回'
   | '回访打回'
-  | '恢复重派'
   | '池停用'
   | '重新进池';
 
@@ -427,7 +448,7 @@ export type DispatchTrigger =
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '预留' | '排队' | '组内放宽' | '兜底回池' | '留池';
 
 /** 失败原因（13.1） */
-export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '无在班成员' | '均达个人上限' | '引擎异常' | '首响已超时';
+export type DispatchFailReason = '无画像匹配成员' | '无可接单成员' | '无在班成员' | '均达个人上限' | '系统异常' | '首响已超时';
 
 /** 门槛（4.1 P0 项），用于门槛淘汰计数 */
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
@@ -545,10 +566,6 @@ export interface TicketDispatchState {
   reservedOnce?: boolean;
   /** 判定序号 */
   seq: number;
-  /** 兜底后引擎不再自动判定（4.4） */
-  fallbackDone?: boolean;
-  /** 因「首响已超时」兜底回池：恢复重派时不再重新判定，留池等人工处理（5.1） */
-  overdueFallback?: boolean;
   /** 已首次派到人（受理短信只发一次） */
   everAssigned?: boolean;
 }
@@ -590,3 +607,7 @@ export interface OccupyResult {
   message: string;
 }
 export const TAKEN_MESSAGE = '该工单已被领取';
+/** 非本人所在组的池只读（10.1） */
+export const NOT_OWN_POOL_MESSAGE = '非本组工单池，不可领取';
+/** 固定落点池的处理组不能移出最后一名成员 */
+export const LAST_MEMBER_MESSAGE = '该组是固定落点工单池的处理组，至少保留一名成员';

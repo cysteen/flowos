@@ -405,7 +405,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       for (const m of [1, 2, 4]) {
         const at = tl.mixedStart - (5 - m) * MIN;
         const t = newTk(m === 2 ? 'general' : 'line2', at);
-        b.judge(t, at, { trigger: '新单', path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: '引擎异常' });
+        b.judge(t, at, { trigger: '新单', path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: '系统异常' });
         const who = b.pick(b.eligible(t.pool));
         const take = at + b.between(8, 20) * MIN;
         b.manual(t, take, '班组长指派', LEADER, GLOBAL_MIXED, { target: who.name, firstRespAt: respAt(take) });
@@ -444,7 +444,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       } else if (sc < 0.78) {
         b.judge(t, ts, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
         assignAt = ts + b.between(2, 16) * MIN;
-        b.judge(t, assignAt, { trigger: '名额释放', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
+        b.judge(t, assignAt, { trigger: '定时扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt) });
       } else if (sc < 0.82) {
         assignAt = ts;
         b.judge(t, ts, { trigger, path: '组内放宽', relaxLevel: r() < 0.7 ? 1 : 2, mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
@@ -452,7 +452,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
         const relation = relationOf(trigger, ts);
         b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
         assignAt = ts + b.between(3, 12) * MIN;
-        b.judge(t, assignAt, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
+        b.judge(t, assignAt, { trigger: '定时扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
       } else if (sc < 0.93) {
         const reason = b.pick(FAIL_REASONS);
         let fbAt = ts;
@@ -461,7 +461,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
           fbAt = ts + b.between(15, 22) * MIN;
         }
         b.judge(t, fbAt, {
-          trigger: reason === '均达个人上限' ? '组内放宽' : trigger, path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: reason,
+          trigger: reason === '均达个人上限' ? '定时扫描' : trigger, path: '兜底回池', mode: FORMAL, status: '派单失败回池', failReason: reason,
           relaxLevel: reason === '无画像匹配成员' || reason === '均达个人上限' ? 2 : 0,
         });
         const byLeader = r() < 0.45;
@@ -524,7 +524,7 @@ const TODAY_ASSIGNS: [string, string, number][] = [
   ['line2', '林坐席', 0.65], ['general', '刘洋', 0.7], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
   ['line2', '林坐席', 0.8], ['general', '林坐席', 0.92],
 ];
-/** 派出方式：d 加权评分直派、o 原处理人、x 组内放宽、q 排队后名额释放、r 预留后原处理人 */
+/** 派出方式：d 加权评分直派、o 原处理人、x 组内放宽、q 排队后由扫描派出、r 预留后由扫描派回原处理人 */
 const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqxqdqrdoq';
 const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12];
 const RESERVE_WAITS = [6, 9];
@@ -581,11 +581,11 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     const trigger: DispatchTrigger = pool === 'tech' ? '升级三线' : i % 7 === 3 ? '售后转回' : '新单';
     if (via === 'q') {
       b.judge(t, enter, { trigger, path: '排队', mode: FORMAL, status: '排队中' });
-      b.judge(t, take, { trigger: '名额释放', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
+      b.judge(t, take, { trigger: '定时扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
     } else if (via === 'r') {
       const relation = relationOf(trigger, enter);
       b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
-      b.judge(t, take, { trigger: '名额释放', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
+      b.judge(t, take, { trigger: '定时扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
     } else {
       const path: DispatchPath = via === 'o' ? '原处理人' : via === 'x' ? '组内放宽' : '加权评分';
       // 今日三次派回原处理人各取一种关系；一次综合打分前，同客户近期的原处理人因上次回访不满意不派回
@@ -716,19 +716,18 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
     } else if (s.key === 'L-Q2') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中' });
       const relaxAt = enteredAt + 15 * MIN;
-      b.judge(t, relaxAt, { trigger: '组内放宽', path: '排队', relaxLevel: 1, mode, status: '排队中' });
+      b.judge(t, relaxAt, { trigger: '定时扫描', path: '排队', relaxLevel: 1, mode, status: '排队中' });
       Object.assign(st, { relaxLevel: 1, queueSince: relaxAt });
       sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
       sys('放宽产品范围', '产品放宽至同产品分类', relaxAt);
     } else if (s.key === 'L-F1') {
       b.judge(t, enteredAt, { trigger: '售后转回', path: '兜底回池', mode, status: '派单失败回池', failReason: '首响已超时' });
-      Object.assign(st, { fallbackDone: true, overdueFallback: true });
-      sys('退回工单池', `退回工单池（首次响应已超时），已通知${label}班组长`, enteredAt);
+            sys('退回工单池', `退回工单池（首次响应已超时），已通知${label}班组长`, enteredAt);
     } else if (s.key === 'G-F1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', relaxLevel: 2, mode, status: '排队中' });
       const fbAt = enteredAt + 15 * MIN;
-      b.judge(t, fbAt, { trigger: '组内放宽', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
-      Object.assign(st, { relaxLevel: 2, fallbackDone: true });
+      b.judge(t, fbAt, { trigger: '定时扫描', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '均达个人上限' });
+      Object.assign(st, { relaxLevel: 2 });
       sys('排队等待', `${pl}排队等待：画像与工单相符的成员均达个人上限`, enteredAt);
       sys('退回工单池', `退回工单池（均达个人上限），已通知${label}班组长`, fbAt);
     } else if (s.key === 'T-F1') {
@@ -736,7 +735,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       b.manual({ ...t, pool: 'line2' }, movedAt, '调剂到池', LEADER, FORMAL, { target: pl, reason: '需技术支持排查接口问题', ruleName: '功能异常（迁移）' });
       t.seq = 1;
       b.judge(t, movedAt, { trigger: '调剂到池', path: '兜底回池', relaxLevel: 2, mode, status: '派单失败回池', failReason: '无画像匹配成员' });
-      Object.assign(st, { relaxLevel: 2, fallbackDone: true, designatedPool: true });
+      Object.assign(st, { relaxLevel: 2, designatedPool: true });
       sys('调剂到池', `调剂到池 → ${pl}；原因：需技术支持排查接口问题`, movedAt);
       sys('退回工单池', `退回工单池（无画像相符的成员），已通知${label}班组长`, movedAt);
     } else if (s.status === '等原处理人') {

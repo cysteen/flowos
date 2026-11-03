@@ -682,6 +682,8 @@ export interface Ticket {
   updatedAt?: string;
   /** 创建时间（排序） */
   createdAt?: string;
+  /** 进池时间（未经派单进池的单，池内等待时长从这里起算）；没有取建单时间 */
+  poolEnteredAt?: string;
   /** 列表 · 是否已同步产研/飞书 */
   synced?: boolean | '是' | '否';
   /** 列表 · 产研/飞书同步状态 */
