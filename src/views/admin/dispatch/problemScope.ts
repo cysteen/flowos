@@ -1,17 +1,26 @@
 /**
  * 【1215】人员画像「问题分类」指定范围（PRD 6.5 / 14.6）：
- * 只列出处理组属于坐席所属组的问题分类。直接读问题分类管理的「处理组」列（`stores/problemTags`，11-02 D5），
- * 不再借道迁移出来的入池规则；多组取并集。
+ * 问题分类管理中处理组属于坐席所属组的分类（`stores/problemTags`，11-02 D5）∪ 本组各池启用中入池规则涉及的分类，多组取并集；
+ * 默认池处理组的成员可选全部分类。数据源仍是问题分类管理。
  */
 import { PROBLEM_PATH_SEP, splitProblemPath, joinProblemPath, useProblemTagsStore } from '@/stores/problemTags';
+import { useDispatchStore } from '@/stores/dispatch';
+import { DEFAULT_POOL_ID } from '@/views/tickets/types/dispatch';
 import { PROBLEM_LEVELS, problemLabel, problemTagLabel, problemTreeOpts, type TreeOpt } from './dispatchUi';
 
-/** 所属组在问题分类管理中处理的问题分类路径（「一级」「一级 / 二级」「一级 / 二级 / 三级」），已去重、整枝上卷 */
-export function problemPathsOfGroups(groupIds: readonly string[]): string[] {
-  return useProblemTagsStore().pathsOfGroups(groupIds);
-}
-
 const isUnder = (path: string, base: string) => path === base || path.startsWith(`${base}${PROBLEM_PATH_SEP}`);
+
+/** 所属组可选的问题分类路径（「一级」「一级 / 二级」「一级 / 二级 / 三级」），已去重、已被上级覆盖的不重复列 */
+export function problemPathsOfGroups(groupIds: readonly string[]): string[] {
+  const dispatch = useDispatchStore();
+  const poolGroupOf = (poolId: string) => dispatch.poolGroupIdOf(poolId);
+  if (groupIds.some((g) => poolGroupOf(DEFAULT_POOL_ID) === g)) return problemTreeOpts().map((n) => n.value);
+  const fromRules = dispatch.rules
+    .filter((r) => r.enabled && groupIds.includes(poolGroupOf(r.poolId) ?? ''))
+    .flatMap((r) => r.conditions.problems);
+  const all = [...new Set([...useProblemTagsStore().pathsOfGroups(groupIds), ...fromRules])];
+  return all.filter((p) => !all.some((q) => q !== p && isUnder(p, q)));
+}
 
 /** 节点被范围整块覆盖（自身或某个上级在范围内） */
 function covered(path: string, scope: readonly string[]) {

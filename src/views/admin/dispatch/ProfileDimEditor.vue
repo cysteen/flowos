@@ -9,7 +9,7 @@ import type { ProfileDraft } from './profileDraft';
 import { computed } from 'vue';
 import { normalizeProblemPicks, problemPathsOfGroups, scopedProblemTree } from './problemScope';
 
-/** groupIds：坐席所属组（批量为所选坐席所属组的并集）；给出时问题分类「指定」只列所属组在问题分类管理中处理的分类 */
+/** groupIds：坐席所属组（批量为所选坐席所属组的并集）；给出时问题分类「指定」只列所属组可选的分类（见 problemScope） */
 const props = defineProps<{ allowKeep?: boolean; groupIds?: string[] }>();
 const draft = defineModel<ProfileDraft>({ required: true });
 const SHOW_PARENT = TreeSelect.SHOW_PARENT;

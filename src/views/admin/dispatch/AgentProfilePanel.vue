@@ -82,7 +82,7 @@ const cols = [
   { title: '在途 / 上限', key: 'load', width: 96 },
   { title: '负载', key: 'factor', width: 72, align: 'right' as const },
   { title: '熟练度', key: 'proficiency', width: 72 },
-  { title: '签入状态', key: 'signIn', width: 84 },
+  { title: '坐席状态', key: 'signIn', width: 84 },
   { title: '标识', key: 'flag', width: 100 },
 ];
 
@@ -168,7 +168,7 @@ function rowClass(name: string) {
               <template #prefix><SearchOutlined class="pf-search-icon" /></template>
             </a-input>
             <a-select v-model:value="f.group" size="small" :options="groupOpts" placeholder="所属组" allow-clear />
-            <a-select v-model:value="f.signIn" size="small" :options="opts(SIGN_IN_STATUSES)" placeholder="签入状态" allow-clear />
+            <a-select v-model:value="f.signIn" size="small" :options="opts(SIGN_IN_STATUSES)" placeholder="坐席状态" allow-clear />
             <a-select v-model:value="f.proficiency" size="small" :options="opts(PROFICIENCIES)" placeholder="熟练度" allow-clear />
             <a-select v-model:value="f.personal" size="small" :options="personalOpts" placeholder="个人开关" allow-clear />
             <a-checkbox v-model:checked="f.unconfigured">画像未配置</a-checkbox>

@@ -46,6 +46,7 @@ import AssignModal, {
 import { TEAM_MEMBERS } from '@/mock/teamBoard';
 import DispatchAssignModal from '@/views/team-board/components/DispatchAssignModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
+import { isXiaozhiPooledRecord } from '@/views/tickets/types/xiaozhi';
 import { DISPATCH_STATUSES } from './types/dispatch';
 import {
   DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, claimDisabledTip, modeTagOf, reserveTipOf, waitMinutesOf, waitText,
@@ -201,7 +202,7 @@ const poolSegments = computed(() => {
   const ids = wb.poolGroups.value.map((g) => g.id).filter((id) => dispatch.isDispatchPool(id));
   return ids.map((id) => ({
     id,
-    label: dispatch.poolLabel(id),
+    label: dispatch.groupOf(id)?.label ?? dispatch.poolLabel(id),
     count: wb.tabRows.value.filter((t) => t.groupId === id).length,
   }));
 });
@@ -218,9 +219,10 @@ function togglePoolSegment(id: string) {
 const dispatchStatusOptions = DISPATCH_STATUSES.map((s) => ({ value: s, label: s }));
 const poolFilterOptions = computed(() => poolSegments.value.map((p) => ({ value: p.id, label: p.label })));
 
-/** 工单池行内：「领取」未就绪、未签入置灰（10.2）；班组长等另有「指派」 */
-function poolRowActionsDispatch(): { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] {
-  const tip = claimDisabledTip(user.name);
+/** 工单池行内：「领取」未就绪、未签入、非本组的池置灰（10.1 / 10.2）；班组长等另有「指派」；小智直通产研的记录单只可查看 */
+function poolRowActionsDispatch(t: Ticket): { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] {
+  if (isXiaozhiPooledRecord(t)) return [{ label: '详情' }];
+  const tip = claimDisabledTip(user.name, t);
   const acts: { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] = [
     tip ? { label: '领取', primary: true, disabled: true, tip } : { label: '领取', primary: true },
   ];

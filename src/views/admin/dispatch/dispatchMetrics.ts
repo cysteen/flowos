@@ -102,6 +102,7 @@ const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => b
   { name: '二线领取', color: '#10b981', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
   { name: '班组长指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || l.manual?.action === '改派') },
   { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },
+  { name: '升级三线指定', color: '#6366f1', hit: (l) => l.kind === '人工' && l.manual?.action === '升级三线指定人' },
 ];
 
 /** 派单均衡度只计当日在岗满该时长的坐席（13.2） */

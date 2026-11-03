@@ -74,7 +74,8 @@ export function visiblePoolGroupsForUser(roleKey: string, userName?: string): Po
 export function inVisiblePool(t: Ticket | undefined, roleKey: string): boolean {
   if (!t) return false;
   const ids = visiblePoolGroupsForUser(roleKey).map((g) => g.id);
-  return inGroupPoolScope(t, poolGroupIdsForTicket(t, ids));
+  // 【1215】10.1：看得见不等于领得了，非本人所在组的池只读
+  return inGroupPoolScope(t, poolGroupIdsForTicket(t, ids)) && useDispatchStore().isOwnPool(t, currentHandlerName(roleKey, useUserStore().name));
 }
 
 /**

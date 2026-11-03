@@ -287,7 +287,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
     <div v-if="tab === 'members'" class="tbl">
       <div class="thead grid" :style="{ gridTemplateColumns: memberCols }">
         <div class="th">成员</div>
-        <div class="th">签入状态</div>
+        <div class="th">坐席状态</div>
         <div class="th">在途 / 上限</div>
         <div class="th">熟练度</div>
         <div class="th">人员画像</div>

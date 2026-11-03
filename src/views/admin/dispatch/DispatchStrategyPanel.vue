@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 派单策略（PRD 14.2）：入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
+// 派单策略（PRD 14.2）：入池规则 / 出池规则 / 个人上限 / 变更记录；出池规则、个人上限页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { CheckCircleFilled } from '@ant-design/icons-vue';
@@ -25,7 +25,7 @@ const TABS = [
   { key: 'inpool', label: '入池规则' },
   { key: 'outpool', label: '出池规则' },
   { key: 'cap', label: '个人上限' },
-  { key: 'audit', label: '开关记录' },
+  { key: 'audit', label: '变更记录' },
 ];
 const active = ref(TABS.some((t) => t.key === props.tab) ? props.tab! : 'inpool');
 watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.value = v; });
@@ -54,7 +54,7 @@ function factorShare(w: number | null | undefined) {
 const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }> = {
   本单退回: { scene: '售后转回、回访打回', handler: '本单上一处理人' },
   关联单: { scene: '承接子单、升级投诉、外投', handler: '原单最后一名二线及以上处理人' },
-  同客户近期: { scene: '同一客户的新单', handler: '该客户最近一次工单的处理人' },
+  同客户近期: { scene: '同一客户的新单', handler: '该客户有效期内由二线及以上处理过的最近一张工单的处理人' },
 };
 /** 步骤 ② 下方只读的通用约束 */
 const CHAIN_RULES = [
@@ -102,7 +102,7 @@ function saveCap() {
   if (r.ok) message.success(r.message); else message.error(r.message);
 }
 
-/* ================= 开关记录（审计） ================= */
+/* ================= 变更记录（审计） ================= */
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
@@ -355,7 +355,7 @@ watch(() => store.config, (c) => {
         </section>
       </div>
 
-      <!-- 开关记录 -->
+      <!-- 变更记录 -->
       <div v-else-if="active === 'audit'" class="st-tab-pane">
         <section class="audit-panel">
       <div class="meta-strip">
@@ -532,7 +532,7 @@ watch(() => store.config, (c) => {
   .cap-preview { border-left: none; border-top: 1px solid #eef0f3; }
 }
 
-/* 开关记录 */
+/* 变更记录 */
 .audit-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 10px 12px; margin-bottom: 12px;
