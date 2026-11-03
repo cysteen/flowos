@@ -55,6 +55,8 @@ export interface AssignTicket {
   slaLeftMin: number;
   /** 创建时间（排序用，不占列） */
   createdAt: string;
+  /** SLA 显示文案；缺省按 slaLeftMin 格式化（派单组传池内工单同款文案） */
+  slaLabel?: string;
 }
 
 /** 提交结果行（部分失败态由父级回填，见组件 defineExpose） */
@@ -97,6 +99,7 @@ import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vu
 // 该文件由他人并行扩展，此处只做 type-only 引用，不改动源文件；
 // 若上游字段变更导致类型不匹配，改本组件的 CandOption 映射即可。
 import type { MemberRow } from '@/mock/teamBoard';
+import { SIGN_IN_COLOR, type AssignCandidate } from '@/views/tickets/composables/dispatchUi';
 
 const ONLINE_COLOR: Record<string, string> = {
   在线: '#10B981',
@@ -143,6 +146,12 @@ const props = withDefaults(
     tickets: AssignTicket[];
     /** 是否有跨组权限；false 时「跨组」单选置灰 */
     canCrossTeam?: boolean;
+    /**
+     * 派单组专用：按所选工单取候选人（与本组派单指派弹窗同一来源）。
+     * 传入时候选行显示「姓名 · 坐席状态 · 在途 / 上限 · 匹配」，
+     * 且不出指派范围、负载预览、指派说明与消息合并（组内指派不落这些内容；跨组走调剂）。
+     */
+    poolCandidatesOf?: (ticketIds: string[]) => AssignCandidate[];
   }>(),
   {
     preselectedIds: () => [],
@@ -291,11 +300,25 @@ interface CandOption {
   online: string;
   workload: number;
   level: LoadLevel;
+  /** 派单组候选人才有 */
+  pool?: AssignCandidate;
 }
 
-/** 候选**按在办数升序** —— 空闲的排最上，引导均衡分派（规格 §3.1 候选排序） */
-const candidateOptions = computed<CandOption[]>(() =>
-  [...props.candidates]
+const poolMode = computed(() => !!props.poolCandidatesOf);
+
+/** 候选**按在办数升序** —— 空闲的排最上，引导均衡分派（规格 §3.1 候选排序）；派单组保持本组派单的顺序 */
+const candidateOptions = computed<CandOption[]>(() => props.poolCandidatesOf
+  ? props.poolCandidatesOf(selectedIds.value).map((c) => ({
+    value: c.name,
+    label: `${c.name} ${c.staffNo}`,
+    name: c.name,
+    staffNo: c.staffNo,
+    online: c.signIn,
+    workload: c.inTransit,
+    level: '空闲' as LoadLevel,
+    pool: c,
+  }))
+  : [...props.candidates]
     .sort((a, b) => a.workload - b.workload || a.name.localeCompare(b.name, 'zh-Hans-CN'))
     .map((m) => {
       // loadLevel 优先取 mock 字段；缺失时用 LOAD_THRESHOLD 兜底，保证与 X4 同口径
@@ -353,11 +376,11 @@ const loadPreview = computed(() => {
 });
 
 /** 满载确认提示：**不阻断提交** */
-const showFullWarn = computed(() => !isCross.value && selectedCandidate.value?.level === '满载');
+const showFullWarn = computed(() => !poolMode.value && !isCross.value && selectedCandidate.value?.level === '满载');
 
 /* ============================== 消息风暴 ============================== */
 
-const showStorm = computed(() => selectedCount.value >= STORM_THRESHOLD && !!targetId.value);
+const showStorm = computed(() => !poolMode.value && selectedCount.value >= STORM_THRESHOLD && !!targetId.value);
 
 /* ============================== 校验 / 提交 ============================== */
 
@@ -560,7 +583,7 @@ defineExpose({ setSubmitting, applyResults, reset });
                 class="asg-badge"
                 :style="{ color: slaBadge(t.slaLeftMin).color, background: slaBadge(t.slaLeftMin).bg }"
               >
-                {{ slaBadge(t.slaLeftMin).text }}
+                {{ t.slaLabel ?? slaBadge(t.slaLeftMin).text }}
               </span>
             </div>
             <div v-if="isResultMode" class="c-res">
@@ -583,7 +606,7 @@ defineExpose({ setSubmitting, applyResults, reset });
       </div>
 
       <!-- ============ 指派范围 ============ -->
-      <div class="op-field">
+      <div v-if="!poolMode" class="op-field">
         <div class="op-label">指派范围</div>
         <div class="asg-scope">
           <a-radio :checked="scope === 'in-team'" @change="onScopeChange('in-team')">
@@ -617,7 +640,16 @@ defineExpose({ setSubmitting, applyResults, reset });
         >
           <!-- 候选人下拉：状态点 + 姓名 + 工号 ‖ 负载徽章 + 在办数 -->
           <template #option="opt">
-            <div class="asg-cand">
+            <div v-if="opt.pool" class="asg-cand">
+              <span class="asg-dot" :style="{ background: SIGN_IN_COLOR[opt.pool.signIn as keyof typeof SIGN_IN_COLOR] }"></span>
+              <span class="asg-cand-name">{{ opt.name }}</span>
+              <span class="asg-cand-no">{{ opt.pool.signIn }}</span>
+              <span class="asg-cand-r">
+                <span v-if="opt.pool.matched" class="asg-cand-match">匹配</span>
+                <span class="asg-cand-load" :class="{ full: opt.pool.full }">在途 {{ opt.pool.inTransit }} / 上限 {{ opt.pool.cap }}</span>
+              </span>
+            </div>
+            <div v-else class="asg-cand">
               <span class="asg-dot" :style="{ background: ONLINE_COLOR[opt.online] || '#9CA3AF' }"></span>
               <span class="asg-cand-name">{{ opt.name }}</span>
               <span class="asg-cand-no">{{ opt.staffNo }}</span>
@@ -652,7 +684,7 @@ defineExpose({ setSubmitting, applyResults, reset });
       </div>
 
       <!-- 负载预览盒（跨组时隐藏整个负载区） -->
-      <div v-if="!isCross && loadPreview" class="op-box" :class="{ 'asg-box-warn': loadPreview.crossed }">
+      <div v-if="!poolMode && !isCross && loadPreview" class="op-box" :class="{ 'asg-box-warn': loadPreview.crossed }">
         <div class="op-box-title asg-box-title">负载变化预览</div>
         <div class="asg-load-row">
           <span class="asg-load-seg">
@@ -672,7 +704,7 @@ defineExpose({ setSubmitting, applyResults, reset });
       </div>
 
       <!-- ============ 指派说明（同组内选填 / 跨组必填） ============ -->
-      <div class="op-field asg-note">
+      <div v-if="!poolMode" class="op-field asg-note">
         <div class="op-label" :class="{ req: noteRequired }">
           指派说明<span v-if="!noteRequired" class="asg-opt">（选填）</span>
         </div>
@@ -798,6 +830,11 @@ defineExpose({ setSubmitting, applyResults, reset });
 .asg-cand-no { font-size: 11px; color: #9ca3af; }
 .asg-cand-r { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .asg-cand-load { font-size: 11px; color: #6b7280; font-variant-numeric: tabular-nums; }
+.asg-cand-load.full { color: #d97706; font-weight: 600; }
+.asg-cand-match {
+  font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 4px;
+  color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0;
+}
 
 /* ---------- 负载预览 ---------- */
 /* 规格 §3.1：跨档时盒切 warn 态（底 #FFF7ED / 边 #FED7AA），比全局 .op-box-warn 更暖一档 */

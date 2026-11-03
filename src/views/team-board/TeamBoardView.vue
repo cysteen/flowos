@@ -17,7 +17,7 @@
  */
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import {
   SwapOutlined,
   LineChartOutlined,
@@ -32,6 +32,7 @@ import DrillDrawer, { type DrillGoListPayload, type DrillType } from './componen
 import AssignModal, {
   LOAD_STYLE,
   loadLevelOf,
+  type AssignResultRow,
   type AssignTicket,
   type AssignSubmitPayload,
   type LoadLevel,
@@ -63,7 +64,10 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { groupMembersOf, teamBoardGroups } from '@/stores/ctiFlow';
 import { TICKETS } from '@/mock/tickets';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { assignInTeam, waitText } from '@/views/tickets/composables/dispatchUi';
+import type { SignInStatus } from '@/views/tickets/types/dispatch';
+import {
+  assignCandidatesOf, assignInTeam, notReadyConfirmText, waitText, type AssignCandidate,
+} from '@/views/tickets/composables/dispatchUi';
 import { maxPoolWaitMinutes, poolTicketsOf } from './components/dispatchPoolTickets';
 
 const router = useRouter();
@@ -89,7 +93,8 @@ watch(leaderTeams, (ts) => {
 const teamOptions = computed(() => leaderTeams.value.map((t) => ({ value: t.value, label: `${t.label}（${t.size}人）` })));
 const currentTeam = computed(() => leaderTeams.value.find((t) => t.value === teamId.value)
   ?? leaderTeams.value[0] ?? { value: '', label: '', size: 0, members: [] });
-const ONLINE_OF_SIGN_IN: Record<string, MemberRow['online']> = { 签入: '在线', 小休: '小休', 签出: '离线' };
+/** 未就绪仍是签入在岗，只是不接单，算在线。键用派单状态类型：派单侧改状态值时这里类型检查会报错 */
+const ONLINE_OF_SIGN_IN: Record<SignInStatus, MemberRow['online']> = { 就绪: '在线', 未就绪: '在线', 小休: '小休', 签出: '离线' };
 const generatedBoard = computed(() => getGroupBoardSnapshot({
   id: currentTeam.value.value,
   label: currentTeam.value.label,
@@ -449,10 +454,16 @@ const ASSIGN_TICKETS: AssignTicket[] = [
 const assignTickets = computed<AssignTicket[]>(() => {
   const pool = realPool.value;
   if (pool) {
-    return pool.map((t) => ({
-      id: t.id, no: t.no, customer: t.customer, type: t.type, priority: t.priority,
-      slaLeftMin: t.slaMinutes, createdAt: t.createdAt ?? '',
-    }));
+    return pool.map((t) => {
+      // SLA 显示规则与本组派单池内工单一致：已响应或无时限显示「—」，排在最后
+      const noSla = t.responded || !t.slaMinutes || t.slaMinutes >= 9000;
+      return {
+        id: t.id, no: t.no, customer: t.customer, type: t.type, priority: t.priority,
+        slaLeftMin: noSla ? Number.MAX_SAFE_INTEGER : t.slaMinutes,
+        slaLabel: noSla ? '—' : t.slaMinutes < 0 ? `超时 ${Math.abs(t.slaMinutes)} 分钟` : `剩余 ${t.slaMinutes} 分钟`,
+        createdAt: t.createdAt ?? '',
+      };
+    });
   }
   const n = board.value.todos.find((t) => t.key === 'assign')?.count ?? 0;
   const k = Math.max(0, leaderTeams.value.findIndex((t) => t.value === teamId.value)) * 2;
@@ -463,29 +474,74 @@ const assignOpen = ref(false);
 const assignPreselect = ref<string[]>([]);
 const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
 
+/** 弹窗打开时定格列表：提交后成功 / 失败行都留在结果里，不随工单离开池而消失 */
+const assignList = ref<AssignTicket[]>([]);
+const assignOkRows = ref<AssignResultRow[]>([]);
+
 function openAssign(preselect: string[] = []) {
   assignPreselect.value = preselect;
+  assignList.value = assignTickets.value;
   assignOpen.value = true;
 }
 
 /**
- * 派单组：列表是池内真实工单，逐张走组内指派落库（assignInTeam），卡片数随之减少；有失败进部分失败态。
+ * 派单组的候选人：与本组派单指派弹窗同一来源（assignCandidatesOf）。
+ * 「匹配」按所选工单算：选中的每一张都匹配才标，未选工单时不标。
+ */
+function poolCandidatesOf(ticketIds: string[]): AssignCandidate[] {
+  const gid = teamId.value;
+  const picked = poolTicketsSource.filter((t) => ticketIds.includes(t.id));
+  return assignCandidatesOf(gid, null).map((c) => ({
+    ...c,
+    matched: picked.length > 0 && picked.every((t) => assignCandidatesOf(gid, t).find((x) => x.name === c.name)?.matched),
+  }));
+}
+
+function confirmAssign(content: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    Modal.confirm({
+      title: '指派',
+      content,
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    });
+  });
+}
+
+/**
+ * 派单组：列表是池内真实工单，规则与本组派单指派弹窗（DispatchAssignModal）一致：
+ * 未就绪 / 未签入、将超上限各二次确认（多张时按本次张数算是否超限），确认后逐张走组内指派落库，
+ * 卡片数随之减少；有失败进部分失败态。
  * 非派单组：原型阶段判全成功。接口就位后改为 setSubmitting(true) → 回调 applyResults(rows) 进部分失败态
  */
-function onAssignSubmit(p: AssignSubmitPayload) {
-  const pool = realPool.value;
-  if (pool) {
+async function onAssignSubmit(p: AssignSubmitPayload) {
+  if (realPool.value) {
+    const c = assignCandidatesOf(teamId.value, null).find((x) => x.name === p.targetName);
+    if (!c) {
+      message.warning('请选择处理人');
+      return;
+    }
+    const n = p.ticketIds.length;
+    const notReady = notReadyConfirmText(c.name, c.signIn, '指派');
+    if (notReady && !(await confirmAssign(notReady))) return;
+    if (c.inTransit + n > c.cap
+      && !(await confirmAssign(`${c.name}在途 ${c.inTransit} / 上限 ${c.cap}，${n > 1 ? `指派 ${n} 张` : '指派'}后将记超额指派，确定指派？`))) return;
     const rows = p.ticketIds.map((id) => {
-      const t = pool.find((x) => x.id === id);
+      const t = poolTicketsSource.find((x) => x.id === id);
       const res = t ? assignInTeam(t, p.targetName) : { ok: false, message: dispatch.checkOccupy(undefined).message };
       return { id, ok: res.ok, reason: res.ok ? undefined : res.message };
     });
-    const okCount = rows.filter((r) => r.ok).length;
-    if (okCount === rows.length) {
+    // 重试只提交失败项：上一轮已成功的行并回结果，仍显示成功、不可再选
+    const merged = p.isRetry ? [...assignOkRows.value, ...rows] : rows;
+    assignOkRows.value = merged.filter((r) => r.ok);
+    const okNow = rows.filter((r) => r.ok).length;
+    if (okNow === rows.length) {
       assignOpen.value = false;
-      message.success(`已指派 ${okCount} 张工单给 ${p.targetName}`);
+      message.success(`已指派 ${okNow} 张工单给 ${p.targetName}`);
     } else {
-      assignRef.value?.applyResults(rows);
+      assignRef.value?.applyResults(merged);
     }
     return;
   }
@@ -1324,8 +1380,9 @@ watch(teamId, () => {
       v-model:open="assignOpen"
       :preselected-ids="assignPreselect"
       :candidates="board.members"
-      :tickets="assignTickets"
+      :tickets="assignList"
       :can-cross-team="!realPool"
+      :pool-candidates-of="realPool ? poolCandidatesOf : undefined"
       @submit="onAssignSubmit"
     />
   </div>
