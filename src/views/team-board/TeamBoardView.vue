@@ -63,7 +63,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { groupMembersOf, teamBoardGroups } from '@/stores/ctiFlow';
 import { TICKETS } from '@/mock/tickets';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { waitText } from '@/views/tickets/composables/dispatchUi';
+import { assignInTeam, waitText } from '@/views/tickets/composables/dispatchUi';
 import { maxPoolWaitMinutes, poolTicketsOf } from './components/dispatchPoolTickets';
 
 const router = useRouter();
@@ -100,10 +100,10 @@ const generatedBoard = computed(() => getGroupBoardSnapshot({
 }));
 
 /**
- * 派单组且本人是该组班组长（即「本组派单」块会渲染）时，未分派只读派单池的真实待派单：
+ * 所选组是派单组时（与查看人无关），未分派读派单池的真实待派单：
  * 池列表与本块共用 dispatchPoolTickets 的 poolTicketsOf / maxPoolWaitMinutes，
- * 故卡片数 ＝ 问候语 ＝ 待指派 ＝ 点「去指派」后池列表条数；最久等待 ＝ 本组派单头部「最长等待」，环比不显示。
- * 其余情况（投诉风险组等非派单组、本人非该组班组长）沿用按人数生成与指派弹窗。
+ * 故卡片数 ＝ 问候语 ＝ 待指派 ＝ 点「去指派」后的列表条数（班组长进本组派单池内工单，其余角色开指派弹窗）；
+ * 最久等待 ＝ 本组派单头部「最长等待」，环比不显示。非派单组（投诉风险组）沿用按人数生成与指派弹窗。
  */
 const poolNow = ref(Date.now());
 const poolTimer = window.setInterval(() => { poolNow.value = Date.now(); }, 30_000);
@@ -111,7 +111,7 @@ onBeforeUnmount(() => window.clearInterval(poolTimer));
 const poolTicketsSource = reactive(TICKETS) as Ticket[];
 const realPool = computed(() => {
   const g = dispatch.groupOf(teamId.value);
-  if (!g || !g.leaders.includes(user.name)) return null;
+  if (!g) return null;
   void dispatch.ticketStates;
   return poolTicketsOf(g.id, poolTicketsSource);
 });
@@ -433,7 +433,7 @@ function onGoList(p: DrillGoListPayload) {
 
 /* ========================= ③ 指派 ========================= */
 
-/** 待指派工单池（各组按本组未分派数从中取，见 assignTickets） */
+/** 非派单组的待指派工单（按本组未分派数从中取，见 assignTickets） */
 const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a1', no: 'IFLYTS-20260803-00001', customer: '莫某', type: '投诉', priority: 'P0', slaLeftMin: 26, createdAt: '08-03 09:12' },
   { id: 'a2', no: 'IFLYTS-20260803-00002', customer: '陈某', type: '咨询', priority: 'P2', slaLeftMin: 132, createdAt: '08-03 09:40' },
@@ -445,8 +445,15 @@ const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a8', no: 'IFLYJY-20260803-00008', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
 ];
 
-/** 本组待指派：从待指派池按组取，条数＝未分派卡（待指派数） */
-const assignTickets = computed(() => {
+/** 指派弹窗列表：派单组＝该组池内待派单；非派单组从上表按组取。条数＝未分派卡 */
+const assignTickets = computed<AssignTicket[]>(() => {
+  const pool = realPool.value;
+  if (pool) {
+    return pool.map((t) => ({
+      id: t.id, no: t.no, customer: t.customer, type: t.type, priority: t.priority,
+      slaLeftMin: t.slaMinutes, createdAt: t.createdAt ?? '',
+    }));
+  }
   const n = board.value.todos.find((t) => t.key === 'assign')?.count ?? 0;
   const k = Math.max(0, leaderTeams.value.findIndex((t) => t.value === teamId.value)) * 2;
   return [...ASSIGN_TICKETS.slice(k % ASSIGN_TICKETS.length), ...ASSIGN_TICKETS.slice(0, k % ASSIGN_TICKETS.length)].slice(0, n);
@@ -461,8 +468,27 @@ function openAssign(preselect: string[] = []) {
   assignOpen.value = true;
 }
 
-/** 原型阶段判全成功。接口就位后改为 setSubmitting(true) → 回调 applyResults(rows) 进部分失败态 */
+/**
+ * 派单组：列表是池内真实工单，逐张走组内指派落库（assignInTeam），卡片数随之减少；有失败进部分失败态。
+ * 非派单组：原型阶段判全成功。接口就位后改为 setSubmitting(true) → 回调 applyResults(rows) 进部分失败态
+ */
 function onAssignSubmit(p: AssignSubmitPayload) {
+  const pool = realPool.value;
+  if (pool) {
+    const rows = p.ticketIds.map((id) => {
+      const t = pool.find((x) => x.id === id);
+      const res = t ? assignInTeam(t, p.targetName) : { ok: false, message: dispatch.checkOccupy(undefined).message };
+      return { id, ok: res.ok, reason: res.ok ? undefined : res.message };
+    });
+    const okCount = rows.filter((r) => r.ok).length;
+    if (okCount === rows.length) {
+      assignOpen.value = false;
+      message.success(`已指派 ${okCount} 张工单给 ${p.targetName}`);
+    } else {
+      assignRef.value?.applyResults(rows);
+    }
+    return;
+  }
   assignRef.value?.setSubmitting(true);
   window.setTimeout(() => {
     assignRef.value?.setSubmitting(false);
@@ -473,7 +499,7 @@ function onAssignSubmit(p: AssignSubmitPayload) {
 
 const approveOpen = ref(false);
 
-/** 【1215】「去指派」进本组派单 · 池内工单（9.3）；本人未任派单组班组长时沿用现行指派弹窗 */
+/** 【1215】「去指派」进本组派单 · 池内工单（9.3）；本组派单块不显示时（非该组班组长、非派单组）开指派弹窗 */
 const dispatchPanelRef = ref<InstanceType<typeof DispatchTeamPanel> | null>(null);
 const dispatchAnchor = ref<HTMLElement | null>(null);
 function goDispatchPool(): boolean {
@@ -1299,7 +1325,7 @@ watch(teamId, () => {
       :preselected-ids="assignPreselect"
       :candidates="board.members"
       :tickets="assignTickets"
-      :can-cross-team="true"
+      :can-cross-team="!realPool"
       @submit="onAssignSubmit"
     />
   </div>
