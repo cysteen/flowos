@@ -26,7 +26,8 @@ function niceStep(max: number): number {
   const raw = max / 4 || 1;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const n = raw / mag;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  // 单量是整数，步长不小于 1
+  return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag);
 }
 
 const chart = computed(() => {

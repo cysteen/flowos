@@ -53,8 +53,8 @@ function factorShare(w: number | null | undefined) {
 /** 步骤 ② 关系链：各行的适用场景与原处理人取法（PRD 4.2，次序固定） */
 const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }> = {
   本单退回: { scene: '售后转回、回访打回', handler: '本单上一处理人' },
-  关联单: { scene: '承接子单、升级投诉、外投', handler: '原单最后一名二线及以上处理人' },
-  同客户近期: { scene: '同一客户的新单', handler: '该客户有效期内由二线及以上处理过的最近一张工单的处理人' },
+  关联单: { scene: '承接子单、升级投诉、升级外投的新单', handler: '原单最后一名二线及以上处理人' },
+  同客户近期: { scene: '全部进入派单的工单', handler: '该客户有效期内由二线及以上处理过的最近一张工单的处理人' },
 };
 function saveOut() {
   const checks: [unknown, number, number][] = [
@@ -421,7 +421,7 @@ watch(() => store.config, (c) => {
 
 /* 优先派回原处理人 · 关系链三行表 */
 .oc-wrap { border: 1px solid #eef0f3; border-radius: 6px; overflow-x: auto; background: #fff; }
-.oc-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: 13px; }
+.oc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .oc-table th {
   background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
   padding: 8px 12px; text-align: left; border-bottom: 1px solid #eef0f3; white-space: nowrap;
@@ -434,7 +434,8 @@ watch(() => store.config, (c) => {
 .oc-name { font-weight: 600; color: #111827; }
 .oc-sub { font-size: 12px; color: #6b7280; margin-top: 2px; min-width: 96px; }
 .oc-handler { min-width: 120px; }
-.oc-absent-cell { min-width: 560px; }
+/* 宽屏保留量一行放下，窄屏收窄列宽、保留量折成两行 */
+.oc-absent-cell { width: 560px; }
 .oc-same { margin-top: 6px; }
 .oc-nowrap { white-space: nowrap; }
 .oc-text { color: #4b5563; }
