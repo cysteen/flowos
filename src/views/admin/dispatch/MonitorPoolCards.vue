@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：全局状态条 + 工单池卡片（启用中的池，按池展示）、切换派单方式入口、切换记录
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：标题行含全局派单方式、切换派单方式入口、切换记录；工单池卡片（启用中的池，按池展示）
 import { computed, reactive, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
@@ -55,20 +55,14 @@ const recordCols = [
       <span class="dx-sec-title">池状态</span>
       <span class="dx-sec-sub">共 {{ cards.length }} 个工单池</span>
       <span class="dx-sec-extra">
+        <span class="ps-global">
+          <span class="dx-icon ps-global-ic"><GlobalOutlined /></span>
+          <span class="ps-global-name">全局</span>
+          <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
+        </span>
+        <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
         <a-button type="link" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
       </span>
-    </div>
-
-    <!-- 全局状态条：全局派单方式；右侧切换派单方式 -->
-    <div class="dx-card gs">
-      <div class="gs-main">
-        <span class="dx-icon gs-ic"><GlobalOutlined /></span>
-        <span class="gs-name">全局</span>
-        <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
-      </div>
-      <div class="gs-ops">
-        <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
-      </div>
     </div>
 
     <div class="group-grid">
@@ -91,7 +85,7 @@ const recordCols = [
           </div>
           <div class="pc-tags">
             <span class="pc-tag">{{ c.label }}</span>
-            <span class="pc-tag">本池 {{ c.poolMode }}</span>
+            <span v-if="c.poolMode !== c.effectiveMode" class="pc-tag">本池 {{ c.poolMode }}</span>
           </div>
           <div class="pc-stats">
             <div class="pc-stat pc-stat-lead">
@@ -128,12 +122,10 @@ const recordCols = [
 <style scoped>
 .ps { min-width: 0; }
 
-/* 全局状态条 */
-.gs { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 16px; }
-.gs-main { display: flex; align-items: center; gap: 12px; flex: none; }
-.gs-ic { width: 32px; height: 32px; font-size: 15px; }
-.gs-name { font-size: 14px; font-weight: 600; color: #1f2329; }
-.gs-ops { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+/* 标题行内的全局派单方式 */
+.ps-global { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.ps-global-ic { width: 20px; height: 20px; font-size: 12px; border-radius: 4px; }
+.ps-global-name { font-size: 13px; font-weight: 600; color: #1f2329; }
 
 /* 工单池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
 .group-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; min-width: 0; }
