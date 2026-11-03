@@ -7,7 +7,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  GATE_ORDER, RELAX_LEVEL_LABEL, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type OriginalExclusion,
+  GATE_ORDER, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type OriginalExclusion,
   type ScoreFactorKey,
 } from '@/views/tickets/types/dispatch';
 import { PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
@@ -19,7 +19,7 @@ const props = defineProps<{ open: boolean; ticketNo?: string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
 
-const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '组内放宽', '兜底回池', '留池'];
+const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '留池'];
 const FAILS: DispatchFailReason[] = ['无画像匹配成员', '无可接单成员', '均达个人上限', '系统异常'];
 const pathOpts = PATHS.map((p) => ({ value: p, label: pathLabel(p) }));
 const failOpts = FAILS.map((r) => ({ value: r, label: failLabel(r) }));
@@ -100,11 +100,11 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '产品放宽层级', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
-    l.globalMode, l.groupMode, pathWithRelation(l.path, l.originalRelation), l.relaxLevel != null ? RELAX_LEVEL_LABEL[l.relaxLevel] : '', l.candidateCount ?? '',
+    l.globalMode, l.groupMode, pathWithRelation(l.path, l.originalRelation), l.candidateCount ?? '',
     personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
@@ -154,7 +154,6 @@ function exportCsv() {
         <template v-else-if="column.key === 'path'">
           <span v-if="record.path">{{ pathWithRelation(record.path, record.originalRelation) }}</span>
           <span v-else class="lg-sub">—</span>
-          <div v-if="record.relaxLevel" class="lg-sub">产品放宽：{{ RELAX_LEVEL_LABEL[record.relaxLevel as 0 | 1 | 2] }}</div>
         </template>
         <template v-else-if="column.key === 'chosen'">
           <template v-if="record.kind === '人工'">

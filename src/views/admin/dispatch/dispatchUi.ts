@@ -150,12 +150,6 @@ export const CONFIG_FIELD_LABEL: Record<string, string> = {
   originalChain: '优先派回原处理人',
   factors: '打分因素',
   recentHours: '最近接单的统计范围',
-  relaxEnabled: '放宽产品范围',
-  relaxMaxLevel: '最多放宽到',
-  relaxQueueMinutes: '放宽产品范围 · 排队超过',
-  relaxSlaPercent: '放宽产品范围 · 首次响应剩余不足',
-  fallbackSlaPercent: '退回工单池 · 首次响应剩余不足',
-  noSlaFallbackMinutes: '退回工单池 · 无首次响应时限时排队超过',
   roleBase: '角色基准值',
   proficiencyCoef: '熟练度系数',
 };

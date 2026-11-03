@@ -6,7 +6,7 @@
 import { computed, ref } from 'vue';
 import { DownOutlined, RightOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { RELAX_LEVEL_LABEL, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import type { DispatchLogEntry } from '@/views/tickets/types/dispatch';
 import { EXCLUSION_LABEL, FACTOR_LABEL, pathWithRelation, replacePathNames } from '@/views/admin/dispatch/dispatchLabels';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
@@ -45,14 +45,13 @@ const factors = computed(() => {
     }));
 });
 
-/** 派单原因：触发类型 ＋ 归属池（命中的入池规则）＋ 候选人数 ＋ 产品放宽层级 */
+/** 派单原因：触发类型 ＋ 归属池（命中的入池规则）＋ 候选人数 */
 const reasonText = computed(() => {
   const l = log.value;
   if (!l) return '';
   const parts = [`${l.trigger ?? '新单'}进入${l.poolLabel}（${l.ruleName}）`];
   if (l.path === '原处理人') parts.push(`原处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}可接单，优先派回`);
   else if (l.candidateCount != null) parts.push(`可接单 ${l.candidateCount} 人`);
-  if (l.relaxLevel) parts.push(`产品放宽至${RELAX_LEVEL_LABEL[l.relaxLevel]}`);
   return parts.join('；');
 });
 

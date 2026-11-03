@@ -236,7 +236,7 @@ export function useTicketWorkbench() {
         list.sort((a, b) => compareByMineSort(a, b, mineSortRule.value));
       }
     } else if (activeTab.value === 'pool') {
-      // 【1215】派单失败回池在前，其后排队中、等原处理人；同类按首响 SLA 剩余升序（10.1）
+      // 【1215】排队中在前，其后等原处理人；同类按首响 SLA 剩余升序（10.1）
       const rankOf = (t: Ticket) => DISPATCH_STATUS_ORDER[dispatch.dispatchStatusOf(t.no) ?? ''] ?? 3;
       list.sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
     } else {

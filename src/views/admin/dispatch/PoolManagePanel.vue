@@ -102,7 +102,7 @@ function confirmToggle() {
   if (r.message) message.success(r.message);
   if (!toggleTo.value && detailId.value === toggleId.value) detailId.value = null;
 }
-const backlogOf = (p: { waitingOriginal: number; queued: number; failed: number }) => p.waitingOriginal + p.queued + p.failed;
+const backlogOf = (p: { waitingOriginal: number; queued: number }) => p.waitingOriginal + p.queued;
 /** 指向本池的已启用入池规则（按优先级）；默认池另含「未命中任何规则」 */
 function rulesOf(poolId: string): string {
   const names = [...store.rules].filter((r) => r.enabled && r.poolId === poolId).sort((a, b) => a.priority - b.priority).map((r) => r.name);
@@ -110,12 +110,11 @@ function rulesOf(poolId: string): string {
   return names.join('、') || '—';
 }
 /** 次要派单计数：只列非 0 项并标色；均为 0 时显示一句汇总；池内有未领单时末尾附最长等待（池内全部未领单口径） */
-function waitItems(p: { id: string; waitingOriginal: number; queued: number; failed: number }) {
+function waitItems(p: { id: string; waitingOriginal: number; queued: number }) {
   const xs: { label: string; value: string | number; tone: string }[] = [];
   if (p.waitingOriginal) xs.push({ label: '等原处理人', value: p.waitingOriginal, tone: 'dx-warn' });
   if (p.queued) xs.push({ label: '排队中', value: p.queued, tone: 'dx-warn' });
-  if (p.failed) xs.push({ label: '派单失败回池', value: p.failed, tone: 'dx-bad' });
-  if (!xs.length) xs.push({ label: '等原处理人、排队中、派单失败回池均为 0', value: '', tone: '' });
+  if (!xs.length) xs.push({ label: '等原处理人、排队中均为 0', value: '', tone: '' });
   if (pendingOf(p.id)) xs.push({ label: '最长等待', value: poolWaitText(pendingWaitOf(p.id)), tone: '' });
   return xs;
 }
@@ -161,7 +160,7 @@ function fmt(ms: number) {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-const STATUS_TONE: Record<string, string> = { 等原处理人: 'default', 排队中: 'orange', 派单失败回池: 'red' };
+const STATUS_TONE: Record<string, string> = { 等原处理人: 'default', 排队中: 'orange' };
 const detailCols = [
   { title: '工单号', dataIndex: 'no', key: 'no', width: 148, fixed: 'left' as const },
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 160 },
@@ -346,9 +345,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             <div class="pd-stat">
               <b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b><span>排队</span>
             </div>
-            <div class="pd-stat">
-              <b :class="{ bad: detailPool.failed }">{{ detailPool.failed }}</b><span>失败回池</span>
-            </div>
           </div>
         </div>
 
@@ -471,7 +467,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 }
 .pd-stat b { font-size: 16px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .pd-stat b.warn { color: #ff7d00; }
-.pd-stat b.bad { color: #f53f3f; }
 .pd-stat span { font-size: 11px; color: #9ca3af; }
 .pd-table-hd {
   display: flex; align-items: baseline; gap: 8px;

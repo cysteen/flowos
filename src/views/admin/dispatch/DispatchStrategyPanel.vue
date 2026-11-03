@@ -32,10 +32,8 @@ watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.v
 watch(active, (v) => emit('update:tab', v));
 
 /* ================= 出池规则 ================= */
-type OutForm = Pick<DispatchConfig, 'originalChain' | 'factors' | 'recentHours' | 'relaxEnabled' | 'relaxMaxLevel'
-  | 'relaxQueueMinutes' | 'relaxSlaPercent' | 'fallbackSlaPercent' | 'noSlaFallbackMinutes'>;
-const OUT_KEYS: (keyof OutForm)[] = ['originalChain', 'factors', 'recentHours', 'relaxEnabled', 'relaxMaxLevel',
-  'relaxQueueMinutes', 'relaxSlaPercent', 'fallbackSlaPercent', 'noSlaFallbackMinutes'];
+type OutForm = Pick<DispatchConfig, 'originalChain' | 'factors' | 'recentHours'>;
+const OUT_KEYS: (keyof OutForm)[] = ['originalChain', 'factors', 'recentHours'];
 function pickOut(c: DispatchConfig): OutForm {
   const o = {} as Record<string, unknown>;
   OUT_KEYS.forEach((k) => { o[k] = JSON.parse(JSON.stringify(c[k])); });
@@ -61,8 +59,7 @@ function saveOut() {
     ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
     ...out.originalChain.flatMap((x) => [[x.reserveMinutes, 1, 60], [x.reserveSlaPercent, 1, 100]] as [unknown, number, number][]),
     ...out.factors.map((x: ScoreFactor) => [x.weight, 0, 100] as [unknown, number, number]),
-    [out.recentHours, 1, 24], [out.relaxQueueMinutes, 1, 120],
-    [out.relaxSlaPercent, 1, 100], [out.fallbackSlaPercent, 1, 100], [out.noSlaFallbackMinutes, 1, 999],
+    [out.recentHours, 1, 24],
   ];
   for (const [v, a, b] of checks) {
     const e = rangeError(v, a, b);
@@ -223,45 +220,6 @@ watch(() => store.config, (c) => {
           <div class="dpf-item">
             <span class="dpf-label">最近接单的统计范围</span>
             <div class="dpf-ctl"><span class="dpf-unit">近</span><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
-          </div>
-        </div>
-        </div>
-      </div>
-      <div class="cs">
-        <div class="cs-hd">
-          <span class="cs-seq">4</span>
-          <div class="cs-ti"><div class="cs-name">没人可接时</div></div>
-        </div>
-        <div class="cs-bd">
-        <div class="dpf-grid">
-          <div class="dpf-item">
-            <span class="dpf-label">放宽产品范围</span>
-            <div class="dpf-ctl"><a-switch v-model:checked="out.relaxEnabled" /></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">最多放宽到</span>
-            <div class="dpf-ctl">
-              <a-radio-group v-model:value="out.relaxMaxLevel" :disabled="!out.relaxEnabled">
-                <a-radio :value="1">同产品分类</a-radio>
-                <a-radio :value="2">不限</a-radio>
-              </a-radio-group>
-            </div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">放宽产品范围 · 排队超过</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.relaxQueueMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">放宽产品范围 · 首次响应剩余不足</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.relaxSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">退回工单池 · 首次响应剩余不足</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.fallbackSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">退回工单池 · 无首次响应时限时排队超过</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.noSlaFallbackMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟</span></div>
           </div>
         </div>
         </div>
