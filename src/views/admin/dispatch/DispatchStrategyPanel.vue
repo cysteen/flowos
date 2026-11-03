@@ -8,11 +8,11 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
   DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, RESERVE_COMPLAINT_ONLY, defaultDispatchConfig,
-  type DispatchConfig, type DispatchRole, type OriginalExclusion, type OriginalRelation, type Proficiency, type ScoreFactor,
+  type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
-import { EXCLUSION_LABEL, FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
+import { FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
@@ -56,13 +56,6 @@ const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }
   关联单: { scene: '承接子单、升级投诉、外投', handler: '原单最后一名二线及以上处理人' },
   同客户近期: { scene: '同一客户的新单', handler: '该客户有效期内由二线及以上处理过的最近一张工单的处理人' },
 };
-/** 步骤 ② 下方只读的通用约束 */
-const CHAIN_RULES = [
-  { label: '接单条件', text: '同步骤 1' },
-  { label: '层级', text: '只认二线及以上；技术支持组池只认三线' },
-  { label: '保留', text: '原处理人当日签入过；一张单只保留一次，保留给次序最靠前的原处理人' },
-  { label: '不派回', text: (Object.keys(EXCLUSION_LABEL) as OriginalExclusion[]).map((k) => EXCLUSION_LABEL[k]).join('；') },
-];
 function saveOut() {
   const checks: [unknown, number, number][] = [
     ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
@@ -152,12 +145,11 @@ watch(() => store.config, (c) => {
       <!-- 出池规则 -->
       <div v-else-if="active === 'outpool'" class="st-tab-pane">
         <section class="outpool-panel">
-      <p class="outpool-lead">系统在工单所属组的成员中，按以下顺序挑选处理人</p>
       <div class="cs-list">
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">1</span>
-          <div class="cs-ti"><div class="cs-name">谁可以接单</div><div class="cs-desc">以下条件都满足的坐席才会被派单</div></div>
+          <div class="cs-ti"><div class="cs-name">谁可以接单</div></div>
         </div>
         <div class="cs-bd gates">
           <span v-for="g in GATES" :key="g" class="gate"><CheckCircleFilled />{{ g }}</span>
@@ -166,7 +158,7 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">2</span>
-          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div><div class="cs-desc">按以下次序查找原处理人，满足接单条件时直接派回</div></div>
+          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div></div>
         </div>
         <div class="cs-bd">
         <div class="oc-wrap">
@@ -210,15 +202,12 @@ watch(() => store.config, (c) => {
             </tbody>
           </table>
         </div>
-        <dl class="oc-rules">
-          <template v-for="r in CHAIN_RULES" :key="r.label"><dt>{{ r.label }}</dt><dd>{{ r.text }}</dd></template>
-        </dl>
         </div>
       </div>
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">3</span>
-          <div class="cs-ti"><div class="cs-name">综合打分选人</div><div class="cs-desc">按以下因素给可接单的坐席打分，派给得分最高的人</div></div>
+          <div class="cs-ti"><div class="cs-name">综合打分选人</div></div>
           <div class="cs-op"><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></div>
         </div>
         <div class="cs-bd">
@@ -241,7 +230,7 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">4</span>
-          <div class="cs-ti"><div class="cs-name">没人可接时</div><div class="cs-desc">先排队等待，必要时放宽产品范围；仍无人可接则退回工单池，由组内人工领取</div></div>
+          <div class="cs-ti"><div class="cs-name">没人可接时</div></div>
         </div>
         <div class="cs-bd">
         <div class="dpf-grid">
@@ -405,7 +394,6 @@ watch(() => store.config, (c) => {
 .st-tabs :deep(.ant-tabs-ink-bar) { height: 2px; }
 .outpool-panel, .cap-panel, .audit-panel { padding: 0; border: none; background: transparent; border-radius: 0; }
 .outpool-panel { padding: 0; }
-.outpool-lead { margin: 0 0 14px; font-size: 12px; color: #9ca3af; line-height: 1.45; }
 
 /* 出池规则 · 链式步骤卡（对齐 dispatch-config chain-row） */
 .cs-list { display: flex; flex-direction: column; gap: 8px; }
@@ -423,7 +411,6 @@ watch(() => store.config, (c) => {
 }
 .cs-ti { flex: 1; min-width: 200px; }
 .cs-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; line-height: 1.4; }
-.cs-desc { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.45; }
 .cs-op { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .cs-bd { margin: 10px 0 0 34px; }
 .cs-bd .dpf-item.last, .cs-bd > .dpf-grid:last-child .dpf-item { border-bottom: none; }
@@ -454,12 +441,6 @@ watch(() => store.config, (c) => {
 .oc-absent { display: flex; flex-direction: column; gap: 6px; }
 .oc-reserve { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 6px; }
 .oc-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #374151; }
-.oc-rules {
-  display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px;
-  margin: 10px 0 0; font-size: 12px; line-height: 1.6;
-}
-.oc-rules dt { color: #6b7280; }
-.oc-rules dd { margin: 0; color: #374151; }
 
 /* 综合打分（对齐 factor-row） */
 .wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
