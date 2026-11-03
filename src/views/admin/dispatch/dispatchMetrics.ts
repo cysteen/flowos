@@ -194,7 +194,7 @@ export function computeStats(
 const TREND_BASE: Record<string, { out: number; fb: number }> = {
   line2: { out: 46, fb: 3 },
   hardware: { out: 22, fb: 1.4 },
-  'edu-flash': { out: 18, fb: 1.2 },
+  'edu-flash': { out: 0, fb: 0 },
   xiaozhi: { out: 14, fb: 0.6 },
   edu: { out: 20, fb: 1 },
   general: { out: 24, fb: 1.6 },
