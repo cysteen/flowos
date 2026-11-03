@@ -23,7 +23,7 @@ import {
   NOT_OWN_POOL_MESSAGE,
   type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
-import { POOL_ENTERED_AGO_MIN, buildDispatchDemo } from '@/mock/dispatchDemo';
+import { POOL_ENTERED_AGO_MIN, SPECIAL_POOL_ENTERED_AGO_MIN, buildDispatchDemo } from '@/mock/dispatchDemo';
 import { FACTOR_LABEL, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 20;
+export const DISPATCH_CACHE_VERSION = 21;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -112,9 +112,10 @@ function seedGroups(): DispatchGroup[] {
 /**
  * 初始工单池（14.3）：每个派单组一个池，池 id 与组 id 相同（专属工单线、售后转回的落池点按 id 接线），名称「〈组名〉池」。
  * 运行中种子：二线、综合、技术支持三池为自动派单；硬件缺陷组池由管理员切为混合派单（原因见审计种子）；
- * 小智、教育刷机、教育支持三池（专属工单线）为混合派单、组内领取。综合处理组池为默认池。
+ * 小智、教育支持两池（专属工单线）为混合派单、组内领取；教育刷机处理组池为人工派单、手动领单。综合处理组池为默认池。
  */
-const MIXED_SEED_POOL_IDS = new Set(['hardware', 'xiaozhi', 'edu-flash', 'edu']);
+const MIXED_SEED_POOL_IDS = new Set(['hardware', 'xiaozhi', 'edu']);
+const MANUAL_SEED_POOL_IDS = new Set(['edu-flash']);
 function seedPool(id: string, groupId: string, name: string, mode: PoolMode, at: string): DispatchPool {
   return {
     id, name, groupId, mode, status: '启用', isDefault: id === DEFAULT_POOL_ID,
@@ -123,7 +124,11 @@ function seedPool(id: string, groupId: string, name: string, mode: PoolMode, at:
 }
 function seedPools(groups: DispatchGroup[], now: number): DispatchPool[] {
   const at = stamp(now);
-  return groups.map((g) => seedPool(g.id, g.id, poolLabelOf(g.label), MIXED_SEED_POOL_IDS.has(g.id) ? '混合派单' : '自动派单', at));
+  const modeOf = (id: string): PoolMode => {
+    if (MANUAL_SEED_POOL_IDS.has(id)) return '人工派单';
+    return MIXED_SEED_POOL_IDS.has(id) ? '混合派单' : '自动派单';
+  };
+  return groups.map((g) => seedPool(g.id, g.id, poolLabelOf(g.label), modeOf(g.id), at));
 }
 
 const ANY: AgentProfile = {
@@ -254,6 +259,8 @@ interface Persisted {
    * 刷新前后工单行与派单状态、派单日志一致。刷机 / 小智 / 个册退费单的工单行由各自服务的缓存落库，不在此存。
    */
   rows?: Record<string, Ticket>;
+  /** 刷机 / 小智种子单的进池时刻（ms）：其工单行不在 `rows` 里，单独落库，刷新后等待时长连续 */
+  specialPoolEnteredAt?: Record<string, number>;
 }
 
 function readCache(): Persisted | null {
@@ -497,6 +504,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
       touchRow(row);
     }
   }
+  const specialPoolEnteredAt: Record<string, number> = cached?.specialPoolEnteredAt ?? Object.fromEntries(
+    Object.entries(SPECIAL_POOL_ENTERED_AGO_MIN).map(([no, ago]) => [no, now0 - ago * MIN]),
+  );
 
   function persist() {
     try {
@@ -518,6 +528,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         resumePoolIds: [...resumePoolIds],
         stallNoticed,
         rows: rowSnapshots(),
+        specialPoolEnteredAt,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(data));
     } catch {
@@ -1627,6 +1638,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /** 未经派单进池的单的进池时刻：工单行记的进池时间；没记时通用工单取建单时间，专属工单取最近更新（其进池即更新） */
   function poolEnteredAtOf(t: Ticket, fallback: number = Date.now()): number {
+    const seeded = specialPoolEnteredAt[t.no];
+    if (seeded != null) return seeded;
     const at = parseStamp(t.poolEnteredAt ?? (isSpecialTicket(t) ? t.updatedAt ?? t.createdAt : t.createdAt));
     return Number.isFinite(at) ? at : fallback;
   }

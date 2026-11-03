@@ -155,6 +155,8 @@ const HW_MIXED: Mode = { globalMode: '自动派单', groupMode: '混合派单', 
 const GLOBAL_MIXED: Mode = { globalMode: '混合派单', groupMode: '自动派单', effectiveMode: '混合派单' };
 /** 专属工单线的组：本组混合派单，组内领取 */
 const OFF_GROUP: Mode = { globalMode: '自动派单', groupMode: '混合派单', effectiveMode: '混合派单' };
+/** 教育刷机处理组池：本池人工派单，手动领单 */
+const FLASH_MANUAL: Mode = { globalMode: '自动派单', groupMode: '人工派单', effectiveMode: '人工派单' };
 
 interface Tk {
   no: string;
@@ -498,14 +500,14 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       }
     }
 
-    // 专属工单线的组（混合派单）：组内领取
+    // 专属工单线的组（小智、教育支持混合派单，教育刷机人工派单）：组内领取
     const offCount = weekend ? 3 : 5;
     for (let i = 0; i < offCount; i += 1) {
       const pool = (['xiaozhi', 'edu-flash', 'edu'] as const)[i % 3];
       const ts = from + r() * (to - from);
       const t = newTk(pool, ts);
       const who = pool === 'xiaozhi' ? '谭小智' : pool === 'edu-flash' ? (r() < 0.75 ? '许文静' : '王坐席') : (r() < 0.75 ? '何教支' : '张三');
-      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, OFF_GROUP, { target: who });
+      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP, { target: who });
     }
   }
 }
@@ -629,7 +631,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   for (const [pool, name, f] of TODAY_CLAIMS) {
     const take = at(f);
     const t = newTk(pool, take - b.between(4, 18) * MIN);
-    const mode = ['xiaozhi', 'edu', 'edu-flash'].includes(pool) ? OFF_GROUP : FORMAL;
+    const mode = pool === 'edu-flash' ? FLASH_MANUAL : ['xiaozhi', 'edu'].includes(pool) ? OFF_GROUP : FORMAL;
     b.manual(t, take, '二线领取', name, mode, { target: name, ...(mode === FORMAL ? { firstRespAt: respAt(take) } : {}) });
     noteTake(name, take);
   }
@@ -689,6 +691,16 @@ export const POOL_ENTERED_AGO_MIN: Record<string, number> = {
   'IFLYZX-20260924-00012': 26,
   'IFLYZX-20260930-00041': 55,
   'IFLYZX-20261003-00047': 38,
+};
+
+/**
+ * 教育刷机处理组池、小智工单处理组池的老种子单：未经派单进池，进池时间距今（分钟）。
+ * 业务时间线字段不动；工单行由各自服务落库，进池时间单独记在派单缓存里。
+ */
+export const SPECIAL_POOL_ENTERED_AGO_MIN: Record<string, number> = {
+  'IFLYZX-20260915-00011': 42,
+  'IFLYZX-20260915-00020': 18,
+  'IFLYZX-20260918-00008': 33,
 };
 
 /** 预留目标（当日在班、当前不可用：满额或小休） */
@@ -850,8 +862,8 @@ function buildAudits(tl: Timeline, today: { hwMixedAt: number; t0: number; now: 
   });
   const E = today.now - today.t0;
   const pl = (id: string) => `${groups.find((g) => g.id === id)?.label ?? id}池`;
-  // 上线：先只开放二线处理组池，其余池切为混合派单，再把全局切为自动派单；第 4 天起放开硬件、综合、技术支持组池
-  const toMixed = ['hardware', 'general', 'tech', 'xiaozhi', 'edu-flash', 'edu'].filter((id) => groups.some((g) => g.id === id));
+  // 上线：先只开放二线处理组池，其余池切为混合派单（教育刷机处理组池保持人工派单），再把全局切为自动派单；第 4 天起放开硬件、综合、技术支持组池
+  const toMixed = ['hardware', 'general', 'tech', 'xiaozhi', 'edu'].filter((id) => groups.some((g) => g.id === id));
   const toAuto = ['hardware', 'general', 'tech'];
   return [
     ...toMixed.map((id) => a(tl.launchStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '首批只开放二线处理组池自动派单')),
