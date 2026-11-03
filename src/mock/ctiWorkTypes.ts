@@ -5,7 +5,7 @@
  * 班组未单独配置时取缺省清单（DEFAULT_WORK_TYPE_KEYS）。本轮无后台配置页，配置值写在这里。
  *
  * - 「工单处理」恒为首项与默认子状态；其余均为线下类工作（offline = true），期间照常派单（派单只看就绪 / 未就绪 / 小休 / 签出）。
- * - 「外呼」不是子状态：外呼通话由话务条自动进入忙碌，挂断后恢复原状态；统计中单列一项（OUTBOUND_ITEM）。
+ * - 「外呼」不是子状态：外呼通话由话务条自动进入忙碌，挂断后恢复原状态；流水记「忙碌 · 外呼」，统计计入「工单处理」。
  * - linkTicket = true 的类型切换时自动关联当前激活的工单（处于工单处理页时取该单，否则不关联），切换后不随页签改写。
  * - 班组 id / 组名取自工单处理组（types/ticket.ts POOL_GROUPS）；「投诉风险组」取自规则引擎 / 通知规则里的同名处理组。
  * - 配色经 dataviz 校验脚本（浅色底，相邻色 CVD ΔE ≥ 8）；同一班组内不会出现两项同色。
@@ -34,8 +34,8 @@ export const WORK_TYPE_CATALOG: WorkTypeDef[] = [
   { key: 'affairs', label: '事务处理', capsule: '事务处理中', offline: true, linkTicket: false, color: '#A16207' },
 ];
 
-/** 外呼：统计单列一项，不进子状态菜单 */
-export const OUTBOUND_ITEM = { key: 'outbound', label: '外呼', color: '#F59E0B' } as const;
+/** 状态流水里外呼忙碌段的子状态值（不进子状态菜单，统计计入工单处理） */
+export const OUTBOUND_SUB = 'outbound';
 
 /** 小休：统计放最后一项，中性灰，与工作类型区分；按原因（开会 / 培训 / 茶歇 / 用餐）拆分 */
 export const BREAK_ITEM = { key: 'break', label: '小休', color: '#A3ACB9' } as const;

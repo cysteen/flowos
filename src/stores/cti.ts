@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { DEFAULT_WORK_TYPE, OUTBOUND_ITEM, workTypeOf } from '@/mock/ctiWorkTypes';
+import { DEFAULT_WORK_TYPE, OUTBOUND_SUB, workTypeOf } from '@/mock/ctiWorkTypes';
 import { useCtiFlowStore } from '@/stores/ctiFlow';
 
 // 软电话(CTI) —— 对齐 iFLY-FlowOS-坐席视角.pen · ropW8 双层状态模型（workStatus + callSession）。
@@ -162,7 +162,7 @@ export const useCtiStore = defineStore('cti', {
         ticketNo = this.readyTicketNo;
       } else if (s === 'break') sub = this.breakReason;
       else if (s === 'busy') {
-        sub = OUTBOUND_ITEM.key;
+        sub = OUTBOUND_SUB;
         ticketNo = this.callSession?.ticketId || null;
       }
       useCtiFlowStore().transition(s, sub, ticketNo);

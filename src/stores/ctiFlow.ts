@@ -6,7 +6,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import {
-  BREAK_ITEM, DEFAULT_WORK_TYPE, OUTBOUND_ITEM, workTypeOf, workTypesOfGroup, type WorkTypeDef,
+  BREAK_ITEM, DEFAULT_WORK_TYPE, OUTBOUND_SUB, workTypeOf, workTypesOfGroup, type WorkTypeDef,
 } from '@/mock/ctiWorkTypes';
 
 /**
@@ -69,7 +69,7 @@ export interface DistItem {
 
 export interface GroupDistribution {
   items: DistItem[];
-  /** 签入时长：各工作类型 + 外呼 + 小休（签出、未就绪不计） */
+  /** 签入时长：各工作类型（外呼计入工单处理）+ 小休（签出、未就绪不计） */
   totalMs: number;
   /** 线下类工作合计 */
   offlineMs: number;
@@ -84,7 +84,7 @@ export interface GroupDistribution {
 
 export interface MemberDist {
   ms: Record<string, number>;
-  /** 签入时长：各工作类型 + 外呼 + 小休 */
+  /** 签入时长：各工作类型（外呼计入工单处理）+ 小休 */
   totalMs: number;
   suspectMs: number;
   breakReasons: Record<string, number>;
@@ -211,7 +211,7 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
         const end = Math.min(to, t + ri(3, 12) * MIN);
         const no = pickTicket();
         op(t, no);
-        push('busy', OUTBOUND_ITEM.key, t, end, no);
+        push('busy', OUTBOUND_SUB, t, end, no);
         t = end;
       } else if (r < 0.55) {
         const end = Math.min(to, t + ri(20, 60) * MIN);
@@ -389,7 +389,7 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     return { segs: [...segs, ...segments.value], ops: [...seedOps, ...ops.value] };
   }
 
-  /** 组级时长分布：本组各工作类型、外呼、小休的时长与占比（合计＝签入时长）、线下类合计、状态存疑 */
+  /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝签入时长；外呼通话计入工单处理）、线下类合计、状态存疑 */
   function distribution(groupId: string, from: number, to: number, now: number = Date.now()): GroupDistribution {
     const { segs, ops: allOps } = allSegments(now);
     const types = workTypesOfGroup(groupId);
@@ -411,7 +411,8 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       const b = Math.min(s.end ?? now, to, now);
       if (b <= a) return;
       let key: string | null = null;
-      if (s.status === 'busy') key = OUTBOUND_ITEM.key;
+      // 外呼通话不论从哪个工作类型发起，这段都算工单处理
+      if (s.status === 'busy') key = DEFAULT_WORK_TYPE;
       else if (s.status === 'ready') key = s.sub ?? DEFAULT_WORK_TYPE;
       else if (s.status === 'break') key = BREAK_ITEM.key;
       // 签出、未就绪不计入
@@ -443,14 +444,13 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     });
     const defs = [
       ...types.map((t) => ({ key: t.key, label: t.label, color: t.color })),
-      { key: OUTBOUND_ITEM.key, label: OUTBOUND_ITEM.label, color: OUTBOUND_ITEM.color },
       { key: BREAK_ITEM.key, label: BREAK_ITEM.label, color: BREAK_ITEM.color },
     ];
-    // 历史段里本组已停用的类型也计入，避免合计少算（插在外呼之前）
+    // 历史段里本组已停用的类型也计入，避免合计少算（插在小休之前）
     Object.keys(ms).forEach((k) => {
       if (!defs.some((d) => d.key === k)) {
         const t = workTypeOf(k);
-        if (t) defs.splice(defs.length - 2, 0, { key: t.key, label: t.label, color: t.color });
+        if (t) defs.splice(defs.length - 1, 0, { key: t.key, label: t.label, color: t.color });
       }
     });
     const total = defs.reduce((s, d) => s + (ms[d.key] ?? 0), 0);
