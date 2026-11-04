@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 派单日志查询（PRD 13.1 / 14.1）：按工单号、判定时间（最长 31 天）、坐席、归属池、判定路径、失败原因筛选；可展开看判定明细
+// 派单日志查询（PRD 13.1 / 14.1）：按工单号、判定时间（最长 31 天）、坐席、归属池、判定路径、未派出原因筛选；可展开看判定明细
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons-vue';
@@ -77,7 +77,7 @@ const cols = [
   { title: '派单方式', key: 'mode', width: 90 },
   { title: '判定路径', key: 'path', width: 100 },
   { title: '中选坐席', key: 'chosen', width: 150 },
-  { title: '失败原因', key: 'fail', width: 140 },
+  { title: '未派出原因', key: 'fail', width: 140 },
   { title: '标记', key: 'flag', width: 110 },
 ];
 
@@ -100,7 +100,7 @@ function snapshotItems(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '可接单人数', '中选坐席', '综合得分', '失败原因', '标记'];
+  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '可接单人数', '中选坐席', '综合得分', '未派出原因', '标记'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
     l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
@@ -125,7 +125,7 @@ function exportCsv() {
       <a-select v-model:value="f.agents" mode="multiple" placeholder="坐席" :options="agentOpts" show-search option-filter-prop="label" max-tag-count="responsive" style="width: 180px" />
       <a-select v-model:value="f.pools" mode="multiple" placeholder="归属池" :options="poolOpts" max-tag-count="responsive" style="width: 180px" />
       <a-select v-model:value="f.paths" mode="multiple" placeholder="判定路径" :options="pathOpts" max-tag-count="responsive" style="width: 160px" />
-      <a-select v-model:value="f.fails" mode="multiple" placeholder="失败原因" :options="failOpts" max-tag-count="responsive" style="width: 160px" />
+      <a-select v-model:value="f.fails" mode="multiple" placeholder="未派出原因" :options="failOpts" max-tag-count="responsive" style="width: 160px" />
       <a-button type="primary" @click="query"><template #icon><SearchOutlined /></template>查询</a-button>
       <a-button @click="resetFilters(); query()">重置</a-button>
       <a-button class="lg-export" @click="exportCsv"><template #icon><DownloadOutlined /></template>导出</a-button>

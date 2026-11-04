@@ -1,6 +1,6 @@
 /**
  * 派单概念的界面名称（【1215】PRD 14.2 出池规则 / 13.1 派单日志 / 14.1 派单路径占比）。
- * 只做显示映射，内部取值（门槛 key、判定路径、失败原因、因子 key）不变。
+ * 只做显示映射，内部取值（门槛 key、判定路径、未派出原因、维度 key）不变。
  */
 import type {
   DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreFactorKey,
@@ -28,7 +28,7 @@ export const PATH_LABEL: Record<DispatchPath, string> = {
   留池: '留在工单池',
 };
 
-/** 失败原因（13.1） */
+/** 未派出原因（13.1） */
 export const FAIL_LABEL: Record<DispatchFailReason, string> = {
   组内暂无已就绪成员: '组内暂无已就绪成员',
   无画像匹配成员: '无画像相符的成员',
