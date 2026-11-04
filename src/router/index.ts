@@ -156,6 +156,12 @@ const routes: RouteRecordRaw[] = [
         meta: { menu: 'tickets', title: '工单处理' },
       },
       {
+        path: 'unified-create',
+        name: 'unified-create',
+        component: () => import('@/views/tickets/UnifiedCreateView.vue'),
+        meta: { menu: 'tickets', title: '统一建单' },
+      },
+      {
         path: 'customer-insight',
         redirect: (to) => ({
           path: '/query',

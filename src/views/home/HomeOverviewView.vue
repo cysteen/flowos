@@ -18,6 +18,8 @@ import {
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue';
+import { useOpenUnifiedCreate } from '@/views/tickets/composables/unifiedCreateEntry';
+import { XIAOZHI_CREATE_ROLES } from '@/config/roles';
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
 import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
 import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
@@ -80,6 +82,11 @@ const SHOW_AI_ASSISTANT = false;
 
 const noticeVisible = ref(SHOW_NOTICE);
 const createOpen = ref(false);
+const openUnifiedCreate = useOpenUnifiedCreate();
+const canCreateXiaozhi = computed(() => XIAOZHI_CREATE_ROLES.includes(user.roleKey));
+function onUnifiedMenu(info: { key: string | number }) {
+  openUnifiedCreate(info.key === 'xiaozhi' ? 'xiaozhi' : 'general');
+}
 const drillOpen = ref(false);
 const activeDrillKey = ref<HomeMetricDrillKey | null>(null);
 const activeDrillTable = computed(() =>
@@ -300,7 +307,19 @@ function openDrillTicket(no: string) {
           </template>
         </div>
       </div>
-      <button class="btn-primary" @click="createOpen = true">新建工单</button>
+      <div class="create-btns">
+        <button class="btn-primary" @click="createOpen = true">新建工单</button>
+        <a-dropdown v-if="canCreateXiaozhi" :trigger="['click']">
+          <button class="btn-primary">统一建单</button>
+          <template #overlay>
+            <a-menu @click="onUnifiedMenu">
+              <a-menu-item key="general">通用工单</a-menu-item>
+              <a-menu-item key="xiaozhi">小智工单</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <button v-else class="btn-primary" @click="openUnifiedCreate()">统一建单</button>
+      </div>
     </div>
 
     <!--
@@ -684,6 +703,12 @@ function openDrillTicket(no: string) {
 }
 .summary-chip.gain {
   color: #047857;
+}
+.create-btns {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .btn-primary {
   flex: none;

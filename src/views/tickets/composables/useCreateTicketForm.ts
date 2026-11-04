@@ -133,7 +133,11 @@ function phoneDigits(phone: string | undefined): string | undefined {
   return (phone ?? '').replace(/\D/g, '') || undefined;
 }
 
-export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | undefined) {
+export function useCreateTicketForm(
+  prefill: () => CreateTicketPrefill | null | undefined,
+  /** `twoLevelProblem`：所选路径只到二级时不校验三级（统一建单页用；默认关闭，行为不变） */
+  options?: { twoLevelProblem?: boolean },
+) {
   const form = reactive<CreateTicketFormState>(defaultForm());
   const snVerified = ref(true);
   const assignAdopted = ref(false);
@@ -949,7 +953,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.deviceSn = false;
     errors.problemL1 = !form.problemL1;
     errors.problemL2 = !form.problemL2;
-    errors.problemL3 = !form.problemL3;
+    errors.problemL3 = !form.problemL3
+      && !(options?.twoLevelProblem && !!form.problemL2 && !problemL3Options.value.some(Boolean));
     errors.description = !hidesSnAndDesc.value && !form.description.trim();
     errors.title = !form.title.trim();
     errors.problemTime = false;
