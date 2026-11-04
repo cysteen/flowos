@@ -6,7 +6,11 @@ import { PlusOutlined } from '@ant-design/icons-vue';
 import { AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS } from '../../composables/opActions';
 import type { AftersaleContext, AftersalePayload } from '../../composables/opActions';
 
-const props = defineProps<{ context?: AftersaleContext }>();
+const props = defineProps<{
+  context?: AftersaleContext;
+  /** 预填变化时只更新变了的客户、产品字段，已填的其余内容保留（统一建单页用；默认关闭，整份重写） */
+  refreshChangedOnly?: boolean;
+}>();
 
 /** 展示用的空值占位（「—」等）不是值：预填时按空处理，不写进售后单与履历 */
 const PLACEHOLDER = /^[\s—–\-－]*$/;
@@ -52,8 +56,27 @@ function prefill(ctx?: AftersaleContext) {
   form.pickPhone = form.backPhone = form.customerPhone;
   form.pickAddress = form.backAddress = form.address;
 }
+function refreshChanged(ctx?: AftersaleContext, old?: AftersaleContext) {
+  if (!ctx) return;
+  const customerKeys = ['customerName', 'customerPhone', 'region', 'address'] as const;
+  if (customerKeys.some((k) => ctx[k] !== old?.[k])) {
+    const [p, c, d] = splitRegion(ctx.region);
+    form.customerName = val(ctx.customerName);
+    form.customerPhone = val(ctx.customerPhone);
+    form.province = p; form.city = c; form.district = d;
+    form.address = val(ctx.address);
+    form.pickName = form.backName = form.customerName;
+    form.pickPhone = form.backPhone = form.customerPhone;
+    form.pickAddress = form.backAddress = form.address;
+  }
+  if (ctx.productCategory !== old?.productCategory) form.productCategory = val(ctx.productCategory);
+  if (ctx.productName !== old?.productName) form.productName = val(ctx.productName);
+}
 prefill(props.context);
-watch(() => props.context, prefill);
+watch(() => props.context, (ctx, old) => {
+  if (props.refreshChangedOnly) refreshChanged(ctx, old);
+  else prefill(ctx);
+});
 
 const isVisit = computed(() => form.serviceMethod === '上门');
 const isMail = computed(() => form.serviceMethod === '寄修');

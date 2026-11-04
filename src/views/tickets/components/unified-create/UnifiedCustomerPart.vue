@@ -7,7 +7,11 @@ import CreateTicketPartCard from '../create-ticket/CreateTicketPartCard.vue';
 import CustomerInfoModal from '../create-ticket/CustomerInfoModal.vue';
 import FormSelect from '../create-ticket/FormSelect.vue';
 
-const props = defineProps<{ ctx: ReturnType<typeof useCreateTicketForm> }>();
+const props = defineProps<{
+  ctx: ReturnType<typeof useCreateTicketForm>;
+  /** 售后：客户详情只在内嵌售后表单里出现，这里只留搜索与两个按钮 */
+  searchOnly?: boolean;
+}>();
 
 // eslint-disable-next-line vue/no-setup-props-destructure -- ctx 随表单实例创建，生命周期内不换
 const {
@@ -97,7 +101,7 @@ function toggleReporter() {
         />
       </div>
 
-      <div v-if="form.customer" class="customer-card">
+      <div v-if="form.customer && !searchOnly" class="customer-card">
         <div class="cust-avatar">{{ form.customer.name.slice(0, 1) }}</div>
         <div class="cust-info">
           <div class="cust-line1">
@@ -117,7 +121,7 @@ function toggleReporter() {
       <div v-if="form.customer && isFlashType && flashPhoneError" class="cust-phone-error">
         {{ flashPhoneError }}
       </div>
-      <div v-if="!form.customer" class="customer-empty" :class="{ error: errors.customer }">
+      <div v-if="!form.customer && !searchOnly" class="customer-empty" :class="{ error: errors.customer }">
         {{ errors.customer ? '请先选择客户，未绑定客户不可提交工单' : '未绑定客户 · 客户为建单必填项' }}
       </div>
     </div>

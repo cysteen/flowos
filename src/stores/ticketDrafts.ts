@@ -14,6 +14,8 @@ export interface TicketDraft {
   customerName: string;
   savedAt: string;
   form: Record<string, unknown>;
+  /** 从小智入口存的草稿：继续编辑时仍是小智表单。此前存的草稿没有这一项，按普通草稿恢复 */
+  xiaozhiScene?: boolean;
 }
 
 export const useTicketDraftStore = defineStore('ticketDrafts', () => {

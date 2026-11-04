@@ -98,18 +98,24 @@ const isAftersaleType = computed(() => {
     && r.tagL1 === form.problemL1 && r.tagL2 === form.problemL2 && r.tagL3 === form.problemL3);
 });
 
-/* ---------------- 切回通用：恢复命中前的工单类型与业务类型 ---------------- */
+/* ---------------- 切回通用：恢复命中前的工单类型、业务类型与优先级 ---------------- */
 
-let beforeHit: { ticketType: typeof form.ticketType; businessType: typeof form.businessType } | null = null;
+let beforeHit: {
+  ticketType: typeof form.ticketType;
+  businessType: typeof form.businessType;
+  priority: typeof form.priority;
+} | null = null;
 // 同步执行：要赶在表单内部把类型强改为咨询之前记下原值
 watch(
   () => isFlashType.value || isRefundType.value,
   (hit) => {
     if (hit) {
-      beforeHit = { ticketType: form.ticketType, businessType: form.businessType };
+      beforeHit = { ticketType: form.ticketType, businessType: form.businessType, priority: form.priority };
     } else if (beforeHit) {
       form.ticketType = beforeHit.ticketType;
       form.businessType = beforeHit.businessType;
+      // 命中前没选优先级：保留命中期间选的值。类型与优先级是命中前的同一组取值，联动上本就合法
+      if (beforeHit.priority) form.priority = beforeHit.priority;
       beforeHit = null;
     }
   },
@@ -259,6 +265,7 @@ function onDraft() {
     customerName: form.customer?.name || '未选择客户',
     savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
     form: JSON.parse(JSON.stringify(form)),
+    ...(isXiaozhiType.value ? { xiaozhiScene: true } : {}),
   });
   message.success('已存草稿，可在工作台「草稿箱」继续编辑');
   onCancel();
@@ -417,11 +424,11 @@ function onCreate(processAfter = false) {
       </CreateTicketPartCard>
 
       <!-- ② 客户信息 -->
-      <UnifiedCustomerPart :ctx="ctx" />
+      <UnifiedCustomerPart :ctx="ctx" :search-only="isAftersaleType" />
 
       <!-- ③ 工单详情 -->
       <CreateTicketPartCard v-if="isAftersaleType" title="工单详情">
-        <AftersaleCreateForm ref="aftersaleForm" :context="aftersaleContext" />
+        <AftersaleCreateForm ref="aftersaleForm" :context="aftersaleContext" refresh-changed-only />
       </CreateTicketPartCard>
       <template v-else>
         <CreateTicketPartCard v-if="!hidesSnAndDesc" title="工单详情">

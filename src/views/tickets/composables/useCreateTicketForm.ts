@@ -304,7 +304,7 @@ export function useCreateTicketForm(
    */
   /** 入口固定了工单类型（升级投诉 / 刷机单关联投诉）：不做刷机单识别（预填 `noFlashScene`） */
   const flashSceneOff = ref(false);
-  const isFlashType = computed(() => !flashSceneOff.value && flashConfig.isFlashScene(
+  const isFlashType = computed(() => !flashSceneOff.value && prefill()?.xiaozhiScene !== true && flashConfig.isFlashScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   /** 「刷机信息」卡字段下方的必填提示 */
@@ -609,7 +609,7 @@ export function useCreateTicketForm(
    * 个册退费单识别：所选产品的问题分类「专属类型＝个册退费」（后台「问题分类」维护，同刷机单按问题分类识别）。
    * 入口固定了工单类型的（升级投诉 / 关联投诉 / 小智入口）不识别。
    */
-  const isRefundType = computed(() => !flashSceneOff.value && refundConfig.isRefundScene(
+  const isRefundType = computed(() => !flashSceneOff.value && prefill()?.xiaozhiScene !== true && refundConfig.isRefundScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   const refundErrors = reactive<Record<CreateTicketRefundField, string>>({

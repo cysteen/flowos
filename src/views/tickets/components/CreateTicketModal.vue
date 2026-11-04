@@ -61,6 +61,9 @@ const props = defineProps<{
 const draftStore = useTicketDraftStore();
 const userStore = useUserStore();
 const activeDraftId = ref<string | null>(null);
+/** 从草稿恢复时小智身份只认草稿记录的标识，不看上一次打开遗留的预填；null ＝ 不是草稿，照预填 */
+const restoredDraftScene = ref<'xiaozhi' | 'general' | null>(null);
+const XIAOZHI_DRAFT_PREFILL: CreateTicketPrefill = { xiaozhiScene: true };
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -115,7 +118,10 @@ const {
   isRefundType,
   refundErrors,
   submitRefund,
-} = useCreateTicketForm(() => props.prefill);
+} = useCreateTicketForm(() => {
+  if (restoredDraftScene.value === 'xiaozhi') return XIAOZHI_DRAFT_PREFILL;
+  return restoredDraftScene.value === 'general' ? null : props.prefill;
+});
 
 const router = useRouter();
 
@@ -362,6 +368,7 @@ function onDraft() {
     customerName: form.customer?.name || '未选择客户',
     savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
     form: JSON.parse(JSON.stringify(form)),
+    ...(isXiaozhiType.value ? { xiaozhiScene: true } : {}),
   });
   message.success('已存草稿，可在工作台「草稿箱」继续编辑');
   emit('update:open', false);
@@ -376,6 +383,7 @@ watch(
   (v) => {
     if (!v) return;
     const draft = props.draftId ? draftStore.get(props.draftId) : null;
+    restoredDraftScene.value = draft ? (draft.xiaozhiScene ? 'xiaozhi' : 'general') : null;
     if (draft) {
       // 从草稿箱继续编辑：恢复表单快照
       reset();
