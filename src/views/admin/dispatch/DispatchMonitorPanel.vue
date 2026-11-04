@@ -46,7 +46,12 @@ const poolRows = computed(() => {
   void store.ticketStates;
   return store.poolViews();
 });
-const backlogTableRows = computed(() => poolRows.value.filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id))));
+const backlogTableRows = computed(() => {
+  const shownWait = (p: { waitingOriginal: number; queued: number; maxWaitMin: number }) => (p.waitingOriginal + p.queued ? p.maxWaitMin : 0);
+  return poolRows.value
+    .filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id)))
+    .sort((a, b) => b.queued - a.queued || b.waitingOriginal - a.waitingOriginal || shownWait(b) - shownWait(a));
+});
 const backlog = computed(() => {
   const rows = backlogTableRows.value;
   return {
