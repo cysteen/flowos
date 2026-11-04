@@ -283,7 +283,7 @@ function priorityHex(p: string): string {
           >
             <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
-          <!-- 【1215】在池工单的派单状态：排队中 / 等原处理人 -->
+          <!-- 【1215】在池工单的派单状态：排队中 -->
           <DispatchStatusTag v-if="!isSuperseded" :ticket-no="ticketNo" />
           <!--
             类型位徽章 —— **三档互斥，恒只出一枚**：

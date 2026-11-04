@@ -46,16 +46,16 @@ const poolRows = computed(() => {
   return store.poolViews();
 });
 const backlogTableRows = computed(() => {
-  const shownWait = (p: { waitingOriginal: number; queued: number; maxWaitMin: number }) => (p.waitingOriginal + p.queued ? p.maxWaitMin : 0);
+  const shownWait = (p: { queued: number; maxWaitMin: number }) => (p.queued ? p.maxWaitMin : 0);
   return poolRows.value
     .filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id)))
-    .sort((a, b) => b.queued - a.queued || b.waitingOriginal - a.waitingOriginal || shownWait(b) - shownWait(a));
+    .sort((a, b) => b.queued - a.queued || shownWait(b) - shownWait(a));
 });
 const backlog = computed(() => {
   const rows = backlogTableRows.value;
   return {
-    count: rows.reduce((s, p) => s + p.waitingOriginal + p.queued, 0),
-    maxWait: rows.filter((p) => p.waitingOriginal + p.queued).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
+    count: rows.reduce((s, p) => s + p.queued, 0),
+    maxWait: rows.filter((p) => p.queued).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
   };
 });
 
@@ -87,7 +87,7 @@ const cards = computed(() => {
   const balance = manualPool ? null : s.balance;
   const items = [
     {
-      key: 'succ', label: '自动派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined, warn: false,
+      key: 'succ', label: '系统派单成功率', value: pct(s.successRate), icon: CheckCircleOutlined, warn: false,
       delta: { text: `成功 ${s.successCount} / ${s.successBase} 单`, tone: 'muted' } as Delta,
     },
     {
@@ -115,7 +115,6 @@ const cards = computed(() => {
 const backlogCols = [
   { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
   { title: '派单方式', key: 'mode', width: 90 },
-  { title: '等原处理人', dataIndex: 'waitingOriginal', key: 'waitingOriginal', width: 96, align: 'right' as const },
   { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
   { title: '最长等待', key: 'maxWait', width: 110, align: 'right' as const },
 ];
@@ -176,8 +175,8 @@ const backlogCols = [
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'poolLabel'" class="pool-name">{{ record.poolLabel }}</span>
             <span v-else-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
-            <span v-else-if="column.key === 'waitingOriginal' || column.key === 'queued'" :class="{ 'n-hot': record[column.key] > 0, 'n-zero': !record[column.key] }">{{ record[column.key] }}</span>
-            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued ? record.maxWaitMin : 0) }}</span>
+            <span v-else-if="column.key === 'queued'" :class="{ 'n-hot': record.queued > 0, 'n-zero': !record.queued }">{{ record.queued }}</span>
+            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.queued ? record.maxWaitMin : 0) }}</span>
           </template>
         </a-table>
       </section>

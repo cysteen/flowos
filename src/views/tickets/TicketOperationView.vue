@@ -2073,7 +2073,7 @@ function onRefundAction(payload: Record<string, unknown>): boolean {
   // 个册退费单调剂只限本组成员（校园经理、城市经理改走「转校园经理」）
   if (type === '调剂' && data.scope !== 'cross') {
     const res = refundStore.assignToMember(no, String(data.target ?? ''), actor, String(data.reason ?? ''));
-    // 【1215】调剂到人记派单日志（结束排队 / 预留、超额指派）
+    // 【1215】调剂到人写人工记录（结束排队、超额指派）
     const row = TICKETS.find((x) => x.no === no);
     if (res.ok && row?.assignee) useDispatchStore().recordManualTake(row, row.assignee, '调剂到人', actor.name, String(data.reason ?? ''));
     if (res.ok) message.success(res.message);

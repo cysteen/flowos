@@ -7,7 +7,7 @@ import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, RESERVE_COMPLAINT_ONLY, defaultDispatchConfig,
+  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, defaultDispatchConfig,
   SCORE_WEIGHTS, type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency,
 } from '@/views/tickets/types/dispatch';
 import { configFieldsText, opts, rangeError } from './dispatchUi';
@@ -52,7 +52,6 @@ const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }
 function saveOut() {
   const checks: [unknown, number, number][] = [
     ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
-    ...out.originalChain.flatMap((x) => [[x.reserveMinutes, 1, 60], [x.reserveSlaPercent, 1, 100]] as [unknown, number, number][]),
   ];
   for (const [v, a, b] of checks) {
     const e = rangeError(v, a, b);
@@ -154,7 +153,7 @@ watch(() => store.config, (c) => {
         <div class="oc-wrap">
           <table class="oc-table">
             <thead>
-              <tr><th class="oc-seq">次序</th><th>关系</th><th>原处理人</th><th>有效期</th><th>人不在时</th><th class="oc-on">启用</th></tr>
+              <tr><th class="oc-seq">次序</th><th>关系</th><th>原处理人</th><th>有效期</th><th class="oc-on">启用</th></tr>
             </thead>
             <tbody>
               <tr v-for="(row, i) in out.originalChain" :key="row.relation" :class="{ off: !row.enabled }">
@@ -167,25 +166,6 @@ watch(() => store.config, (c) => {
                   <div v-if="row.relation === '同客户近期'" class="oc-same">
                     <a-checkbox v-model:checked="row.sameProblem" :disabled="!row.enabled">仅限同一问题分类</a-checkbox>
                   </div>
-                </td>
-                <td class="oc-absent-cell">
-                  <a-radio-group v-model:value="row.absent" :disabled="!row.enabled" class="oc-absent">
-                    <a-radio value="转下一步">转下一步</a-radio>
-                    <a-radio value="保留">
-                      <span class="oc-reserve">
-                        <span class="oc-inline">
-                          {{ RESERVE_COMPLAINT_ONLY[row.relation] ? '投诉单保留' : '保留' }}
-                          <a-input-number v-model:value="row.reserveMinutes" :precision="0" :disabled="!row.enabled || row.absent !== '保留'" style="width: 64px" />
-                          分钟，
-                        </span>
-                        <span class="oc-inline">
-                          且不超过首次响应剩余时限的
-                          <a-input-number v-model:value="row.reserveSlaPercent" :precision="0" :disabled="!row.enabled || row.absent !== '保留'" style="width: 64px" />
-                          %
-                        </span>
-                      </span>
-                    </a-radio>
-                  </a-radio-group>
                 </td>
                 <td class="oc-on"><a-switch v-model:checked="row.enabled" size="small" /></td>
               </tr>
@@ -387,12 +367,9 @@ watch(() => store.config, (c) => {
 .oc-sub { font-size: 12px; color: #6b7280; margin-top: 2px; min-width: 96px; }
 .oc-handler { min-width: 120px; }
 /* 宽屏保留量一行放下，窄屏收窄列宽、保留量折成两行 */
-.oc-absent-cell { width: 560px; }
 .oc-same { margin-top: 6px; }
 .oc-nowrap { white-space: nowrap; }
 .oc-text { color: #4b5563; }
-.oc-absent { display: flex; flex-direction: column; gap: 6px; }
-.oc-reserve { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 6px; }
 .oc-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #374151; }
 
 /* 综合打分 · 三维度只读表 */

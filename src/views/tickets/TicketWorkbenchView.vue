@@ -47,9 +47,8 @@ import { TEAM_MEMBERS } from '@/mock/teamBoard';
 import DispatchAssignModal from '@/views/team-board/components/DispatchAssignModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { isXiaozhiPooledRecord } from '@/views/tickets/types/xiaozhi';
-import { DISPATCH_STATUSES } from './types/dispatch';
 import {
-  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, reserveTipOf, waitMinutesOf, waitText,
+  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, waitMinutesOf, waitText,
 } from './composables/dispatchUi';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { poolEntryQuery } from './composables/poolClaim';
@@ -216,7 +215,6 @@ function togglePoolSegment(id: string) {
   const cur = wb.poolDispatchFilter.value.pools;
   wb.setPoolDispatchFilter({ pools: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
 }
-const dispatchStatusOptions = DISPATCH_STATUSES.map((s) => ({ value: s, label: s }));
 const poolFilterOptions = computed(() => poolSegments.value.map((p) => ({ value: p.id, label: p.label })));
 
 /** 工单池行内：「领取」未就绪、未签入、非本组的池置灰（10.1 / 10.2）；班组长等另有「指派」；小智直通产研的记录单只可查看 */
@@ -880,16 +878,6 @@ function onConfirmSaveFilter(name: string) {
             mode="multiple"
             :max-tag-count="1"
             allow-clear
-            placeholder="派单状态"
-            :options="dispatchStatusOptions"
-            :value="wb.poolDispatchFilter.value.statuses"
-            @update:value="(v: unknown) => wb.setPoolDispatchFilter({ statuses: Array.isArray(v) ? (v as string[]) : [] })"
-          />
-          <a-select
-            class="pdb-select"
-            mode="multiple"
-            :max-tag-count="1"
-            allow-clear
             placeholder="组池"
             :options="poolFilterOptions"
             :value="wb.poolDispatchFilter.value.pools"
@@ -1000,20 +988,15 @@ function onConfirmSaveFilter(name: string) {
               <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
             </template>
             <template #cell-dispatchStatus="{ ticket }">
-              <a-tooltip
+              <span
                 v-if="dispatchStatusCell(ticket)"
-                v-bind="STD_TIP_PROPS"
-                :title="dispatchStatusCell(ticket) === '等原处理人' ? reserveTipOf(ticket.no) : undefined"
-              >
-                <span
-                  class="dsp-tag"
-                  :style="{
-                    color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
-                    background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
-                    borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
-                  }"
-                >{{ dispatchStatusCell(ticket) }}</span>
-              </a-tooltip>
+                class="dsp-tag"
+                :style="{
+                  color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
+                  background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
+                  borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
+                }"
+              >{{ dispatchStatusCell(ticket) }}</span>
               <span v-else class="dsp-empty">—</span>
             </template>
             <template #cell-dispatchMatch="{ ticket }">

@@ -35,10 +35,6 @@ function stamp(ms: number = Date.now()): string {
   const d = new Date(ms);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
-function hm(ms: number): string {
-  const d = new Date(ms);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 /* ------------------------------------------------------------------ */
 /* 话务条 → 坐席状态（11.5：就绪即在班）                                  */
@@ -78,7 +74,6 @@ export function modeTagOf(mode: PoolMode): ModeTag | null {
 
 export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, { color: string; bg: string; border: string }> = {
   排队中: { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-  等原处理人: { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
 };
 
 export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border: string }> = {
@@ -88,15 +83,8 @@ export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border
 
 export const SIGN_IN_COLOR: Record<SignInStatus, string> = { 就绪: '#10B981', 未就绪: '#F97316', 小休: '#F59E0B', 签出: '#9CA3AF' };
 
-/** 列表排序（10.1）：排队中在前，其后等原处理人，其余最后 */
-export const DISPATCH_STATUS_ORDER: Record<string, number> = { 排队中: 1, 等原处理人: 2 };
-
-/** 等原处理人悬停（10.1）：「预留给 〈姓名〉，〈时:分〉 到期」 */
-export function reserveTipOf(no: string): string {
-  const st = useDispatchStore().ticketStateOf(no);
-  if (!st || st.status !== '等原处理人' || !st.reserveFor) return '';
-  return st.reserveUntil ? `预留给 ${st.reserveFor}，${hm(st.reserveUntil)} 到期` : `预留给 ${st.reserveFor}`;
-}
+/** 列表排序（9.2）：排队中在前，其余在后 */
+export const DISPATCH_STATUS_ORDER: Record<string, number> = { 排队中: 1 };
 
 /** 池内等待分钟：取进入派单时刻，未经派单进池的单从进池时间起算 */
 export function waitMinutesOf(t: Ticket, now: number = Date.now()): number | null {
@@ -237,8 +225,8 @@ export function writeOverCapEntry(t: Ticket, name: string) {
 }
 
 /**
- * 升级投诉 · 自主发起（7.3 / 11.2）：新投诉单直派发起人本人，不进入派单；计入其在途，不受上限拦截，
- * 超出记超额指派并写派单日志。调用时新单已落工单库。
+ * 升级投诉 · 自主发起（7.1）：新投诉单直派发起人本人，不进入派单；计入其在途，不受上限拦截，
+ * 写处理履历与人工记录，超出记超额指派。调用时新单已落工单库。
  */
 export function directToInitiator(ticket: Ticket): void {
   const t = reactive(ticket) as Ticket;
@@ -247,7 +235,14 @@ export function directToInitiator(ticket: Ticket): void {
   const dispatch = useDispatchStore();
   if (!dispatch.agentOf(name)) return;
   Object.assign(t, { tab: 'mine', nodeStatus: t.nodeStatus === '未认领' ? '待响应' : t.nodeStatus, responded: false });
-  dispatch.recordManualTake(t, name, '升级投诉直派', useUserStore().name || name);
+  const user = useUserStore();
+  const operator = user.name || name;
+  t.eventTimeline = [...(t.eventTimeline ?? []), {
+    id: `tl-${t.no}-direct-${(t.eventTimeline?.length ?? 0) + 1}`,
+    category: 'node', action: 'transfer', who: operator, role: mapUserRole(user.roleKey),
+    how: '升级投诉直派', what: `升级投诉直派 → ${name}`, when: stamp(),
+  }];
+  dispatch.recordManualTake(t, name, '升级投诉直派', operator);
   writeOverCapEntry(t, name);
 }
 

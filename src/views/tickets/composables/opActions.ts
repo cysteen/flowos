@@ -1195,7 +1195,7 @@ export function applyOpAction(
 
     case '取消工单': {
       detail.status = '已取消';
-      // 【1215】取消工单同步撤出排队与预留（4.4）
+      // 【1215】取消工单同步撤出排队（4.1）
       useDispatchStore().withdrawTicket(detail.no);
       terminateClocks(detail, timeline, true); // 业务中止：停表结果=中止(灰)，不计达标/未达标
       pushEntry(timeline, {

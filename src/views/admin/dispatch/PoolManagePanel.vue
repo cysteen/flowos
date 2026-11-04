@@ -103,7 +103,7 @@ function confirmToggle() {
   if (r.message) message.success(r.message);
   if (!toggleTo.value && detailId.value === toggleId.value) detailId.value = null;
 }
-const backlogOf = (p: { waitingOriginal: number; queued: number }) => p.waitingOriginal + p.queued;
+const backlogOf = (p: { queued: number }) => p.queued;
 /** 指向本池的已启用入池规则（按优先级）；默认池另含「未命中任何规则」 */
 function rulesOf(poolId: string): string {
   const names = [...store.rules].filter((r) => r.enabled && r.poolId === poolId).sort((a, b) => a.priority - b.priority).map((r) => r.name);
@@ -111,11 +111,10 @@ function rulesOf(poolId: string): string {
   return names.join('、') || '—';
 }
 /** 次要派单计数：只列非 0 项并标色；均为 0 时显示一句汇总；池内有未领单时末尾附最长等待（池内全部未领单口径） */
-function waitItems(p: { id: string; waitingOriginal: number; queued: number }) {
+function waitItems(p: { id: string; queued: number }) {
   const xs: { label: string; value: string | number; tone: string }[] = [];
-  if (p.waitingOriginal) xs.push({ label: '等原处理人', value: p.waitingOriginal, tone: 'dx-warn' });
   if (p.queued) xs.push({ label: '排队中', value: p.queued, tone: 'dx-warn' });
-  if (!xs.length) xs.push({ label: '等原处理人、排队中均为 0', value: '', tone: '' });
+  if (!xs.length) xs.push({ label: '排队中为 0', value: '', tone: '' });
   if (pendingOf(p.id)) xs.push({ label: '最长等待', value: poolWaitText(pendingWaitOf(p.id)), tone: '' });
   return xs;
 }
@@ -149,8 +148,6 @@ const detailRows = computed(() => {
         title: t.title,
         priority: PRIORITY_LEVEL[t.priority],
         status: st?.status ?? null,
-        reserveFor: st?.status === '等原处理人' ? st.reserveFor : undefined,
-        reserveUntil: st?.status === '等原处理人' && st.reserveUntil ? fmt(st.reserveUntil) : undefined,
         enteredAt: fmt(st?.enteredAt ?? store.poolEnteredAtOf(t)),
         slaRemain: remain,
       };
@@ -161,13 +158,12 @@ function fmt(ms: number) {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-const STATUS_TONE: Record<string, string> = { 等原处理人: 'default', 排队中: 'orange' };
+const STATUS_TONE: Record<string, string> = { 排队中: 'orange' };
 const detailCols = [
   { title: '工单号', dataIndex: 'no', key: 'no', width: 148, fixed: 'left' as const },
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true, width: 160 },
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 64 },
   { title: '派单状态', key: 'status', width: 96 },
-  { title: '等原处理人', key: 'reserve', width: 120, ellipsis: true },
   { title: '入池时间', dataIndex: 'enteredAt', key: 'enteredAt', width: 128 },
   { title: 'SLA', key: 'sla', width: 88 },
   { title: '操作', key: 'op', width: 56, fixed: 'right' as const },
@@ -341,9 +337,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
               <b>{{ detailRows.length }}</b><span>待领</span>
             </div>
             <div class="pd-stat">
-              <b :class="{ warn: detailPool.waitingOriginal }">{{ detailPool.waitingOriginal }}</b><span>等原</span>
-            </div>
-            <div class="pd-stat">
               <b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b><span>排队</span>
             </div>
           </div>
@@ -360,18 +353,12 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             row-key="no"
             size="small"
             :pagination="false"
-            :scroll="{ x: 860 }"
+            :scroll="{ x: 740 }"
             :locale="{ emptyText: '池内暂无待领工单' }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
                 <span v-if="record.status" class="dx-status" :class="`is-${STATUS_TONE[record.status]}`">{{ record.status }}</span>
-                <span v-else class="muted">—</span>
-              </template>
-              <template v-else-if="column.key === 'reserve'">
-                <a-tooltip v-if="record.reserveFor" v-bind="STD_TIP_PROPS" :title="`${record.reserveFor} · ${record.reserveUntil} 到期`">
-                  <span class="pd-ellipsis">{{ record.reserveFor }}</span>
-                </a-tooltip>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'sla'">
@@ -495,7 +482,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
   color: #111827;
   font-weight: 500;
 }
-.pd-ellipsis { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pd-op { padding: 0 4px; height: auto; font-size: 12px; }
 .pd-table .muted { color: #9ca3af; font-size: 12px; }
 .pd-table .overdue { color: #f53f3f; font-size: 12px; }

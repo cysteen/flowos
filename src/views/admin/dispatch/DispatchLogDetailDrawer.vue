@@ -1,17 +1,16 @@
 <script setup lang="ts">
-// 派单日志详情（PRD 8.6）：判定结论 → 工单信息 → 判定过程三步（谁可以接单 / 优先派回原处理人 / 综合打分）；人工记录只列动作、操作人、原处理人、目标与原因
+// 派单日志详情（PRD 8.6）：判定结论 → 工单信息 → 判定过程三步（谁可以接单 / 优先派回原处理人 / 综合打分）
 import { computed } from 'vue';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { GATE_ORDER, PRIORITY_LEVEL, SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
-import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, logHandlerName, logResult, logSummary } from './dispatchLabels';
+import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, logResult, logSummary } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; log: DispatchLogEntry | null }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
 
-const result = computed(() => (props.log ? logResult(props.log) : '留池'));
-const isManual = computed(() => props.log?.kind === '人工');
+const result = computed(() => (props.log ? logResult(props.log) : '待手动领单'));
 
 function personText(name?: string) {
   if (!name) return '—';
@@ -21,7 +20,7 @@ function personText(name?: string) {
 const handlerText = computed(() => {
   const l = props.log;
   if (!l) return '—';
-  const base = personText(logHandlerName(l));
+  const base = personText(l.chosen?.name);
   return l.chosen?.groupLabel ? `${base} · ${l.chosen.groupLabel}` : base;
 });
 
@@ -33,28 +32,6 @@ const ticketItems = computed(() => {
     ['问题分类', s.problem], ['工单来源', s.ticketSource], ['客户类型', s.customerType], ['优先级', PRIORITY_LEVEL[s.priority]],
     ['首次响应 SLA 剩余', s.firstRespRemainMin == null ? '无首次响应 SLA' : `${s.firstRespRemainMin} 分钟`],
   ].map(([k, v]) => ({ k: k as string, v: (v as string | undefined) || '—' }));
-});
-
-/* ---------------- 人工记录 ---------------- */
-/** 原处理人：本单此前最后一条落到坐席名下的记录 */
-const prevHandler = computed(() => {
-  const l = props.log;
-  if (!l) return undefined;
-  const prev = store.logs
-    .filter((x) => x.ticketNo === l.ticketNo && x.seq < l.seq && logHandlerName(x))
-    .sort((a, b) => b.seq - a.seq)[0];
-  return prev ? logHandlerName(prev) : undefined;
-});
-const manualItems = computed(() => {
-  const m = props.log?.manual;
-  if (!m) return [];
-  return [
-    { k: '动作', v: m.action },
-    { k: '操作人', v: personText(m.operator) },
-    { k: '原处理人', v: personText(prevHandler.value) },
-    { k: '目标', v: m.action === '调剂到池' ? m.target || '—' : personText(m.target) },
-    { k: '原因', v: m.reason || '—' },
-  ];
 });
 
 /* ---------------- 判定过程 ---------------- */
@@ -81,20 +58,14 @@ const stepOriginalEntered = computed(() => {
 });
 const originalVerdict = computed(() => {
   const l = props.log;
-  if (l?.path === '原处理人') return '派回原处理人';
-  if (l?.path === '预留') return '为原处理人保留';
-  return '未派回原处理人';
+  return l?.path === '原处理人' ? '派回原处理人' : '未派回原处理人';
 });
 const originalRows = computed(() => {
   const l = props.log;
   if (!l) return [];
   const out: { k: string; v: string }[] = [];
-  if (l.originalRelation && (l.path === '原处理人' || l.path === '预留')) out.push({ k: '关系', v: l.originalRelation });
+  if (l.originalRelation && l.path === '原处理人') out.push({ k: '关系', v: l.originalRelation });
   if (l.path === '原处理人' && l.chosen) out.push({ k: '原处理人', v: `${l.chosen.name}（${l.chosen.staffNo}）` });
-  if (l.reserved) {
-    out.push({ k: '原处理人', v: `${l.reserved.name}（${l.reserved.staffNo}）` });
-    out.push({ k: '到期时间', v: l.reserved.until });
-  }
   for (const x of l.originalExcluded ?? []) {
     out.push({ k: `不派回 · ${x.name}（${x.relation}）`, v: EXCLUSION_LABEL[x.reason] });
   }
@@ -131,7 +102,7 @@ const scoreRows = computed(() => {
           <a-descriptions-item label="处理人">{{ handlerText }}</a-descriptions-item>
           <a-descriptions-item label="判定时间">{{ log.at }}</a-descriptions-item>
           <a-descriptions-item label="判定次序">第 {{ log.seq }} 次判定</a-descriptions-item>
-          <a-descriptions-item v-if="!isManual" label="触发" :span="2">{{ log.trigger ?? '—' }}</a-descriptions-item>
+          <a-descriptions-item label="触发" :span="2">{{ log.trigger ?? '—' }}</a-descriptions-item>
           <a-descriptions-item label="归属池">{{ log.poolLabel }}</a-descriptions-item>
           <a-descriptions-item label="入池规则">{{ log.ruleName }}</a-descriptions-item>
           <a-descriptions-item label="全局派单方式">{{ log.globalMode }}</a-descriptions-item>
@@ -146,14 +117,7 @@ const scoreRows = computed(() => {
         </a-descriptions>
       </section>
 
-      <section v-if="isManual" class="dd-sec">
-        <div class="b-title">人工记录</div>
-        <a-descriptions bordered size="small" :column="2" class="dd-desc">
-          <a-descriptions-item v-for="x in manualItems" :key="x.k" :label="x.k" :span="x.k === '原因' ? 2 : 1">{{ x.v }}</a-descriptions-item>
-        </a-descriptions>
-      </section>
-
-      <section v-else class="dd-sec">
+      <section class="dd-sec">
         <div class="b-title">判定过程</div>
         <div class="dd-steps">
           <div class="dd-step">

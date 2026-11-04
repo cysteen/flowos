@@ -120,20 +120,19 @@ export function useTicketWorkbench() {
   }
 
   /**
-   * 【1215】工单池页签的派单筛选（10.1）：「匹配我」、派单状态多选、组池多选。列表不按画像过滤，
+   * 【1215】工单池页签的派单筛选（9.2）：「匹配我」、组池多选。列表不按画像过滤，
    * 只有勾选「匹配我」时才只列匹配的单。
    */
-  const poolDispatchFilter = ref<{ matchMe: boolean; statuses: string[]; pools: string[] }>({
-    matchMe: false, statuses: [], pools: [],
+  const poolDispatchFilter = ref<{ matchMe: boolean; pools: string[] }>({
+    matchMe: false, pools: [],
   });
   function matchPoolDispatchFilter(t: Ticket): boolean {
     const f = poolDispatchFilter.value;
     if (f.pools.length && !f.pools.includes(t.groupId ?? '')) return false;
-    if (f.statuses.length && !f.statuses.includes(dispatch.dispatchStatusOf(t.no) ?? '')) return false;
     if (f.matchMe && !dispatch.matchesMe(t, user.name)) return false;
     return true;
   }
-  function setPoolDispatchFilter(patch: Partial<{ matchMe: boolean; statuses: string[]; pools: string[] }>) {
+  function setPoolDispatchFilter(patch: Partial<{ matchMe: boolean; pools: string[] }>) {
     poolDispatchFilter.value = { ...poolDispatchFilter.value, ...patch };
   }
   /** 催补待回数据域：915 §9.3 父域，去掉处理人为当前用户的单（那些在「我的任务」） */
@@ -236,7 +235,7 @@ export function useTicketWorkbench() {
         list.sort((a, b) => compareByMineSort(a, b, mineSortRule.value));
       }
     } else if (activeTab.value === 'pool') {
-      // 【1215】排队中在前，其后等原处理人；同类按首响 SLA 剩余升序（10.1）
+      // 【1215】排队中在前；同类按首响 SLA 剩余升序（9.2）
       const rankOf = (t: Ticket) => DISPATCH_STATUS_ORDER[dispatch.dispatchStatusOf(t.no) ?? ''] ?? 3;
       list.sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
     } else {
@@ -386,7 +385,7 @@ export function useTicketWorkbench() {
     mineQuery.value = EMPTY_MINE_QUERY();
     poolQuery.value = EMPTY_MINE_QUERY();
     doneQuery.value = DEFAULT_DONE_QUERY();
-    poolDispatchFilter.value = { matchMe: false, statuses: [], pools: [] };
+    poolDispatchFilter.value = { matchMe: false, pools: [] };
   }
   function setChip(chip: ChipKey | string, onApplyOptionalVisible?: (v: Record<string, boolean>) => void) {
     const prevChip = activeChip.value;
@@ -636,7 +635,7 @@ export function useTicketWorkbench() {
       }
       // 个册退费单（1120）：指派同咨询单，落库后由个册退费服务落快照
       if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
-      // 【1215】结束排队 / 预留、写派单日志，超出个人上限记超额指派（7.3）
+      // 【1215】结束排队、写人工记录，超出个人上限记超额指派（5.3）
       if (opts.scope === 'in-team') useDispatchStore().recordManualTake(t, opts.targetName, '班组长指派', user.name);
       rows.push({ id, ok: true });
     }

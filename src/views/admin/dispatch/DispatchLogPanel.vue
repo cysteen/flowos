@@ -10,7 +10,7 @@ import { stdPagination } from '@/config/adminUi';
 import type { DispatchFailReason, DispatchLogEntry, DispatchPath } from '@/views/tickets/types/dispatch';
 import { parseAt } from './dispatchMetrics';
 import {
-  LOG_RESULTS, LOG_RESULT_TONE, failLabel, logHandlerName, logResult, logSummary, pathLabel, pathWithRelation, type LogResult,
+  LOG_RESULTS, LOG_RESULT_TONE, failLabel, logResult, logSummary, pathLabel, pathWithRelation, type LogResult,
 } from './dispatchLabels';
 import DispatchLogDetailDrawer from './DispatchLogDetailDrawer.vue';
 import './dispatchTheme.css';
@@ -19,7 +19,7 @@ const route = useRoute();
 const router = useRouter();
 const store = useDispatchStore();
 
-const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '预留', '排队', '留池'];
+const PATHS: DispatchPath[] = ['直派规则', '原处理人', '加权评分', '排队', '留池'];
 const FAILS: DispatchFailReason[] = ['组内暂无已就绪成员', '无画像匹配成员', '无可接单成员', '均达个人上限', '系统异常'];
 const pathOpts = PATHS.map((p) => ({ value: p, label: pathLabel(p) }));
 const failOpts = FAILS.map((r) => ({ value: r, label: failLabel(r) }));
@@ -70,23 +70,20 @@ watch(() => route.query.ticketNo, applyRouteTicket, { immediate: true });
 const agentOpts = computed(() => store.agents.map((a) => ({ value: a.name, label: `${a.name}（${a.staffNo}）` })));
 const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
 
-/** 坐席筛选与导出「中选坐席」列：人工记录取动作目标 */
-function personOf(l: DispatchLogEntry): string | undefined {
-  return l.kind === '人工' ? l.manual?.target : l.chosen?.name;
-}
-
 const rows = computed(() => {
   const q = applied.value;
   const from = q.range[0].valueOf();
   const to = q.range[1].valueOf();
   const no = q.no.trim();
   return store.logs.filter((l) => {
+    // 只列引擎判定；人工动作在工单处理履历查看
+    if (l.kind !== '判定') return false;
     if (no && l.ticketNo !== no) return false;
     const t = parseAt(l.at);
     if (t < from || t > to) return false;
     if (q.pools.length && !q.pools.includes(l.poolId)) return false;
     if (q.results.length && !q.results.includes(logResult(l))) return false;
-    if (q.agents.length && !q.agents.includes(personOf(l) ?? '')) return false;
+    if (q.agents.length && !q.agents.includes(l.chosen?.name ?? '')) return false;
     if (q.paths.length && !(l.path && q.paths.includes(l.path))) return false;
     if (q.fails.length && !(l.failReason && q.fails.includes(l.failReason))) return false;
     return true;
@@ -104,9 +101,7 @@ const cols = [
 ];
 
 function handlerOf(l: DispatchLogEntry) {
-  const name = logHandlerName(l);
-  if (!name) return null;
-  return { name, staffNo: l.chosen?.staffNo ?? store.agentOf(name)?.staffNo ?? '' };
+  return l.chosen ? { name: l.chosen.name, staffNo: l.chosen.staffNo } : null;
 }
 
 const detailOpen = ref(false);
@@ -118,12 +113,12 @@ function openDetail(l: DispatchLogEntry) {
 
 function exportCsv() {
   if (!rows.value.length) { message.warning('暂无派单记录'); return; }
-  const head = ['判定时间', '工单号', '判定序号', '记录类型', '触发类型', '人工动作', '操作人', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '判定路径', '可接单人数', '中选坐席', '综合得分', '未派出原因', '标记'];
+  const head = ['判定时间', '工单号', '判定序号', '触发类型', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '结果', '判定路径', '可接单人数', '中选坐席', '综合得分', '未派出原因', '标记'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
-    l.at, l.ticketNo, l.seq, l.kind, l.trigger ?? '', l.manual?.action ?? '', l.manual?.operator ?? '', l.poolLabel, l.ruleName,
-    l.globalMode, l.groupMode, pathWithRelation(l.path, l.originalRelation), l.candidateCount ?? '',
-    personOf(l) ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
+    l.at, l.ticketNo, l.seq, l.trigger ?? '', l.poolLabel, l.ruleName,
+    l.globalMode, l.groupMode, logResult(l), pathWithRelation(l.path, l.originalRelation), l.candidateCount ?? '',
+    l.chosen?.name ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
   ].map(esc).join(','));
   const blob = new Blob([`﻿${[head.map(esc).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');

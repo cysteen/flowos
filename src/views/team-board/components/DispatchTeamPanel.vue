@@ -22,7 +22,7 @@ import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
 import {
   DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR, STD_TIP_PROPS,
-  modeTagOf, reassignableTicketsOf, reserveTipOf,
+  modeTagOf, reassignableTicketsOf,
   waitText,
 } from '@/views/tickets/composables/dispatchUi';
 import { maxPoolWaitMinutes, poolTicketsOf, poolTicketsOfPool, poolWaitMinutesOf } from './dispatchPoolTickets';
@@ -369,20 +369,15 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         <div class="td"><span class="ellipsis" :title="poolNameOf(t)">{{ poolNameOf(t) }}</span></div>
         <div class="td">{{ t.priority }}</div>
         <div class="td">
-          <a-tooltip
+          <span
             v-if="dispatch.dispatchStatusOf(t.no)"
-            v-bind="STD_TIP_PROPS"
-            :title="dispatch.dispatchStatusOf(t.no) === '等原处理人' ? reserveTipOf(t.no) : undefined"
-          >
-            <span
-              class="dtp-tag"
-              :style="{
-                color: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].color,
-                background: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].bg,
-                borderColor: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].border,
-              }"
-            >{{ dispatch.dispatchStatusOf(t.no) }}</span>
-          </a-tooltip>
+            class="dtp-tag"
+            :style="{
+              color: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].color,
+              background: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].bg,
+              borderColor: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].border,
+            }"
+          >{{ dispatch.dispatchStatusOf(t.no) }}</span>
           <span v-else class="muted">—</span>
         </div>
         <div class="td">{{ waitText(poolWaitMinutesOf(t, nowMs)) }}</div>
