@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 23;
+export const DISPATCH_CACHE_VERSION = 24;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -316,7 +316,7 @@ interface Decision {
   assignee: string | null;
   status: DispatchStatus | null;
   score?: ScoreDetail;
-  top3?: { name: string; total: number }[];
+  top3?: DispatchLogEntry['top3'];
   drops?: Partial<Record<GateKey, number>>;
   candidateCount?: number;
   failReason?: DispatchFailReason;
@@ -1063,7 +1063,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       const best = ranked[0];
       return {
         path: '加权评分', assignee: best.name, status: null,
-        score: best, top3: ranked.slice(0, 3).map((x) => ({ name: x.name, total: x.total })),
+        score: best, top3: ranked.slice(0, 3).map((x) => ({ name: x.name, staffNo: x.staffNo, total: x.total, values: x.values })),
         drops: g.drops, candidateCount: g.passed.length,
       };
     }
@@ -1303,6 +1303,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ...(chosenAgent ? { chosen: { name: chosenAgent.name, staffNo: chosenAgent.staffNo, groupLabel: g?.label ?? '' } } : {}),
       ...(d.score ? { chosenScore: d.score } : {}),
       ...(d.top3 ? { top3: d.top3 } : {}),
+      ...(d.path === '预留' && d.reserveFor && d.reserveUntil
+        ? { reserved: { name: d.reserveFor, staffNo: agentOf(d.reserveFor)?.staffNo ?? '', until: stamp(d.reserveUntil) } }
+        : {}),
       ...(d.failReason ? { failReason: d.failReason } : {}),
       status,
       snapshot: snapshotOf(t, st, now),

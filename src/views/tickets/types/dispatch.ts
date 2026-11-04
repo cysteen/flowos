@@ -488,8 +488,10 @@ export interface DispatchLogEntry {
   /** 中选坐席 */
   chosen?: { name: string; staffNo: string; groupLabel: string };
   chosenScore?: ScoreDetail;
-  /** 得分前三名候选 */
-  top3?: { name: string; total: number }[];
+  /** 得分前三名候选：含三个维度取值 */
+  top3?: Pick<ScoreDetail, 'name' | 'staffNo' | 'total' | 'values'>[];
+  /** 等原处理人：被保留的原处理人与保留到期时刻（年-月-日 时:分:秒） */
+  reserved?: { name: string; staffNo: string; until: string };
   failReason?: DispatchFailReason;
   /** 判定后派单状态 */
   status?: DispatchStatus | null;

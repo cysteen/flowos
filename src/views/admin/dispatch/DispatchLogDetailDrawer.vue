@@ -84,6 +84,10 @@ const originalRows = computed(() => {
   const out: { k: string; v: string }[] = [];
   if (l.originalRelation && (l.path === '原处理人' || l.path === '预留')) out.push({ k: '关系', v: l.originalRelation });
   if (l.path === '原处理人' && l.chosen) out.push({ k: '原处理人', v: `${l.chosen.name}（${l.chosen.staffNo}）` });
+  if (l.reserved) {
+    out.push({ k: '原处理人', v: `${l.reserved.name}（${l.reserved.staffNo}）` });
+    out.push({ k: '到期时间', v: l.reserved.until });
+  }
   for (const x of l.originalExcluded ?? []) {
     out.push({ k: `不派回 · ${x.name}（${x.relation}）`, v: EXCLUSION_LABEL[x.reason] });
   }
@@ -94,19 +98,14 @@ const scoreColumns = SCORE_DIMENSION_ROWS.map((x) => ({ key: x.key, label: x.dim
 const scoreRows = computed(() => {
   const l = props.log;
   if (l?.path !== '加权评分') return [];
-  const s = l.chosenScore;
-  const top = l.top3?.length ? l.top3 : s ? [{ name: s.name, total: s.total }] : [];
-  return top.map((t, i) => {
-    const chosen = t.name === l.chosen?.name;
-    return {
-      rank: i + 1,
-      name: t.name,
-      staffNo: store.agentOf(t.name)?.staffNo ?? '',
-      chosen,
-      total: t.total.toFixed(1),
-      values: Object.fromEntries(scoreColumns.map((c) => [c.key, chosen && s ? s.values[c.key].toFixed(2) : '—'])),
-    };
-  });
+  return (l.top3 ?? []).map((t, i) => ({
+    rank: i + 1,
+    name: t.name,
+    staffNo: t.staffNo,
+    chosen: t.name === l.chosen?.name,
+    total: t.total.toFixed(1),
+    values: Object.fromEntries(scoreColumns.map((c) => [c.key, t.values[c.key].toFixed(2)])),
+  }));
 });
 </script>
 

@@ -97,7 +97,9 @@ export function logSummary(l: DispatchLogEntry): string {
     case '已派出':
       return l.path === '加权评分' && l.chosenScore ? `综合打分 ${l.chosenScore.total.toFixed(1)} 分` : pathWithRelation(l.path, l.originalRelation);
     case '等原处理人':
-      return pathWithRelation(l.path, l.originalRelation);
+      return l.reserved
+        ? `等原处理人 ${l.reserved.name}${l.originalRelation ? ` · ${l.originalRelation}` : ''}`
+        : pathWithRelation(l.path, l.originalRelation);
     case '排队中':
       return failLabel(l.failReason) || pathLabel(l.path);
     case '系统异常':

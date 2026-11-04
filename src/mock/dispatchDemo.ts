@@ -192,6 +192,8 @@ interface JudgeOpts {
   relation?: OriginalRelation;
   /** 因例外不派回的原处理人 */
   excluded?: DispatchLogEntry['originalExcluded'];
+  /** 为原处理人保留：被保留的坐席与保留到期时刻 */
+  reserved?: { name: string; until: number };
 }
 
 /** 种子日志里原处理人的关系：售后转回、回访打回为本单退回；其余按时刻分到关联单 / 同客户近期（不消耗随机序列） */
@@ -292,7 +294,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     t.seq += 1;
     const assignLike = !!o.chosen;
     let chosenScore: ScoreDetail | undefined;
-    let top3: { name: string; total: number }[] | undefined;
+    let top3: DispatchLogEntry['top3'];
     let candidates = 0;
     if (o.chosen) {
       const pool = eligible(t.pool);
@@ -310,7 +312,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
         });
         const list = scoreChosenFirst(me, rest);
         chosenScore = list[0];
-        top3 = list.map((x) => ({ name: x.name, total: x.total })).sort((x, y) => y.total - x.total).slice(0, 3);
+        top3 = list.map((x) => ({ name: x.name, staffNo: x.staffNo, total: x.total, values: x.values })).sort((x, y) => y.total - x.total).slice(0, 3);
       }
     }
     const capBlocked = o.failReason === '均达个人上限' ? Math.max(1, Math.min(2, eligible(t.pool).length)) : 0;
@@ -335,6 +337,9 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
       ...(chosenScore ? { chosenScore } : {}),
       ...(top3 ? { top3 } : {}),
+      ...(o.reserved
+        ? { reserved: { name: o.reserved.name, staffNo: agents.find((a) => a.name === o.reserved!.name)?.staffNo ?? '', until: stamp(o.reserved.until) } }
+        : {}),
       ...(o.failReason ? { failReason: o.failReason } : {}),
       status,
       snapshot: snapshotOf(t, at),
@@ -486,7 +491,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
         b.judge(t, ts, { trigger, path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
       } else if (reserve) {
         const relation = relationOf(trigger, ts);
-        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
+        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation, reserved: { name: agent.name, until: ts + 15 * MIN } });
         assignAt = ts + b.between(3, 12) * MIN;
         b.judge(t, assignAt, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
       } else if (sc < 0.93) {
@@ -612,7 +617,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
       b.judge(t, take, { trigger: '补单扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
     } else if (via === 'r') {
       const relation = relationOf(trigger, enter);
-      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation });
+      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation, reserved: { name: agent.name, until: enter + 15 * MIN } });
       b.judge(t, take, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
     } else {
       const path: DispatchPath = via === 'o' ? '原处理人' : '加权评分';
@@ -775,7 +780,7 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       const who = RESERVE_FOR[s.key];
       const until = enteredAt + 15 * MIN;
       const relation: OriginalRelation = '同客户近期';
-      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人', relation });
+      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人', relation, reserved: { name: who, until } });
       Object.assign(st, { reserveFor: who, reserveUntil: until, reserveRelation: relation, reservedOnce: true, complaintTarget: undefined });
       sys('等原处理人', `等原处理人 ${who}（${relation}），${hm(until)} 到期`, enteredAt);
     } else {
