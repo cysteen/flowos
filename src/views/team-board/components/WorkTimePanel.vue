@@ -84,9 +84,13 @@ const dist = computed(() => {
 
 const H = 3_600_000;
 
-/** 小休按原因列出小时数（divisor＝人数时为人均），如「开会 1.2 · 培训 0.0 · 茶歇 0.3 · 用餐 6.8」 */
-function breakText(reasons: Record<string, number>, divisor: number): string {
-  return BREAK_REASONS.map((r) => `${r.label} ${((reasons[r.key] ?? 0) / H / divisor).toFixed(1)}`).join(' · ');
+/**
+ * 小休按原因列出小时数（divisor＝人数时为人均），如「开会 1.2 · 培训 0.0 · 茶歇 0.3 · 用餐 6.8」。
+ * 各原因按 shownHours（提示里显示的小休时长）配平，之和恰等于该显示值。
+ */
+function breakText(reasons: Record<string, number>, divisor: number, shownHours: number): string {
+  const parts = apportion(BREAK_REASONS.map((r) => (reasons[r.key] ?? 0) / H / divisor), Math.round(shownHours * 10));
+  return BREAK_REASONS.map((r, k) => `${r.label} ${parts[k].toFixed(1)}`).join(' · ');
 }
 
 /**
@@ -127,7 +131,7 @@ const perCapita = computed(() => {
       const hText = h[k].toFixed(1);
       const pText = `${p[k].toFixed(1)}%`;
       const tip = i.key === BREAK_ITEM.key
-        ? `小休 人均 ${hText} 小时 · ${pText}（${breakText(d.breakReasons, n.value)}）`
+        ? `小休 人均 ${hText} 小时 · ${pText}（${breakText(d.breakReasons, n.value, h[k])}）`
         : `${i.label} 人均 ${hText} 小时 · ${pText}`;
       return { ...i, hText, pText, tip };
     }),
@@ -164,7 +168,7 @@ const memberRows = computed(() => {
         key: i.key,
         h: cells[j].toFixed(1),
         tip: i.key === BREAK_ITEM.key
-          ? `小休 ${cells[j].toFixed(1)} 小时（${breakText(r?.breakReasons ?? {}, 1)}）`
+          ? `小休 ${cells[j].toFixed(1)} 小时（${breakText(r?.breakReasons ?? {}, 1, cells[j])}）`
           : `${i.label} ${cells[j].toFixed(1)} 小时 · 占本人 ${r?.totalMs ? (((r.ms[i.key] ?? 0) / r.totalMs) * 100).toFixed(1) : '0.0'}%`,
       })),
     };
