@@ -10,7 +10,7 @@ import { stdPagination } from '@/config/adminUi';
 import type { DispatchFailReason, DispatchLogEntry, DispatchPath } from '@/views/tickets/types/dispatch';
 import { parseAt } from './dispatchMetrics';
 import {
-  LOG_RESULTS, LOG_RESULT_TONE, failLabel, logResult, logSummary, pathLabel, pathWithRelation, type LogResult,
+  LOG_RESULTS, LOG_RESULT_TONE, failLabel, judgeOrdinals, logResult, logSummary, pathLabel, pathWithRelation, type LogResult,
 } from './dispatchLabels';
 import DispatchLogDetailDrawer from './DispatchLogDetailDrawer.vue';
 import './dispatchTheme.css';
@@ -70,6 +70,8 @@ watch(() => route.query.ticketNo, applyRouteTicket, { immediate: true });
 const agentOpts = computed(() => store.agents.map((a) => ({ value: a.name, label: `${a.name}（${a.staffNo}）` })));
 const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
 
+const ordinals = computed(() => judgeOrdinals(store.logs));
+
 const rows = computed(() => {
   const q = applied.value;
   const from = q.range[0].valueOf();
@@ -116,7 +118,7 @@ function exportCsv() {
   const head = ['判定时间', '工单号', '判定序号', '触发类型', '归属池', '入池规则', '全局派单方式', '归属池派单方式', '结果', '判定路径', '可接单人数', '中选坐席', '综合得分', '未派出原因', '标记'];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = rows.value.map((l) => [
-    l.at, l.ticketNo, l.seq, l.trigger ?? '', l.poolLabel, l.ruleName,
+    l.at, l.ticketNo, ordinals.value.get(l.id) ?? l.seq, l.trigger ?? '', l.poolLabel, l.ruleName,
     l.globalMode, l.groupMode, logResult(l), pathWithRelation(l.path, l.originalRelation), l.candidateCount ?? '',
     l.chosen?.name ?? '', l.chosenScore ? l.chosenScore.total.toFixed(1) : '', failLabel(l.failReason), l.overCap ?? '',
   ].map(esc).join(','));
@@ -189,7 +191,7 @@ defineExpose({ exportCsv });
           <span v-if="column.key === 'at'" class="lp-time">{{ record.at }}</span>
           <template v-else-if="column.key === 'ticket'">
             <div class="lp-main" :title="record.ticketNo">{{ record.ticketNo }}</div>
-            <div class="lp-sub">第 {{ record.seq }} 次判定</div>
+            <div class="lp-sub">第 {{ ordinals.get(record.id) ?? record.seq }} 次判定</div>
           </template>
           <template v-else-if="column.key === 'pool'">
             <div class="lp-main" :title="record.poolLabel">{{ record.poolLabel }}</div>

@@ -68,15 +68,26 @@ export function failLabel(r?: DispatchFailReason | null): string {
 }
 
 /** 派单日志「结果」：只表示引擎判定结果，每条判定记录归入且只归入一类（8.6） */
-export type LogResult = '已派出' | '排队中' | '待手动领单' | '系统异常';
-export const LOG_RESULTS: LogResult[] = ['已派出', '排队中', '待手动领单', '系统异常'];
+export type LogResult = '已派出' | '排队中' | '待领取' | '系统异常';
+export const LOG_RESULTS: LogResult[] = ['已派出', '排队中', '待领取', '系统异常'];
 export const LOG_RESULT_TONE: Record<LogResult, string> = {
-  已派出: 'green', 排队中: 'orange', 待手动领单: 'default', 系统异常: 'red',
+  已派出: 'green', 排队中: 'orange', 待领取: 'default', 系统异常: 'red',
 };
 export function logResult(l: DispatchLogEntry): LogResult {
   if (l.failReason === '系统异常') return '系统异常';
   if (l.chosen) return '已派出';
-  return l.effectiveMode === '自动派单' ? '排队中' : '待手动领单';
+  return l.effectiveMode === '自动派单' ? '排队中' : '待领取';
+}
+/** 每条判定是本单第几次判定（日志 id → 次序）：人工记录不进派单日志页，不占次序 */
+export function judgeOrdinals(logs: DispatchLogEntry[]): Map<string, number> {
+  const count = new Map<string, number>();
+  const out = new Map<string, number>();
+  for (const l of [...logs].filter((x) => x.kind === '判定').sort((a, b) => a.seq - b.seq)) {
+    const n = (count.get(l.ticketNo) ?? 0) + 1;
+    count.set(l.ticketNo, n);
+    out.set(l.id, n);
+  }
+  return out;
 }
 /** 派单日志「说明」：一句话说清这条记录派给谁的依据或没派出的原因 */
 export function logSummary(l: DispatchLogEntry): string {
@@ -86,7 +97,7 @@ export function logSummary(l: DispatchLogEntry): string {
     case '排队中':
       return failLabel(l.failReason) || pathLabel(l.path);
     case '系统异常':
-      return l.effectiveMode === '自动派单' ? `${failLabel(l.failReason)}，下一轮重新判断` : `${failLabel(l.failReason)}，留在工单池等人手动领单`;
+      return l.effectiveMode === '自动派单' ? `${failLabel(l.failReason)}，下一轮重新判断` : `${failLabel(l.failReason)}，留在工单池待领取`;
     default:
       return l.failReason ? `${l.effectiveMode}，${failLabel(l.failReason)}` : `${l.effectiveMode}，${pathLabel(l.path)}`;
   }

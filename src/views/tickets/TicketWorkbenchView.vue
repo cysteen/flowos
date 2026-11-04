@@ -48,7 +48,7 @@ import DispatchAssignModal from '@/views/team-board/components/DispatchAssignMod
 import { useDispatchStore } from '@/stores/dispatch';
 import { isXiaozhiPooledRecord } from '@/views/tickets/types/xiaozhi';
 import {
-  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, waitMinutesOf, waitText,
+  MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, waitMinutesOf, waitText,
 } from './composables/dispatchUi';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { poolEntryQuery } from './composables/poolClaim';
@@ -165,9 +165,8 @@ const showPoolFlashColumns = computed(
 /* —— 【1215】工单池 · 派单（PRD 第 10 章）—— */
 const dispatch = useDispatchStore();
 const refundStore = useRefundStore();
-/** 派单状态、匹配我、所在池、等待时长四列 */
+/** 匹配我、所在池、等待时长三列 */
 const POOL_DISPATCH_COLUMNS = [
-  { key: 'dispatchStatus', label: '派单状态', width: 112, after: 'priority' },
   { key: 'dispatchMatch', label: '匹配我', width: 76, after: 'priority' },
   { key: 'dispatchPool', label: '所在池', width: 140, after: 'sla' },
   { key: 'dispatchWait', label: '等待时长', width: 104, after: 'sla' },
@@ -187,18 +186,16 @@ onBeforeUnmount(() => window.clearInterval(nowTimer));
 
 /** 本人在派单中的画像是否已配置（未配置时「匹配我」置灰，10.1） */
 const myProfileConfigured = computed(() => !!dispatch.agentOf(user.name) && !!dispatch.agentView(user.name)?.profileConfigured);
-function dispatchStatusCell(t: Ticket) {
-  return dispatch.dispatchStatusOf(t.no);
-}
 function matchesMeCell(t: Ticket): boolean {
   return myProfileConfigured.value && dispatch.matchesMe(t, user.name);
 }
 
-/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，派单方式按池在行内标；点选即按组池筛选 */
+/** 池分段（9.2）：本人可见、含混合派单或人工派单池的各组「〈组名〉 · 〈N〉 张」，派单方式按池在行内标；点选即按组池筛选 */
 const poolSegments = computed(() => {
   void dispatch.groups;
   void dispatch.config;
-  const ids = wb.poolGroups.value.map((g) => g.id).filter((id) => dispatch.isDispatchPool(id));
+  const ids = wb.poolGroups.value.map((g) => g.id).filter((id) => dispatch.isDispatchPool(id)
+    && dispatch.poolsOfGroup(id, true).some((p) => dispatch.effectiveModeOf(p.id) !== '自动派单'));
   return ids.map((id) => ({
     id,
     label: dispatch.groupOf(id)?.label ?? dispatch.poolLabel(id),
@@ -987,18 +984,6 @@ function onConfirmSaveFilter(name: string) {
             <template #cell-flashFail="{ ticket }">
               <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
             </template>
-            <template #cell-dispatchStatus="{ ticket }">
-              <span
-                v-if="dispatchStatusCell(ticket)"
-                class="dsp-tag"
-                :style="{
-                  color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
-                  background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
-                  borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
-                }"
-              >{{ dispatchStatusCell(ticket) }}</span>
-              <span v-else class="dsp-empty">—</span>
-            </template>
             <template #cell-dispatchMatch="{ ticket }">
               <span v-if="matchesMeCell(ticket)" class="dsp-match">匹配我</span>
               <span v-else class="dsp-empty">—</span>
@@ -1190,7 +1175,7 @@ function onConfirmSaveFilter(name: string) {
 }
 .pdb-seg:hover { background: #f9fafb; }
 .pdb-seg.on { color: #1a6fff; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
-.pdb-mode, .dsp-tag, .dsp-match {
+.pdb-mode, .dsp-match {
   display: inline-flex;
   align-items: center;
   height: 20px;

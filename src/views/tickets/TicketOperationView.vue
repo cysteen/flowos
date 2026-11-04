@@ -819,9 +819,12 @@ const generalClaimable = computed(() => {
   return inVisiblePool(row, user.roleKey);
 });
 /** 本页此刻「待领取」：刷机单领取视角 ∨ 小智单可领取 ∨ 老四类可领取 —— 三类共用一个出口 */
-const pageClaimable = computed(
-  () => flashView.value === 'claim' || xiaozhiClaimable.value || generalClaimable.value,
-);
+const pageClaimable = computed(() => {
+  // 【1215】自动派单池的单由系统派出，处理页不提供领取
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (row && !useDispatchStore().inClaimablePool(row)) return false;
+  return flashView.value === 'claim' || xiaozhiClaimable.value || generalClaimable.value;
+});
 
 /**
  * 未认领共用门控（F5，判据见 `poolClaim.ts` 的 `unclaimedGateOf`）：能领取的小智 / 刷机单底栏只出「领取」，

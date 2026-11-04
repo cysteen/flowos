@@ -13,7 +13,6 @@ import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
 import { claimTicketByType, visiblePoolGroupsForUser } from '@/views/tickets/composables/poolClaim';
-import { DISPATCH_STATUS_ORDER } from '@/views/tickets/composables/dispatchUi';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
 function nowStamp(): string {
@@ -114,6 +113,8 @@ export function useTicketWorkbench() {
 
   function inPoolTabScope(t: Ticket): boolean {
     if (!inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value))) return false;
+    // 【1215】工单池只列待领取的单：自动派单池的单由系统派出，不在此列（9.2）
+    if (!dispatch.inClaimablePool(t)) return false;
     // 小智直通产研平台的记录单留在工单池页签（【1120】）：不可领、不计池内待派与池积压、不参与派单
     // 【1215】投诉对象为本人的工单不可见（10.1）
     return dispatch.ticketStates[t.no]?.complaintTarget !== user.name;
@@ -234,11 +235,8 @@ export function useTicketWorkbench() {
       } else {
         list.sort((a, b) => compareByMineSort(a, b, mineSortRule.value));
       }
-    } else if (activeTab.value === 'pool') {
-      // 【1215】排队中在前；同类按首响 SLA 剩余升序（9.2）
-      const rankOf = (t: Ticket) => DISPATCH_STATUS_ORDER[dispatch.dispatchStatusOf(t.no) ?? ''] ?? 3;
-      list.sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
     } else {
+      // 工单池等其余页签：按首响 SLA 剩余升序（【1215】9.2）
       list.sort(slaUrgencyCompare);
     }
     return list;

@@ -41,7 +41,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 派单改写过的通用工单整行随本键落库、store 建立时回放到工单库（`main.ts` 启动即建立），刷新前后工单行与派单状态 / 日志一致；
  * 刷机 / 小智 / 个册退费单的工单行由各自服务缓存落库。
  * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 派单方式 → 三步（谁可以接单 → 优先派回原处理人 → 综合打分）→ 派出 / 留池。
- * 自动派单与混合派单都走完三步，区别只在派不出时：自动派单留池排队、每 5 分钟重试；混合派单留池等人手动领单，无派单状态、不再重试。
+ * 自动派单与混合派单都走完三步，区别只在派不出时：自动派单留池排队、每 5 分钟重试，不可领取；混合派单留池待领取，无派单状态、不再重试。
  * 第 ② 步不依赖第 ① 步：原处理人只看是否已签入，坐席状态与个人上限不挡，满额派回记超额指派。
  * 派单方式（全局 / 各池）与个人开关全部由人手动切换，系统不自动切换。
  * 【两个判定时点】进池当场判定一次（新单、调剂到池、升级三线、售后转回、回访打回、池停用重新入池、重新进池）；
@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 26;
+export const DISPATCH_CACHE_VERSION = 27;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -975,9 +975,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
   }
 
   /**
-   * 按次序走关系链（4.3）：每行取一名原处理人，第一个能派回的即派出。
-   * 命中例外或不在岗（签出，含当日未签入）的记下并查下一行；就绪、小休、未就绪、满额都算在岗。
-   * 个人开关关闭、岗位不符、画像不符的不派回，查下一行。
+   * 按次序走关系链（4.3）：每行取一名原处理人。命中不派回例外（含个人开关关闭、岗位不符、画像不符）的不算，查下一行；
+   * 第一位不命中例外的原处理人：已签入（就绪、小休、未就绪、满额）即派给他，不在岗（签出，含当日未签入）直接进入综合打分，
+   * 不再查后面的关系。
    */
   function walkChain(t: Ticket, st: TicketDispatchState, trigger: DispatchTrigger, now: number) {
     const excluded: NonNullable<Decision['originalExcluded']> = [];
@@ -992,11 +992,13 @@ export const useDispatchStore = defineStore('dispatch', () => {
         excluded.push({ relation: c.relation, name: c.name, reason: ex });
         continue;
       }
-      if (agentOf(c.name)!.signIn === '签出') {
+      const a = agentOf(c.name)!;
+      if (!originalAcceptable(t, a)) continue;
+      if (a.signIn === '签出') {
         excluded.push({ relation: c.relation, name: c.name, reason: '不在岗' });
-        continue;
+        return { hit: undefined, excluded };
       }
-      if (originalAcceptable(t, agentOf(c.name)!)) return { hit: c, excluded };
+      return { hit: c, excluded };
     }
     return { hit: undefined, excluded };
   }
@@ -1254,7 +1256,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     try {
       d = decide(t, st, trigger, effectiveMode, now);
     } catch {
-      // 系统判断出错：留原池、派单状态不变，通知班组长和管理员；自动派单下一轮重新判断，混合派单留池等人手动领单
+      // 系统判断出错：留原池、派单状态不变，通知班组长和管理员；自动派单下一轮重新判断，混合派单留池待领取
       d = { path: '留池', assignee: null, status: st.status, failReason: '系统异常' };
     }
     const actualAssign = d.assignee;
@@ -1334,7 +1336,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         const receivers = ['全部管理员', ...(g?.leaders ?? [])];
         const content = effectiveMode === '自动派单'
           ? `${t.no}自动派单未派出（系统异常），系统将在下一轮重新判断。`
-          : `${t.no}${effectiveMode}未派出（系统异常），留在工单池等人手动领单。`;
+          : `${t.no}${effectiveMode}未派出（系统异常），留在工单池待领取。`;
         notify(t.no, 'timeout', '系统异常', receivers, content, '站内信');
         notify(t.no, 'timeout', '系统异常', receivers, content, 'IM');
       }
@@ -1439,10 +1441,17 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return !pid || poolMembersOf(pid).some((a) => a.name === name);
   }
 
-  /** 领取前置（10.2）：占用校验 ＋ 本人所在组的池 ＋ 就绪才可领；不校验画像、不受个人上限约束 */
+  /** 工单在待领取范围（9.2）：生效方式为混合派单、人工派单的池；不进入派单的组池不在此限。自动派单池的单由系统派出，不可领取 */
+  function inClaimablePool(t: Pick<Ticket, 'no' | 'groupId'>): boolean {
+    const pid = poolIdOf(t);
+    return !pid || effectiveModeOf(pid) !== '自动派单';
+  }
+
+  /** 领取前置（6.1）：占用校验 ＋ 待领取范围 ＋ 本人所在组的池 ＋ 就绪才可领；不校验画像、不受个人上限约束 */
   function checkClaim(t: Pick<Ticket, 'assignee' | 'no' | 'groupId'> | undefined, name: string): OccupyResult {
     const occ = checkOccupy(t);
     if (!occ.ok) return occ;
+    if (t && !inClaimablePool(t)) return { ok: false, message: '该工单由系统派单，不可领取' };
     if (t && !isOwnPool(t, name)) return { ok: false, message: NOT_OWN_POOL_MESSAGE };
     const a = agentOf(name);
     if (a && a.signIn !== '就绪') return { ok: false, message: a.signIn === '签出' ? '签入后可领取' : '就绪后可领取' };
@@ -2160,7 +2169,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 引擎
     dispatchTicket, dispatchNewTicket, redispatchToPool, returnFromSurvey,
     // 先到先得 · 人工动作
-    checkOccupy, checkClaim, recordManualTake, withdrawTicket,
+    checkOccupy, checkClaim, inClaimablePool, recordManualTake, withdrawTicket,
     // 派单方式
     setGlobalMode, setPoolMode, onDutyHoursOf,
     // 工单池

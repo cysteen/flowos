@@ -4,13 +4,13 @@ import { computed } from 'vue';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { GATE_ORDER, PRIORITY_LEVEL, SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
-import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, logResult, logSummary } from './dispatchLabels';
+import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, judgeOrdinals, logResult, logSummary } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; log: DispatchLogEntry | null }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const store = useDispatchStore();
 
-const result = computed(() => (props.log ? logResult(props.log) : '待手动领单'));
+const result = computed(() => (props.log ? logResult(props.log) : '待领取'));
 
 function personText(name?: string) {
   if (!name) return '—';
@@ -101,7 +101,7 @@ const scoreRows = computed(() => {
           <a-descriptions-item label="工单号">{{ log.ticketNo }}</a-descriptions-item>
           <a-descriptions-item label="处理人">{{ handlerText }}</a-descriptions-item>
           <a-descriptions-item label="判定时间">{{ log.at }}</a-descriptions-item>
-          <a-descriptions-item label="判定次序">第 {{ log.seq }} 次判定</a-descriptions-item>
+          <a-descriptions-item label="判定次序">第 {{ judgeOrdinals(store.logs).get(log.id) ?? log.seq }} 次判定</a-descriptions-item>
           <a-descriptions-item label="触发" :span="2">{{ log.trigger ?? '—' }}</a-descriptions-item>
           <a-descriptions-item label="归属池">{{ log.poolLabel }}</a-descriptions-item>
           <a-descriptions-item label="入池规则">{{ log.ruleName }}</a-descriptions-item>

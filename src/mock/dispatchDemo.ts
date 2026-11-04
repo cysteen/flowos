@@ -876,7 +876,7 @@ function surveyBadRow(now: number, groupLabel: string): Ticket {
 
 /**
  * 今日的规则演示日志（工单号段 6xxxx，不在工单库）：放在随机序列末尾，不扰动前面的种子。
- * 混合派单各池都有综合打分派出与待手动领单；人工派单有待手动领单；
+ * 混合派单各池都有综合打分派出与待领取；人工派单有待领取；
  * 原处理人已签入但满额（超额指派）、已签入但小休都派回，已签出的转综合打分。
  */
 function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: number, hwMixedAt: number, noteTake: (name: string, at: number) => void) {
