@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 班组看板 · 工作时长分布（组级）。
+ * 班组看板 · 在岗工作时长统计（组级）。
  *
  * 数据取话务条状态流水（stores/ctiFlow.ts）：本组各工作类型（就绪子状态，外呼通话计入工单处理）与小休的时长、占比。
  * 上半部分为人均口径（组合计 ÷ 统计人数），下半部分为成员明细（顺序同组员明细默认顺序，不排序、不排名、不标高亮），末行「人均」与上半部分一致。可见性随「班组看板」菜单权限（config/roles.ts 各角色 menus 含 team-board，路由守卫按此放行），
@@ -12,6 +12,7 @@ import { HOME_PERF_RANGE_OPTS, type HomePerfRangeKey } from '@/mock/homeOverview
 import { useCloseOnDeactivate } from '@/composables/useCloseOnDeactivate';
 import { groupMembersOf, useCtiFlowStore } from '@/stores/ctiFlow';
 import { BREAK_ITEM, BREAK_REASONS } from '@/mock/ctiWorkTypes';
+import MetricTipIcon from '@/components/MetricTipIcon.vue';
 
 const props = defineProps<{ groupId: string; memberOrder?: string[] }>();
 const flow = useCtiFlowStore();
@@ -195,13 +196,27 @@ const memberRows = computed(() => {
   });
 });
 const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(60px, 1fr))`);
+
+/** 指标行的问号提示 */
+const TOTAL_TIP = { define: '所选时间内，本组二线专员的在岗时长之和。在岗时长包含各工作类型与小休，外呼计入工单处理，不含未就绪、签出。' };
+const COUNT_TIP = { define: '本组名单内的二线专员人数，多组成员只计入第一个所属组；不含班组长，不区分当天是否出勤。' };
+const AVG_TIP = { define: '人工在岗时长 ÷ 统计人数。' };
+
+/** 长条与图例悬停联动：当前高亮的项；时长为 0 的项不在长条上，不参与联动 */
+const hoverKey = ref<string | null>(null);
+function hoverOn(item: { key: string; ms: number }) {
+  hoverKey.value = item.ms > 0 ? item.key : null;
+}
+function hoverOff() {
+  hoverKey.value = null;
+}
 </script>
 
 <template>
   <div v-if="dist" class="card wtp">
     <div class="card-hd">
       <div class="hd-main">
-        <h3 class="hd-title">工作时长分布</h3>
+        <h3 class="hd-title">在岗工作时长统计</h3>
       </div>
       <div class="section-filters">
         <div class="filter-item">
@@ -230,31 +245,51 @@ const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat
     <div v-if="perCapita" class="wtp-body">
       <div class="wtp-sum">
         <div class="wtp-stat">
-          <span class="wtp-stat-l">人均</span>
-          <span class="wtp-stat-v">{{ perCapita.total }}</span>
+          <span class="wtp-stat-l">人工在岗时长</span>
+          <span class="wtp-stat-v">{{ perCapita.groupTotal }}</span>
           <span class="wtp-stat-u">小时</span>
+          <MetricTipIcon :tip="TOTAL_TIP" />
         </div>
         <div class="wtp-stat">
           <span class="wtp-stat-l">统计人数</span>
           <span class="wtp-stat-v">{{ memberCount }}</span>
           <span class="wtp-stat-u">人</span>
-          <span class="wtp-stat-x">组合计 {{ perCapita.groupTotal }} 小时</span>
+          <MetricTipIcon :tip="COUNT_TIP" />
+        </div>
+        <div class="wtp-stat">
+          <span class="wtp-stat-l">平均在岗时长</span>
+          <span class="wtp-stat-v">{{ perCapita.total }}</span>
+          <span class="wtp-stat-u">小时</span>
+          <MetricTipIcon :tip="AVG_TIP" />
         </div>
       </div>
 
-      <div v-if="dist.totalMs > 0" class="wtp-bar" role="img" :aria-label="`工作时长分布，人均 ${perCapita.total} 小时`">
-        <a-tooltip v-for="i in barItems" :key="i.key" :title="i.tip">
-          <i class="wtp-seg" :style="{ flexGrow: i.ms, background: i.color }" />
+      <div v-if="dist.totalMs > 0" class="wtp-bar" role="img" :aria-label="`在岗工作时长统计，平均在岗时长 ${perCapita.total} 小时`">
+        <!-- 小休在最右、提示最长，放右上方落在指标行右侧空白处；其余放下方，不遮指标行 -->
+        <a-tooltip v-for="i in barItems" :key="i.key" :title="i.tip" :placement="i.key === BREAK_ITEM.key ? 'topRight' : 'bottom'">
+          <i
+            class="wtp-seg"
+            :class="{ 'is-dim': hoverKey && hoverKey !== i.key }"
+            :style="{ flexGrow: i.ms, background: i.color }"
+            @mouseenter="hoverOn(i)"
+            @mouseleave="hoverOff"
+          />
         </a-tooltip>
       </div>
       <div v-else class="wtp-empty">暂无数据</div>
 
       <div class="wtp-legend" role="table" aria-label="各工作类型人均时长">
-        <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined">
-          <div class="wtp-li" role="row">
+        <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined" placement="topRight">
+          <div
+            class="wtp-li"
+            :class="{ 'is-dim': hoverKey && hoverKey !== i.key, 'is-on': hoverKey === i.key }"
+            role="row"
+            @mouseenter="hoverOn(i)"
+            @mouseleave="hoverOff"
+          >
             <span class="wtp-sw" :style="{ background: i.color }" />
             <span class="wtp-ln" role="cell">{{ i.label }}</span>
-            <span class="wtp-lh" role="cell">{{ i.hText }} 小时</span>
+            <span class="wtp-lh" role="cell">{{ i.hText }}h</span>
             <span class="wtp-lp" role="cell">{{ i.pText }}</span>
           </div>
         </a-tooltip>
@@ -336,24 +371,27 @@ const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat
 .wtp-stat-l { font-size: 12px; color: #64748b; margin-right: 2px; }
 .wtp-stat-v { font-size: 18px; font-weight: 700; color: #0f172a; }
 .wtp-stat-u { font-size: 12px; color: #64748b; }
-.wtp-stat-x { font-size: 12px; color: #64748b; margin-left: 6px; }
+.wtp-stat :deep(.kpi-tip-wrap) { align-self: center; }
 
 .wtp-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; }
-.wtp-seg { display: block; min-width: 2px; height: 100%; flex-basis: 0; }
+.wtp-seg { display: block; min-width: 2px; height: 100%; flex-basis: 0; transition: opacity 0.15s; }
+.wtp-seg.is-dim { opacity: 0.3; }
 .wtp-seg:first-child { border-radius: 4px 0 0 4px; }
 .wtp-seg:last-child { border-radius: 0 4px 4px 0; }
 .wtp-empty { font-size: 12px; color: #9ca3af; padding: 4px 0; }
 
-.wtp-legend {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 6px 20px;
+/* 图例一行：各项按内容宽度排开，余量均分到项间 */
+.wtp-legend { display: flex; justify-content: space-between; gap: 6px; min-width: 0; }
+.wtp-li {
+  display: flex; align-items: center; gap: 3px; flex: none; padding: 2px; border-radius: 4px;
+  font-size: 12px; white-space: nowrap; cursor: default; transition: opacity 0.15s, background 0.15s;
 }
-.wtp-li { display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; padding: 4px 0; border-bottom: 1px dashed #eef2f7; }
+.wtp-li.is-dim { opacity: 0.4; }
+.wtp-li.is-on { background: #f1f5f9; }
 .wtp-sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.wtp-ln { color: #374151; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wtp-ln { color: #374151; }
 .wtp-lh { color: #0f172a; font-weight: 600; font-variant-numeric: tabular-nums; }
-.wtp-lp { color: #64748b; width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+.wtp-lp { color: #64748b; font-variant-numeric: tabular-nums; }
 
 /* 成员明细：沿用看板「组员明细」表格风格 */
 .wtp-tbl { margin: 0 -16px -14px; overflow-x: auto; border-top: 1px solid #eef2f7; }
