@@ -60,7 +60,7 @@ export const RULES_NAV_ITEMS: AdminNavItem[] = [
 
 /**
  * 智能分派（PRD-90，工单调度引擎·出池侧）：提为一级分组，页签作二级子项。
- * 分派监控 / 派单策略 / 工单池管理 / 路由规则 / 坐席画像；旧 `dispatch` → 分派监控。
+ * 分派监控 / 派单策略 / 工单池管理 / 路由规则 / 坐席画像 / 派单日志；旧 `dispatch` → 分派监控。
  */
 export const DISPATCH_NAV_ITEMS: AdminNavItem[] = [
   { key: 'dispatch-monitor', label: '分派监控', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
@@ -68,6 +68,7 @@ export const DISPATCH_NAV_ITEMS: AdminNavItem[] = [
   { key: 'dispatch-pool', label: '工单池管理', prd: 'PRD-90' },
   { key: 'dispatch-routing', label: '路由规则', prd: 'PRD-90' },
   { key: 'dispatch-profile', label: '坐席画像', prd: 'PRD-90' },
+  { key: 'dispatch-log', label: '派单日志', prd: 'PRD-90' },
 ];
 
 export const ADMIN_GROUPS: AdminNavGroup[] = [
