@@ -7,6 +7,7 @@ import {
 } from './dispatchUi';
 import type { ProfileDraft } from './profileDraft';
 import { computed } from 'vue';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { normalizeProblemPicks, problemPathsOfGroups, scopedProblemTree } from './problemScope';
 
 /** groupIds：坐席所属组（批量为所选坐席所属组的并集）；给出时问题分类「指定」只列所属组可选的分类（见 problemScope） */
@@ -52,7 +53,7 @@ const LIST_OPTS: Partial<Record<ProfileDimKey, { value: string; label: string }[
         <a-radio-group v-model:value="draft[d.key].mode" size="small" option-type="button" button-style="solid" class="pde-mode">
           <a-radio-button v-if="allowKeep" value="keep">不修改</a-radio-button>
           <a-radio-button value="any">不限</a-radio-button>
-          <a-tooltip v-if="d.key === 'problems' && problemPickDisabled" title="所属组在问题分类管理中暂无处理的问题分类">
+          <a-tooltip v-if="d.key === 'problems' && problemPickDisabled" v-bind="STD_TIP_PROPS" title="所属组在问题分类管理中暂无处理的问题分类">
             <a-radio-button value="pick" disabled>指定</a-radio-button>
           </a-tooltip>
           <a-radio-button v-else value="pick">指定</a-radio-button>

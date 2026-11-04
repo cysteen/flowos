@@ -14,10 +14,19 @@ import type { WorkStatus } from '@/stores/cti';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiPooledRecord, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
-import { isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
+import {
+  DISABLED_TIP_COLOR, DISABLED_TIP_OVERLAY_INNER_STYLE, DISABLED_TIP_OVERLAY_STYLE, isFirstResponded, type Ticket,
+} from '@/views/tickets/types/ticket';
 import { IN_TRANSIT_COUNT_RULE, NOT_OWN_POOL_MESSAGE, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
+
+/** ?????????????`<a-tooltip v-bind="STD_TIP_PROPS">`???????????????`color` ???????? */
+export const STD_TIP_PROPS = {
+  color: DISABLED_TIP_COLOR,
+  overlayStyle: DISABLED_TIP_OVERLAY_STYLE,
+  overlayInnerStyle: DISABLED_TIP_OVERLAY_INNER_STYLE,
+};
 
 const MIN = 60_000;
 const pad = (n: number) => String(n).padStart(2, '0');

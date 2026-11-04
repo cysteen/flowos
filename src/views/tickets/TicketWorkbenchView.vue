@@ -49,7 +49,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { isXiaozhiPooledRecord } from '@/views/tickets/types/xiaozhi';
 import { DISPATCH_STATUSES } from './types/dispatch';
 import {
-  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, claimDisabledTip, modeTagOf, reserveTipOf, waitMinutesOf, waitText,
+  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, reserveTipOf, waitMinutesOf, waitText,
 } from './composables/dispatchUi';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { poolEntryQuery } from './composables/poolClaim';
@@ -895,7 +895,7 @@ function onConfirmSaveFilter(name: string) {
             :value="wb.poolDispatchFilter.value.pools"
             @update:value="(v: unknown) => wb.setPoolDispatchFilter({ pools: Array.isArray(v) ? (v as string[]) : [] })"
           />
-          <a-tooltip :title="myProfileConfigured ? undefined : '人员画像未配置'">
+          <a-tooltip v-bind="STD_TIP_PROPS" :title="myProfileConfigured ? undefined : '人员画像未配置'">
             <a-checkbox
               :checked="wb.poolDispatchFilter.value.matchMe"
               :disabled="!myProfileConfigured"
@@ -1000,16 +1000,20 @@ function onConfirmSaveFilter(name: string) {
               <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
             </template>
             <template #cell-dispatchStatus="{ ticket }">
-              <span
+              <a-tooltip
                 v-if="dispatchStatusCell(ticket)"
-                class="dsp-tag"
-                :style="{
-                  color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
-                  background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
-                  borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
-                }"
+                v-bind="STD_TIP_PROPS"
                 :title="dispatchStatusCell(ticket) === '等原处理人' ? reserveTipOf(ticket.no) : undefined"
-              >{{ dispatchStatusCell(ticket) }}</span>
+              >
+                <span
+                  class="dsp-tag"
+                  :style="{
+                    color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
+                    background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
+                    borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
+                  }"
+                >{{ dispatchStatusCell(ticket) }}</span>
+              </a-tooltip>
               <span v-else class="dsp-empty">—</span>
             </template>
             <template #cell-dispatchMatch="{ ticket }">

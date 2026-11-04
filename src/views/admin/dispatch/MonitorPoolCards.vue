@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { stdPagination } from '@/config/adminUi';
 import type { DispatchAuditEntry } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
@@ -77,7 +78,7 @@ const recordCols = [
           <div class="pc-hd">
             <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
             <span class="pc-mode" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
-            <a-tooltip :title="globalMode === '人工派单' ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
+            <a-tooltip v-bind="STD_TIP_PROPS" :title="globalMode === '人工派单' ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
                 <template #icon><SwapOutlined /></template>
               </a-button>

@@ -21,7 +21,7 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
 import {
-  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
+  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR, STD_TIP_PROPS,
   modeTagOf, reassignableTicketsOf, reserveTipOf,
   waitText,
 } from '@/views/tickets/composables/dispatchUi';
@@ -269,7 +269,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
             class="dtp-tag"
             :style="{ color: MODE_TAG_STYLE[r.tag].color, background: MODE_TAG_STYLE[r.tag].bg, borderColor: MODE_TAG_STYLE[r.tag].border }"
           >{{ r.tag }}</span>
-          <a-tooltip :title="modeTip || undefined">
+          <a-tooltip v-bind="STD_TIP_PROPS" :title="modeTip || undefined">
             <button type="button" class="btn-ghost" :disabled="!!modeTip" @click="openMode(r.id)">
               <SwapOutlined /> 切换
             </button>
@@ -369,16 +369,20 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         <div class="td"><span class="ellipsis" :title="poolNameOf(t)">{{ poolNameOf(t) }}</span></div>
         <div class="td">{{ t.priority }}</div>
         <div class="td">
-          <span
+          <a-tooltip
             v-if="dispatch.dispatchStatusOf(t.no)"
-            class="dtp-tag"
-            :style="{
-              color: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].color,
-              background: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].bg,
-              borderColor: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].border,
-            }"
+            v-bind="STD_TIP_PROPS"
             :title="dispatch.dispatchStatusOf(t.no) === '等原处理人' ? reserveTipOf(t.no) : undefined"
-          >{{ dispatch.dispatchStatusOf(t.no) }}</span>
+          >
+            <span
+              class="dtp-tag"
+              :style="{
+                color: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].color,
+                background: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].bg,
+                borderColor: DISPATCH_STATUS_STYLE[dispatch.dispatchStatusOf(t.no)!].border,
+              }"
+            >{{ dispatch.dispatchStatusOf(t.no) }}</span>
+          </a-tooltip>
           <span v-else class="muted">—</span>
         </div>
         <div class="td">{{ waitText(poolWaitMinutesOf(t, nowMs)) }}</div>

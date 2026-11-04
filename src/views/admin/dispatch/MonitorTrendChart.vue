@@ -2,6 +2,7 @@
 // 分派监控 · 派单趋势：按日派出量（近 7 天 / 30 天），纯 SVG 绘制
 import { computed, ref } from 'vue';
 import { useDispatchStore } from '@/stores/dispatch';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { useClock } from './dispatchUi';
 import { buildTrend } from './dispatchMetrics';
 import './dispatchTheme.css';
@@ -105,7 +106,7 @@ function hitStyle(i: number) {
             </template>
           </template>
           <div class="hit-row">
-            <a-tooltip v-for="(p, i) in points" :key="p.dayStart" placement="top" :mouse-enter-delay="0.05">
+            <a-tooltip v-for="(p, i) in points" :key="p.dayStart" v-bind="STD_TIP_PROPS" placement="top" :mouse-enter-delay="0.05">
               <template #title>
                 <div class="tip"><b>{{ p.label }}</b><span>派出 {{ p.out }} 单</span></div>
               </template>
@@ -142,5 +143,5 @@ function hitStyle(i: number) {
 .hit { position: absolute; top: 0; height: 100%; cursor: crosshair; }
 .x-axis { position: relative; height: 20px; margin-top: 6px; }
 .x-label { position: absolute; font-size: 11px; color: #9ca3af; white-space: nowrap; }
-.tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.5; }
+.tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.6; }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 分派监控 · 派单路径占比（PRD 14.1 六项），环图纯 SVG 绘制
 import { computed, ref } from 'vue';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 
 const props = defineProps<{
   items: { name: string; count: number; pct: number; color: string }[];
@@ -45,7 +46,7 @@ const hovered = ref<number | null>(null);
       <svg viewBox="0 0 140 140" class="donut-svg">
         <circle v-if="!segs.length" :cx="CX" :cy="CX" :r="(R_OUT + R_IN) / 2" fill="none" stroke="#f3f4f6" :stroke-width="R_OUT - R_IN" />
         <g v-for="s in segs" :key="s.name">
-          <a-tooltip placement="top" :mouse-enter-delay="0.05">
+          <a-tooltip v-bind="STD_TIP_PROPS" placement="top" :mouse-enter-delay="0.05">
             <template #title><div class="tip"><b>{{ s.name }}</b><span>{{ s.pct }}% · {{ s.count }} 次</span></div></template>
             <path
               :d="s.path" :fill="s.color" class="seg"
@@ -87,5 +88,5 @@ const hovered = ref<number | null>(null);
 .lg-nm { font-size: 13px; color: #4e5969; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg-n { font-size: 13px; color: #86909c; }
 .lg-pc { font-size: 13px; font-weight: 600; color: #1f2329; width: 44px; text-align: right; }
-.tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.5; }
+.tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.6; }
 </style>

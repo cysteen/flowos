@@ -7,6 +7,7 @@ import { computed } from 'vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import type { DispatchStatus } from '@/views/tickets/types/dispatch';
 import { softBg } from '@/views/tickets/types/ticket';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 
 const props = defineProps<{ ticketNo: string }>();
 const store = useDispatchStore();
@@ -30,12 +31,12 @@ const title = computed(() => {
 </script>
 
 <template>
-  <span
-    v-if="status"
-    class="badge dispatch-tag"
-    :style="{ color: COLOR[status], background: softBg(COLOR[status]) }"
-    :title="title"
-  >{{ status }}</span>
+  <a-tooltip v-if="status" v-bind="STD_TIP_PROPS" :title="title">
+    <span
+      class="badge dispatch-tag"
+      :style="{ color: COLOR[status], background: softBg(COLOR[status]) }"
+    >{{ status }}</span>
+  </a-tooltip>
 </template>
 
 <style scoped>

@@ -8,6 +8,7 @@ import { message } from 'ant-design-vue';
 import { InboxOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, PROTECTED_POOL_TIP, isProtectedPool, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
@@ -217,7 +218,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           <div class="pm-card-hd">
             <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
             <span class="pm-mode" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
-            <a-tooltip :title="globalStopped ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
+            <a-tooltip v-bind="STD_TIP_PROPS" :title="globalStopped ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
                 <template #icon><SwapOutlined /></template>
               </a-button>
@@ -228,7 +229,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             <span class="pm-ops">
               <a-button type="link" size="small" class="pm-op" @click="detailId = p.id">池详情</a-button>
               <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
-              <a-tooltip :title="PROTECTED_POOL_TIP[p.id]">
+              <a-tooltip v-bind="STD_TIP_PROPS" :title="PROTECTED_POOL_TIP[p.id]">
                 <a-button type="link" size="small" danger class="pm-op" :disabled="isProtectedPool(p.id)" @click="openToggle(p.id, false)">停用</a-button>
               </a-tooltip>
             </span>
@@ -368,7 +369,9 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'reserve'">
-                <span v-if="record.reserveFor" class="pd-ellipsis" :title="`${record.reserveFor} · ${record.reserveUntil} 到期`">{{ record.reserveFor }}</span>
+                <a-tooltip v-if="record.reserveFor" v-bind="STD_TIP_PROPS" :title="`${record.reserveFor} · ${record.reserveUntil} 到期`">
+                  <span class="pd-ellipsis">{{ record.reserveFor }}</span>
+                </a-tooltip>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'sla'">
