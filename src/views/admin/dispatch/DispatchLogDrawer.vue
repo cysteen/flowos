@@ -8,12 +8,11 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
   GATE_ORDER, type DispatchFailReason, type DispatchLogEntry, type DispatchPath, type OriginalExclusion,
-  type ScoreFactorKey,
 } from '@/views/tickets/types/dispatch';
 import { PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
 import { MODE_TONE } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
-import { EXCLUSION_LABEL, FACTOR_LABEL, GATE_LABEL, failLabel, pathLabel, pathWithRelation } from './dispatchLabels';
+import { EXCLUSION_LABEL, GATE_LABEL, SCORE_DIMENSION_ROWS, failLabel, pathLabel, pathWithRelation } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; ticketNo?: string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
@@ -87,7 +86,7 @@ function gateItems(l: DispatchLogEntry) {
 function factorItems(l: DispatchLogEntry) {
   const s = l.chosenScore;
   if (!s) return [];
-  return (Object.keys(s.factors) as ScoreFactorKey[]).map((k) => ({ label: FACTOR_LABEL[k], v: s.factors[k].toFixed(2) }));
+  return SCORE_DIMENSION_ROWS.map((x) => ({ label: x.dimension, v: s.values[x.key].toFixed(2) }));
 }
 function snapshotItems(l: DispatchLogEntry) {
   const s = l.snapshot;

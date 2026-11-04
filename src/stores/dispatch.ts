@@ -12,19 +12,19 @@ import {
   registerDispatchEngine, type DispatchContext, type DispatchOutcome,
 } from '@/views/tickets/composables/aftersaleEvents';
 import {
-  DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_SCORE, PROFICIENCY_SCORE,
+  DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_RANK,
   RESERVE_COMPLAINT_ONLY, SCAN_INTERVAL_MINUTES, STALL_REMIND_HOURS, TAKEN_MESSAGE, PROFILE_DIMS, PROTECTED_POOL_TIP,
-  defaultDispatchConfig, emptyProfile, isProfileConfigured, isProtectedPool, migrateOriginalChain, stricterMode,
+  computeScore, defaultDispatchConfig, emptyProfile, isProfileConfigured, isProtectedPool, migrateOriginalChain, stricterMode, takeIntensity,
   type OriginalExclusion, type OriginalRelation, type OriginalRelationRule,
   type AgentProfile, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
   type DispatchFailReason, type DispatchGroup, type DispatchLogEntry, type DispatchPath, type DispatchPool, type DispatchResult,
   type DispatchRole, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction, type OccupyResult,
   type PoolMode, type PoolRule, type PoolRuleConditions, type ProductPick, type Proficiency,
   NOT_OWN_POOL_MESSAGE,
-  type ScoreDetail, type ScoreFactorKey, type SignInStatus, type TicketDispatchState,
+  type ScoreDetail, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { POOL_ENTERED_AGO_MIN, SPECIAL_POOL_ENTERED_AGO_MIN, buildDispatchDemo } from '@/mock/dispatchDemo';
-import { FACTOR_LABEL, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
+import { SCORE_DIMENSION_ROWS, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
 import { useFlashStore } from './flash';
@@ -47,7 +47,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 预留到期也在扫描时判定。
  * 【每轮扫描】
  * ① 取启用池内未领取的单：自动派单池全部（含排队中、无派单状态的单）；混合派单池只取等原处理人的单；人工派单池不取。
- * ② 排序：首响已超时的在前（超时久的最前），其后优先级高的在前，再按等待久的在前。
+ * ② 排序：首响已超时的在前（超时久的最前），其后优先级高的在前，再按首响剩余比例小的在前，最后等待久的在前。
  * ③ 逐张判定：等原处理人的单，目标坐席可接即派给他，到期再查关系链，否则不动；生效方式刚变为自动派单的池，
  *    其单按新进入派单处理（可再保留一次，等待时长不清零）；其余重走主流程。
  *    没派出且派单状态不变的单不写日志、不写履历、不发通知。
@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 22;
+export const DISPATCH_CACHE_VERSION = 23;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -158,7 +158,7 @@ function seedAgents(now: number): DispatchAgent[] {
       profile: { ...ANY }, proficiency: '熟练', capOverride: null,
       // 二线及以上专员开、管理角色关（8.1）
       personalSwitch: roles.some((r) => !MANAGEMENT_ROLES.includes(r)),
-      lastTakenAt: now - 60 * MIN, recentTakes: [],
+      lastTakenAt: null, todayTakes: [],
       ...o,
     };
     const on = row.signIn === '就绪';
@@ -172,22 +172,20 @@ function seedAgents(now: number): DispatchAgent[] {
   return [
     // 王坐席：另一位二线坐席，名下只留少量种子单（原处理人、他人在途演示）；个人上限按默认值
     a('王坐席', 'E2001', ['二线专员'], ['line2', 'edu-flash'], {
-      proficiency: '专家', lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
+      proficiency: '专家',
     }),
     // 张三：二线专员演示账号，种子单的演示处理人（我的任务、已办、审核、催补等）；同属教育刷机处理组（刷机池演示）、
     // 教育支持组（个册退费种子单的组员）。名下种子在途 34 张，个人上限设 40：不超限，并留出几张名额接引擎派单
     a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {
       capOverride: 40,
       profile: { ...ANY, ticketTypes: ['咨询', '建议'], products: [{ category: '智能硬件' }] },
-      lastTakenAt: now - 50 * MIN, recentTakes: [now - 50 * MIN],
     }),
     a('林坐席', 'E2003', ['二线专员'], ['line2', DEFAULT_POOL_ID], {
       profile: { ...ANY, products: [{ category: '学习硬件' }] },
-      lastTakenAt: now - 95 * MIN, recentTakes: [now - 95 * MIN, now - 110 * MIN],
     }),
-    a('徐璐', 'E2004', ['二线专员'], [DEFAULT_POOL_ID], { proficiency: '专家', lastTakenAt: now - 130 * MIN }),
+    a('徐璐', 'E2004', ['二线专员'], [DEFAULT_POOL_ID], { proficiency: '专家' }),
     a('刘洋', 'E2005', ['二线专员'], [DEFAULT_POOL_ID], { signIn: '小休', proficiency: '初级' }),
-    a('陈坐席', 'E2006', ['二线专员'], ['hardware'], { lastTakenAt: now - 40 * MIN, recentTakes: [now - 40 * MIN] }),
+    a('陈坐席', 'E2006', ['二线专员'], ['hardware']),
     a('李四', 'E2007', ['二线专员'], ['hardware'], {
       signIn: '小休', proficiency: '初级', profile: { ...ANY, products: [{ category: '智能硬件' }, { category: '学习硬件' }] },
     }),
@@ -196,7 +194,7 @@ function seedAgents(now: number): DispatchAgent[] {
     a('谭小智', 'E2401', ['小智工单处理人'], ['xiaozhi']),
     // 技术支持：三线技术支持组（技术支持池，12.5）成员。陈技支画像已配置接引擎派单；周技支画像未配置，不接引擎派单、可领取（6.3）
     a('陈技支', 'E3001', ['技术支持'], ['tech']),
-    a('周技支', 'E3002', ['技术支持'], ['tech'], { profile: emptyProfile(), lastTakenAt: now - 70 * MIN }),
+    a('周技支', 'E3002', ['技术支持'], ['tech'], { profile: emptyProfile() }),
     a('王组长', 'E2101', ['班组长'], ['line2', DEFAULT_POOL_ID, 'hardware', 'edu'], { proficiency: '专家', personalSwitch: false }),
     a('秦督导', 'E2201', ['督导'], ['hardware'], { personalSwitch: false }),
     a('吴投诉', 'E2202', ['客诉专员'], ['edu', DEFAULT_POOL_ID], { personalSwitch: false }),
@@ -274,11 +272,11 @@ function readCache(): Persisted | null {
   }
 }
 
-/** 缓存配置补全：旧版出池规则 ② 五项（开关 / 时间窗两项 / 同一问题分类 / 投诉预留两项）迁移为关系链（4.2） */
-const LEGACY_ORIGINAL_KEYS = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem', 'reserveMinutes', 'reserveSlaPercent'];
+/** 缓存配置补全：旧版出池规则 ② 五项（开关 / 时间窗两项 / 同一问题分类 / 投诉预留两项）迁移为关系链（4.2）；已取消的打分配置一并去掉 */
+const LEGACY_CONFIG_KEYS = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem', 'reserveMinutes', 'reserveSlaPercent', 'factors', 'recentHours'];
 function normalizeConfig(raw: Partial<DispatchConfig> & Record<string, unknown>): DispatchConfig {
   const next = { ...defaultDispatchConfig(), ...raw, originalChain: migrateOriginalChain(raw) } as DispatchConfig & Record<string, unknown>;
-  for (const k of LEGACY_ORIGINAL_KEYS) delete next[k];
+  for (const k of LEGACY_CONFIG_KEYS) delete next[k];
   return next;
 }
 
@@ -856,36 +854,30 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty: ready.length, matchedReady, drops };
   }
 
-  /* ---------------- 评分（4.3） ---------------- */
+  /* ---------------- 评分（4.4） ---------------- */
 
-  function recentCount(a: DispatchAgent, now: number): number {
-    const from = now - config.value.recentHours * 60 * MIN;
-    return a.recentTakes.filter((x) => x >= from).length;
+  /** 今日接单强度：今日接单量跨日清零 */
+  function intensityOf(a: DispatchAgent, now: number): number {
+    const from = dayStartOf(now);
+    return takeIntensity(a.todayTakes.filter((x) => x >= from).length, onDutyHoursOf(a.name, now), capOf(a));
   }
 
-  function score(t: Ticket, st: TicketDispatchState, a: DispatchAgent, pool: DispatchAgent[], now: number): ScoreDetail {
+  function score(t: Ticket, a: DispatchAgent, pool: DispatchAgent[], now: number): ScoreDetail {
     const inTransit = inTransitOf(a.name, t.no);
-    const cap = capOf(a);
-    const ratio = slaRemainRatio(t, st, now);
-    const maxRecent = Math.max(0, ...pool.map((x) => recentCount(x, now)));
-    const idleMinutes = a.lastTakenAt == null ? 9999 : Math.max(0, (now - a.lastTakenAt) / MIN);
-    const factors: Record<ScoreFactorKey, number> = {
-      load: cap > 0 ? Math.max(0, 1 - inTransit / cap) : 0,
-      proficiency: PROFICIENCY_SCORE[a.proficiency],
-      urgency: Math.max(PRIORITY_SCORE[t.priority] ?? 0, ratio == null ? 0 : 1 - ratio),
-      recent: maxRecent === 0 ? 1 : 1 - recentCount(a, now) / maxRecent,
-      idle: Math.min(1, idleMinutes / 120),
-    };
-    const on = config.value.factors.filter((f) => f.enabled);
-    const wsum = on.reduce((s, f) => s + f.weight, 0);
-    const total = wsum > 0 ? Math.round((on.reduce((s, f) => s + f.weight * factors[f.key], 0) / wsum) * 1000) / 10 : 0;
-    for (const k of Object.keys(factors) as ScoreFactorKey[]) factors[k] = Math.round(factors[k] * 100) / 100;
-    return { name: a.name, total, factors, idleMinutes: Math.round(idleMinutes), inTransit };
+    const { total, values } = computeScore({
+      proficiency: a.proficiency, inTransit, cap: capOf(a),
+      intensity: intensityOf(a, now),
+      maxIntensity: Math.max(0, ...pool.map((x) => intensityOf(x, now))),
+    });
+    return { name: a.name, staffNo: a.staffNo, total, values, lastTakenAt: a.lastTakenAt, inTransit };
   }
 
-  /** 同分：空闲时长长者 → 在途计数少者（4.3） */
+  /** 同分：距上次分配时长长者 → 在途少者 → 工号小者（4.4）；没有分配过的视为最久 */
   function rank(list: ScoreDetail[]): ScoreDetail[] {
-    return [...list].sort((x, y) => y.total - x.total || y.idleMinutes - x.idleMinutes || x.inTransit - y.inTransit);
+    return [...list].sort((x, y) => y.total - x.total
+      || (x.lastTakenAt ?? 0) - (y.lastTakenAt ?? 0)
+      || x.inTransit - y.inTransit
+      || x.staffNo.localeCompare(y.staffNo, undefined, { numeric: true }));
   }
 
   /* ---------------- 原处理人（4.2） ---------------- */
@@ -1016,7 +1008,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         const pool = gates(t, st).passed;
         return {
           path: '原处理人', assignee: a.name, status: null, originalRelation: st.reserveRelation,
-          score: score(t, st, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1,
+          score: score(t, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1,
         };
       }
     }
@@ -1030,7 +1022,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       const pool = gates(t, st).passed;
       return {
         path: '原处理人', assignee: a.name, status: null, originalRelation: chain.hit.relation,
-        score: score(t, st, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1, ...ex,
+        score: score(t, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1, ...ex,
       };
     }
     // 人不在时保留：链上均无可用者 → 预留给次序最靠前、策略为保留、当日签入过且只是暂时不可用的关系人；一张单只预留一次
@@ -1067,7 +1059,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function decideScore(t: Ticket, st: TicketDispatchState, now: number): Decision {
     const g = gates(t, st);
     if (g.passed.length) {
-      const ranked = rank(g.passed.map((a) => score(t, st, a, g.passed, now)));
+      const ranked = rank(g.passed.map((a) => score(t, a, g.passed, now)));
       const best = ranked[0];
       return {
         path: '加权评分', assignee: best.name, status: null,
@@ -1158,7 +1150,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const a = agentOf(name);
     if (!a) return;
     a.lastTakenAt = at;
-    a.recentTakes = [...a.recentTakes.filter((x) => x >= at - 24 * 60 * MIN), at];
+    a.todayTakes = [...a.todayTakes.filter((x) => x >= dayStartOf(at)), at];
   }
 
   /* ---------------- 日志 ---------------- */
@@ -1185,10 +1177,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return logs.value.filter((x) => x.ticketNo === no).reduce((m, x) => Math.max(m, x.seq), 0) + 1;
   }
 
-  /** 履历里的得分串：打分因素用界面名称（与出池规则页一致） */
-  function factorText(s: ScoreDetail): string {
-    const on = config.value.factors.filter((f) => f.enabled).map((f) => `${FACTOR_LABEL[f.key as ScoreFactorKey]} ${s.factors[f.key].toFixed(2)}`);
-    return `综合得分 ${s.total.toFixed(1)}（${on.join(' · ')}）`;
+  /** 履历里的得分串：维度用界面名称（与出池规则页一致） */
+  function scoreText(s: ScoreDetail): string {
+    const parts = SCORE_DIMENSION_ROWS.map((x) => `${x.dimension} ${s.values[x.key].toFixed(2)}`);
+    return `综合得分 ${s.total.toFixed(1)}（${parts.join(' · ')}）`;
   }
 
   /* ---------------- 派单引擎（对外） ---------------- */
@@ -1334,7 +1326,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const pathText = d.originalRelation && d.path === '原处理人' ? `${d.path} · ${d.originalRelation}` : d.path;
     let reason: string;
     if (actualAssign) {
-      reason = `系统派单 → ${actualAssign}（${pathText}）${d.score ? `；${factorText(d.score)}` : ''}`;
+      reason = `系统派单 → ${actualAssign}（${pathText}）${d.score ? `；${scoreText(d.score)}` : ''}`;
     } else if (status === '排队中') {
       reason = `${poolLabel(st.poolId)}排队：${d.failReason === '均达个人上限' ? '相符成员均已满额' : failLabel(d.failReason)}`;
     } else if (status === '等原处理人') {
@@ -1573,9 +1565,17 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return st ? slaRemainRaw(t, st, now) : firstRespOf(t, now)?.remainMin ?? null;
   }
 
-  /** 本轮要判定的单（处理顺序见文件头 ②）：首响已超时 → 优先级 → 等待久 */
+  /** 首响剩余比例（排序用，0–1）；无首响 SLA 为 null */
+  function firstRespRatioOf(t: Ticket, now: number): number | null {
+    const st = ticketStates.value[t.no];
+    if (st) return slaRemainRatio(t, st, now);
+    const fr = firstRespOf(t, now);
+    return fr ? Math.min(1, Math.max(0, fr.remainMin) / fr.limitMin) : null;
+  }
+
+  /** 本轮要判定的单（处理顺序见文件头 ②）：首响已超时 → 优先级 → 首响剩余比例小 → 等待久；无首响 SLA 的排在同优先级最后 */
   function scanTickets(now: number): { t: Ticket; poolId: string }[] {
-    const rows: { t: Ticket; poolId: string; overdue: number; rank: number; at: number }[] = [];
+    const rows: { t: Ticket; poolId: string; overdue: number; rank: number; ratio: number; at: number }[] = [];
     for (const raw of TICKETS) {
       if (raw.assignee || raw.tab !== 'pool' || raw.archived || raw.isDraft || !raw.groupId) continue;
       // 只取待领取的单：未认领，或升级三线留在技术支持组池的单（其余子状态不进入派单）
@@ -1589,11 +1589,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
       rows.push({
         t: reactive(raw) as Ticket, poolId,
         overdue: remain != null && remain <= 0 ? -remain : -1,
-        rank: PRIORITY_SCORE[raw.priority] ?? 0,
+        rank: PRIORITY_RANK[raw.priority] ?? 0,
+        ratio: firstRespRatioOf(raw, now) ?? 2,
         at: ticketStates.value[raw.no]?.enteredAt ?? poolEnteredAtOf(raw, now),
       });
     }
-    return rows.sort((a, b) => b.overdue - a.overdue || b.rank - a.rank || a.at - b.at);
+    return rows.sort((a, b) => b.overdue - a.overdue || b.rank - a.rank || a.ratio - b.ratio || a.at - b.at);
   }
 
   /** 滞留汇总提醒：池内未领取超过 4 小时的单按组汇总提醒班组长；同一张只提醒一次 */
@@ -2088,8 +2089,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (!intIn(row.reserveSlaPercent, 1, 100)) return { ok: false, message: '请输入 1–100 的整数' };
     }
     if (!next.originalChain.some((r) => r.enabled)) return { ok: false, message: '请至少启用一种原处理人关系' };
-    if (!next.factors.some((f) => f.enabled)) return { ok: false, message: '请至少启用一个打分因素' };
-    if (next.factors.some((f) => !Number.isInteger(f.weight) || f.weight < 0 || f.weight > 100)) return { ok: false, message: '请输入 0–100 的整数' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
     // 全局派单方式走 setGlobalMode（带审计与重派），不随派单策略保存

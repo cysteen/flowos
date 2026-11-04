@@ -67,7 +67,7 @@ export const DEFAULT_PROFICIENCY_COEF: Record<Proficiency, number> = { 初级: 0
 export const DISPATCH_CUSTOMER_TYPES = ['个人用户', '家长', '学生', '经销商', '内部员工', '老师', '终端用户'];
 /** 工单类型（PRD 含「表扬」；原型建单只有四类，表扬留作取值） */
 export const DISPATCH_TICKET_TYPES: (TicketType | '表扬')[] = ['咨询', '投诉', '建议', '商机', '表扬'];
-/** 工单优先级 → PRD 口径（紧急 / 高 / 中 / 低），入池规则与紧急度因子共用 */
+/** 工单优先级 → PRD 口径（紧急 / 高 / 中 / 低），入池规则与选单次序共用 */
 export const PRIORITY_LEVEL: Record<Priority, '紧急' | '高' | '中' | '低'> = { P0: '紧急', P1: '高', P2: '中', P3: '低' };
 
 /* ------------------------------------------------------------------ */
@@ -236,10 +236,10 @@ export interface DispatchAgent {
   capOverride: number | null;
   /** 个人开关（8.1） */
   personalSwitch: boolean;
-  /** 上一次被派单或领取的时刻（ms，空闲时长因子） */
+  /** 上一次被分配的时刻（ms，同分规则「距上次分配时长」） */
   lastTakenAt: number | null;
-  /** 近期派单与领取时刻（ms，近 N 小时接单量因子；只留 24 小时内） */
-  recentTakes: number[];
+  /** 今日接单时刻（ms，今日接单强度；系统派单与人工拿单计入，跨日清零） */
+  todayTakes: number[];
   /** 本次就绪起点（ms）；非就绪为 null（在岗时长，13.2 派单均衡度） */
   signInSince?: number | null;
   /** 当日已累计在岗时长（ms，不含本次就绪中的时长） */
@@ -252,24 +252,6 @@ export interface DispatchAgent {
 /* 配置（14.2）                                                          */
 /* ------------------------------------------------------------------ */
 
-export type ScoreFactorKey = 'load' | 'proficiency' | 'urgency' | 'recent' | 'idle';
-export interface ScoreFactor {
-  key: ScoreFactorKey;
-  label: string;
-  enabled: boolean;
-  /** 0–100 整数 */
-  weight: number;
-}
-/** 评分因子与默认权重（4.3）：负载 30 / 熟练度 25 / 紧急度 20 / 近 N 小时接单量 15 / 空闲时长 10 */
-export function defaultScoreFactors(): ScoreFactor[] {
-  return [
-    { key: 'load', label: '负载', enabled: true, weight: 30 },
-    { key: 'proficiency', label: '熟练度', enabled: true, weight: 25 },
-    { key: 'urgency', label: '紧急度', enabled: true, weight: 20 },
-    { key: 'recent', label: '近 N 小时接单量', enabled: true, weight: 15 },
-    { key: 'idle', label: '空闲时长', enabled: true, weight: 10 },
-  ];
-}
 /** 综合打分三个维度（4.4）：权重固定，不可配置 */
 export type ScoreDimensionKey = 'proficiency' | 'load' | 'balance';
 export const SCORE_WEIGHTS: Record<ScoreDimensionKey, number> = { proficiency: 20, load: 40, balance: 40 };
@@ -299,8 +281,8 @@ export function computeScore(input: {
     values: Object.fromEntries(keys.map((k) => [k, Math.round(raw[k] * 10000) / 10000])) as Record<ScoreDimensionKey, number>,
   };
 }
-/** 紧急度 · 优先级分（4.3） */
-export const PRIORITY_SCORE: Record<Priority, number> = { P0: 1, P1: 0.7, P2: 0.4, P3: 0.1 };
+/** 扫描选单次序里的优先级高低（4.1）：数值大的在前 */
+export const PRIORITY_RANK: Record<Priority, number> = { P0: 4, P1: 3, P2: 2, P3: 1 };
 
 /* ------------------------------------------------------------------ */
 /* 原处理人优先＝有序关系链（4.2，11-02 拍板方案 B）                        */
@@ -376,8 +358,6 @@ export interface DispatchConfig {
   /* 出池规则 */
   /** 步骤 ② 优先派回原处理人：关系链三行（4.2） */
   originalChain: OriginalRelationRule[];
-  factors: ScoreFactor[];
-  recentHours: number;
   /* 个人上限 */
   roleBase: Record<DispatchRole, number>;
   proficiencyCoef: Record<Proficiency, number>;
@@ -386,8 +366,6 @@ export function defaultDispatchConfig(): DispatchConfig {
   return {
     globalMode: '人工派单',
     originalChain: defaultOriginalChain(),
-    factors: defaultScoreFactors(),
-    recentHours: 2,
     roleBase: { ...DEFAULT_ROLE_BASE },
     proficiencyCoef: { ...DEFAULT_PROFICIENCY_COEF },
   };
@@ -464,15 +442,16 @@ export type DispatchFailReason = '组内暂无已就绪成员' | '无画像匹�
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
 export const GATE_ORDER: GateKey[] = ['候选范围', '个人开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
 
-/** 单个候选的评分明细（4.3） */
+/** 单个候选的评分明细（4.4） */
 export interface ScoreDetail {
   name: string;
+  staffNo: string;
   /** 综合得分，0–100，一位小数 */
   total: number;
-  /** 各因子取值（0–1） */
-  factors: Record<ScoreFactorKey, number>;
-  /** 同分规则用 */
-  idleMinutes: number;
+  /** 三个维度取值（0–1） */
+  values: Record<ScoreDimensionKey, number>;
+  /** 同分规则用：上次分配时刻（null＝没有分配过，视为最久）、在途、工号 */
+  lastTakenAt: number | null;
   inTransit: number;
 }
 

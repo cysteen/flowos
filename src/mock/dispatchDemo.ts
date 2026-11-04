@@ -10,10 +10,10 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import {
-  PRIORITY_SCORE, PROFICIENCY_SCORE, defaultScoreFactors, isProfileConfigured,
+  computeScore, isProfileConfigured, takeIntensity,
   type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchFailReason, type DispatchGroup,
   type DispatchLogEntry, type DispatchPath, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction,
-  type OriginalRelation, type PoolMode, type PoolRule, type ScoreDetail, type ScoreFactorKey, type TicketDispatchState,
+  type OriginalRelation, type PoolMode, type PoolRule, type ScoreDetail, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { splitProblemPath } from '@/stores/problemTags';
 
@@ -169,6 +169,15 @@ interface Tk {
   seq: number;
 }
 
+/** 候选在判定时刻的打分入参（种子值） */
+interface Candidate {
+  agent: DispatchAgent;
+  inTransit: number;
+  takes: number;
+  hours: number;
+  lastTakenAt: number;
+}
+
 interface JudgeOpts {
   trigger: DispatchTrigger;
   path: DispatchPath;
@@ -194,8 +203,6 @@ function relationOf(trigger: DispatchTrigger, at: number): OriginalRelation {
 function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => number) {
   const logs: SeedLogEntry[] = [];
   let idn = 0;
-  const weights = defaultScoreFactors();
-  const wsum = weights.reduce((s, f) => s + f.weight, 0);
   const groupLabel = (id: string) => groups.find((g) => g.id === id)?.label ?? id;
   const poolLabel = (id: string) => `${groupLabel(id)}池`;
   const members = (pool: string) => agents.filter((a) => a.groupIds.includes(pool));
@@ -222,20 +229,42 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     };
   }
 
-  /** 单个候选评分（4.3）：五因子加权 */
-  function scoreOf(a: DispatchAgent, t: Tk, boost = 0): ScoreDetail {
-    const cap = capOf(a);
-    const load = Math.min(0.95, Math.max(0.1, between(0.25, 0.9) + boost));
-    const factors: Record<ScoreFactorKey, number> = {
-      load,
-      proficiency: PROFICIENCY_SCORE[a.proficiency],
-      urgency: Math.max(PRIORITY_SCORE[t.priority], between(0, 0.35)),
-      recent: Math.min(1, Math.max(0, between(0.2, 1) + boost)),
-      idle: Math.min(1, Math.max(0.05, between(0.1, 0.9) + boost)),
+  /** 抽一名候选的打分入参：`light` 为负载轻、今日接单少的一档（中选者）。每名候选固定取 4 个随机数，后续种子序列不受影响 */
+  function drawCandidate(agent: DispatchAgent, at: number, light: boolean): Candidate {
+    const cap = capOf(agent);
+    const u = between(0, 1);
+    return {
+      agent,
+      inTransit: light ? Math.floor(cap * (0.05 + 0.25 * u)) : Math.min(cap - 1, Math.ceil(cap * (0.4 + 0.5 * u))),
+      takes: light ? Math.floor(between(0, 3)) : 2 + Math.floor(between(0, 6)),
+      hours: between(1, 8),
+      lastTakenAt: Math.round(at - between(5, 120) * MIN),
     };
-    const total = Math.round((weights.reduce((s, f) => s + f.weight * factors[f.key], 0) / wsum) * 1000) / 10;
-    for (const k of Object.keys(factors) as ScoreFactorKey[]) factors[k] = Math.round(factors[k] * 100) / 100;
-    return { name: a.name, total, factors, idleMinutes: Math.round(factors.idle * 120), inTransit: Math.round((1 - load) * cap) };
+  }
+  const intensityOf = (c: Candidate) => takeIntensity(c.takes, c.hours, capOf(c.agent));
+  /** 单个候选评分（4.4）：与引擎同一公式 */
+  function scoreOf(c: Candidate, maxIntensity: number): ScoreDetail {
+    const { total, values } = computeScore({
+      proficiency: c.agent.proficiency, inTransit: c.inTransit, cap: capOf(c.agent), intensity: intensityOf(c), maxIntensity,
+    });
+    return { name: c.agent.name, staffNo: c.agent.staffNo, total, values, lastTakenAt: c.lastTakenAt, inTransit: c.inTransit };
+  }
+  /** 综合打分：中选者须得分最高，其余候选加负载与接单量直到低于中选者。首项为中选者 */
+  function scoreChosenFirst(chosen: Candidate, rest: Candidate[]): ScoreDetail[] {
+    const all = [chosen, ...rest];
+    const scoreAll = () => {
+      const max = Math.max(...all.map(intensityOf));
+      return all.map((c) => scoreOf(c, max));
+    };
+    let list = scoreAll();
+    for (let i = 0; i < 40 && list.slice(1).some((x) => x.total >= list[0].total); i += 1) {
+      for (const c of rest) {
+        c.inTransit = Math.max(c.inTransit, capOf(c.agent) - 1);
+        c.takes += 1;
+      }
+      list = scoreAll();
+    }
+    return list;
   }
 
   /** 门槛淘汰（4.1）：按池成员估算各门槛淘汰人数，`keep` 为最终候选数 */
@@ -268,13 +297,20 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     if (o.chosen) {
       const pool = eligible(t.pool);
       candidates = o.candidates ?? (o.path === '原处理人' ? 1 : Math.max(1, Math.min(pool.length, 1 + Math.floor(r() * pool.length))));
-      chosenScore = scoreOf(o.chosen, t, 0.15);
-      if (o.path !== '原处理人') {
-        const others = pool.filter((a) => a.name !== o.chosen!.name).slice(0, Math.max(0, candidates - 1));
-        top3 = [{ name: chosenScore.name, total: chosenScore.total }, ...others.map((a) => {
-          const s = scoreOf(a, t);
-          return { name: a.name, total: Math.min(s.total, Math.round((chosenScore!.total - between(1.5, 12)) * 10) / 10) };
-        })].sort((x, y) => y.total - x.total).slice(0, 3);
+      if (o.path === '原处理人') {
+        // 派回原处理人不比分，得分照记：组内最高强度按比他多接一张估
+        const me = drawCandidate(o.chosen, at, false);
+        chosenScore = scoreOf(me, takeIntensity(me.takes + 1, me.hours, capOf(o.chosen)));
+      } else {
+        const me = drawCandidate(o.chosen, at, true);
+        const rest = pool.filter((a) => a.name !== o.chosen!.name).slice(0, Math.max(0, candidates - 1)).map((a) => {
+          const c = drawCandidate(a, at, false);
+          r(); // 保持种子序列不变
+          return c;
+        });
+        const list = scoreChosenFirst(me, rest);
+        chosenScore = list[0];
+        top3 = list.map((x) => ({ name: x.name, total: x.total })).sort((x, y) => y.total - x.total).slice(0, 3);
       }
     }
     const capBlocked = o.failReason === '均达个人上限' ? Math.max(1, Math.min(2, eligible(t.pool).length)) : 0;
@@ -884,8 +920,12 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
   const agentPatch: Record<string, Partial<DispatchAgent>> = {};
   const day = `${new Date(now).getFullYear()}-${pad(new Date(now).getMonth() + 1)}-${pad(new Date(now).getDate())}`;
   for (const a of agents) {
-    const mine = (takes[a.name] ?? []).filter((x) => x <= now && x >= now - DAY).sort((x, y) => x - y);
-    const p: Partial<DispatchAgent> = { onDutyDay: day };
+    const taken = (takes[a.name] ?? []).filter((x) => x <= now).sort((x, y) => x - y);
+    const p: Partial<DispatchAgent> = {
+      onDutyDay: day,
+      lastTakenAt: taken[taken.length - 1] ?? null,
+      todayTakes: taken.filter((x) => x >= tl.today0),
+    };
     const away = AWAY[a.name];
     if (OFF_TODAY.includes(a.name)) {
       Object.assign(p, { signIn: '签出', signedInToday: false, signInSince: null, onDutyMs: 0 });
@@ -896,7 +936,6 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
     } else {
       Object.assign(p, { signIn: '就绪', signedInToday: true, signInSince: t0, onDutyMs: 0 });
     }
-    if (mine.length) Object.assign(p, { lastTakenAt: mine[mine.length - 1], recentTakes: mine });
     agentPatch[a.name] = p;
   }
   agentPatch['王坐席'] = { ...agentPatch['王坐席'], capOverride: 3 };

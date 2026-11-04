@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 处理履历「系统派单」节点的派单明细（【1215】PRD 13.1）：派单路径、派单原因、综合得分；因子明细可折叠。
+ * 处理履历「系统派单」节点的派单明细（【1215】PRD 13.1）：派单路径、派单原因、综合得分；打分明细可折叠。
  * 取值来自派单日志（同一工单、同一中选坐席、判定时刻相同的那条判定）；找不到日志时不渲染。
  */
 import { computed, ref } from 'vue';
 import { DownOutlined, RightOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import type { DispatchLogEntry } from '@/views/tickets/types/dispatch';
-import { EXCLUSION_LABEL, FACTOR_LABEL, pathWithRelation, replacePathNames } from '@/views/admin/dispatch/dispatchLabels';
+import { SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import { EXCLUSION_LABEL, SCORE_DIMENSION_ROWS, pathWithRelation, replacePathNames } from '@/views/admin/dispatch/dispatchLabels';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
 const props = defineProps<{ entry: TimelineEntry }>();
@@ -35,14 +35,12 @@ const log = computed<DispatchLogEntry | undefined>(() => {
 const factors = computed(() => {
   const s = log.value?.chosenScore;
   if (!s) return [];
-  return store.config.factors
-    .filter((f) => f.enabled)
-    .map((f) => ({
-      key: f.key,
-      label: FACTOR_LABEL[f.key],
-      weight: f.weight,
-      value: s.factors[f.key].toFixed(2),
-    }));
+  return SCORE_DIMENSION_ROWS.map((x) => ({
+    key: x.key,
+    label: x.dimension,
+    weight: SCORE_WEIGHTS[x.key],
+    value: s.values[x.key].toFixed(2),
+  }));
 });
 
 /** 派单原因：触发类型 ＋ 归属池（命中的入池规则）＋ 候选人数 */
@@ -78,7 +76,7 @@ const whatText = computed(() => {
       <span class="dd-k">综合得分</span>
       <span class="dd-v dd-score">{{ log.chosenScore.total.toFixed(1) }}</span>
       <button type="button" class="dd-toggle" @click="open = !open">
-        <component :is="open ? DownOutlined : RightOutlined" />因子明细
+        <component :is="open ? DownOutlined : RightOutlined" />打分明细
       </button>
     </div>
     <div v-if="open && log.chosenScore" class="dd-factors">

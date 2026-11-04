@@ -3,7 +3,7 @@
  * 只做显示映射，内部取值（门槛 key、判定路径、未派出原因、维度 key）不变。
  */
 import type {
-  DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreDimensionKey, ScoreFactorKey,
+  DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreDimensionKey,
 } from '@/views/tickets/types/dispatch';
 
 /** 接单条件（门槛 4.1） */
@@ -46,15 +46,6 @@ export const SCORE_DIMENSION_ROWS: { key: ScoreDimensionKey; dimension: string; 
 export const SCORE_DIMENSION_LABEL = Object.fromEntries(SCORE_DIMENSION_ROWS.map((x) => [x.key, x.dimension])) as Record<ScoreDimensionKey, string>;
 /** 同分时的选人次序（4.4） */
 export const SCORE_TIE_RULE = '同分时：距上次分配时间长的优先，其次在途工单少的优先，再次工号小的优先。';
-
-/** 打分因素（4.3） */
-export const FACTOR_LABEL: Record<ScoreFactorKey, string> = {
-  load: '手上工单少',
-  proficiency: '熟练度高',
-  urgency: '工单紧急',
-  recent: '最近接单少',
-  idle: '空闲时间长',
-};
 
 /** 原处理人例外（4.2 不派回、不保留） */
 export const EXCLUSION_LABEL: Record<OriginalExclusion, string> = {
