@@ -269,25 +269,14 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     return list;
   }
 
-  /** 门槛淘汰（4.1）：按池成员估算各门槛淘汰人数，`keep` 为最终候选数 */
-  function dropsOf(pool: string, keep: number, capBlocked = 0): Partial<Record<GateKey, number>> {
+  /** 第 1 步判定结果（4.1）：`keep` 为最终候选数，没人可接时按排队原因记第一个没人满足的条件 */
+  function gateResultOf(pool: string, keep: number, capBlocked: number, failReason?: DispatchFailReason) {
     const m = members(pool);
-    const d: Partial<Record<GateKey, number>> = {};
-    const outside = agents.length - m.length;
-    if (outside) d['候选范围'] = outside;
     const off = m.filter((a) => !a.personalSwitch).length;
-    if (off) d['个人开关'] = off;
     const unconf = m.filter((a) => a.personalSwitch && !isProfileConfigured(a.profile)).length;
-    let rest = m.length - off - unconf - keep - capBlocked;
-    if (rest > 0) {
-      const shift = Math.min(rest, Math.round(r() * Math.min(1, rest)));
-      if (shift) d['在班'] = shift;
-      rest -= shift;
-    }
-    if (unconf) d['画像已配置'] = unconf;
-    if (rest > 0) d['画像匹配'] = rest;
-    if (capBlocked) d['个人上限'] = capBlocked;
-    return d;
+    if (m.length - off - unconf - keep - capBlocked > 0) r(); // 保持种子序列不变
+    const failedAt = failReason ? QUEUE_FAILED_GATE[failReason] : undefined;
+    return { ...(failedAt ? { gateFailedAt: failedAt } : {}), candidateCount: keep };
   }
 
   function judge(t: Tk, at: number, o: JudgeOpts): SeedLogEntry {
@@ -333,7 +322,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       path: o.path,
       ...(o.path === '原处理人' || o.path === '预留' ? { originalRelation: o.relation ?? relationOf(o.trigger, at) } : {}),
       ...(o.excluded?.length ? { originalExcluded: o.excluded } : {}),
-      ...(o.path === '留池' || o.path === '预留' ? {} : { gateDrops: dropsOf(t.pool, assignLike ? candidates : 0, capBlocked), candidateCount: assignLike ? candidates : 0 }),
+      ...(o.path === '留池' || o.path === '预留' ? {} : gateResultOf(t.pool, assignLike ? candidates : 0, capBlocked, o.failReason)),
       ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
       ...(chosenScore ? { chosenScore } : {}),
       ...(top3 ? { top3 } : {}),
@@ -382,6 +371,13 @@ type Builder = ReturnType<typeof makeBuilder>;
 const REASSIGN_REASONS = ['客户要求更换处理人', '原处理人临时外出培训', '需熟悉该产品的坐席跟进'];
 const TRANSFER_REASONS = ['该客户近期由其跟进', '跨组协助处理'];
 const QUEUE_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '组内暂无已就绪成员', '无可接单成员', '无画像匹配成员'];
+/** 排队原因对应的第一个没人满足的接单条件 */
+const QUEUE_FAILED_GATE: Partial<Record<DispatchFailReason, GateKey>> = {
+  组内暂无已就绪成员: '在班',
+  无可接单成员: '个人开关',
+  无画像匹配成员: '画像匹配',
+  均达个人上限: '个人上限',
+};
 
 /* ------------------------------------------------------------------ */
 /* 上线以来（前 13 天）                                                   */

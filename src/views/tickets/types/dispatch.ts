@@ -438,7 +438,7 @@ export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '�
 /** 未派出原因（13.1）：排队原因与系统异常 */
 export type DispatchFailReason = '组内暂无已就绪成员' | '无画像匹配成员' | '无可接单成员' | '均达个人上限' | '系统异常';
 
-/** 门槛（4.1 P0 项），用于门槛淘汰计数 */
+/** 门槛（4.1 P0 项），按此次序逐条判定 */
 export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
 export const GATE_ORDER: GateKey[] = ['候选范围', '个人开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
 
@@ -482,8 +482,8 @@ export interface DispatchLogEntry {
   originalRelation?: OriginalRelation;
   /** 关系链上因例外不派回、不保留的原处理人（4.2 例外清单） */
   originalExcluded?: { relation: OriginalRelation; name: string; reason: OriginalExclusion }[];
-  /** 逐项门槛淘汰人数 */
-  gateDrops?: Partial<Record<GateKey, number>>;
+  /** 第一个没人满足的接单条件；都有人满足时不记 */
+  gateFailedAt?: GateKey;
   candidateCount?: number;
   /** 中选坐席 */
   chosen?: { name: string; staffNo: string; groupLabel: string };

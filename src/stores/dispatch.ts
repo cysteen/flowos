@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 24;
+export const DISPATCH_CACHE_VERSION = 26;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -308,7 +308,8 @@ interface GateOutcome {
   onDuty: number;
   /** 就绪且画像相符的成员数（不看个人开关、投诉回避）：有人而候选仍为空即「无可接单成员」 */
   matchedReady: number;
-  drops: Partial<Record<GateKey, number>>;
+  /** 第一个没人满足的门槛；都有人满足时为空 */
+  failedAt?: GateKey;
 }
 
 interface Decision {
@@ -317,7 +318,7 @@ interface Decision {
   status: DispatchStatus | null;
   score?: ScoreDetail;
   top3?: DispatchLogEntry['top3'];
-  drops?: Partial<Record<GateKey, number>>;
+  gateFailedAt?: GateKey;
   candidateCount?: number;
   failReason?: DispatchFailReason;
   reserveFor?: string;
@@ -831,13 +832,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /* ---------------- 门槛（4.1） ---------------- */
 
   function gates(t: Ticket, st: TicketDispatchState, opts: { only?: string } = {}): GateOutcome {
-    const drops: Partial<Record<GateKey, number>> = {};
+    let failedAt: GateKey | undefined;
     let list = agents.value.filter((a) => !opts.only || a.name === opts.only);
     const step = (key: GateKey, keep: (a: DispatchAgent) => boolean) => {
-      const next = list.filter(keep);
-      const d = list.length - next.length;
-      if (d) drops[key] = (drops[key] ?? 0) + d;
-      list = next;
+      list = list.filter(keep);
+      if (!list.length && !failedAt) failedAt = key;
     };
     const poolGroupId = poolGroupIdOf(st.poolId);
     const ready = list.filter((a) => !!poolGroupId && a.groupIds.includes(poolGroupId) && !a.disabled && a.roles.length > 0 && a.signIn === '就绪');
@@ -851,7 +850,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     step('画像匹配', (a) => profileMatches(a, t));
     const matched = list;
     step('个人上限', (a) => inTransitOf(a.name, t.no) < capOf(a));
-    return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty: ready.length, matchedReady, drops };
+    return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty: ready.length, matchedReady, failedAt };
   }
 
   /* ---------------- 评分（4.4） ---------------- */
@@ -1008,7 +1007,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
         const pool = gates(t, st).passed;
         return {
           path: '原处理人', assignee: a.name, status: null, originalRelation: st.reserveRelation,
-          score: score(t, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1,
+          score: score(t, a, pool.length ? pool : [a], now), candidateCount: 1,
         };
       }
     }
@@ -1018,11 +1017,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const ex = chain.excluded.length ? { originalExcluded: chain.excluded } : {};
     if (chain.hit) {
       const a = agentOf(chain.hit.name)!;
-      const g = gates(t, st, { only: a.name });
       const pool = gates(t, st).passed;
       return {
         path: '原处理人', assignee: a.name, status: null, originalRelation: chain.hit.relation,
-        score: score(t, a, pool.length ? pool : [a], now), drops: g.drops, candidateCount: 1, ...ex,
+        score: score(t, a, pool.length ? pool : [a], now), candidateCount: 1, ...ex,
       };
     }
     // 人不在时保留：链上均无可用者 → 预留给次序最靠前、策略为保留、当日签入过且只是暂时不可用的关系人；一张单只预留一次
@@ -1064,10 +1062,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
       return {
         path: '加权评分', assignee: best.name, status: null,
         score: best, top3: ranked.slice(0, 3).map((x) => ({ name: x.name, staffNo: x.staffNo, total: x.total, values: x.values })),
-        drops: g.drops, candidateCount: g.passed.length,
+        candidateCount: g.passed.length,
       };
     }
-    return { path: '排队', assignee: null, status: '排队中', drops: g.drops, candidateCount: 0, failReason: emptyReasonOf(g) };
+    return { path: '排队', assignee: null, status: '排队中', gateFailedAt: g.failedAt, candidateCount: 0, failReason: emptyReasonOf(g) };
   }
 
   /* ---------------- 写：工单行 ---------------- */
@@ -1298,7 +1296,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       path: d.path,
       ...(d.originalRelation ? { originalRelation: d.originalRelation } : {}),
       ...(d.originalExcluded?.length ? { originalExcluded: d.originalExcluded } : {}),
-      gateDrops: d.drops,
+      ...(d.gateFailedAt ? { gateFailedAt: d.gateFailedAt } : {}),
       candidateCount: d.candidateCount,
       ...(chosenAgent ? { chosen: { name: chosenAgent.name, staffNo: chosenAgent.staffNo, groupLabel: g?.label ?? '' } } : {}),
       ...(d.score ? { chosenScore: d.score } : {}),

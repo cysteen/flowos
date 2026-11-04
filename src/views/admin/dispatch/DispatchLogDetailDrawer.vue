@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 派单日志详情（PRD 8.6）：判定结论 → 工单信息 → 判定过程三步（谁可以接单 / 优先派回原处理人 / 综合打分）；人工记录只列动作、操作人、原处理人、目标与原因
 import { computed } from 'vue';
+import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { GATE_ORDER, PRIORITY_LEVEL, SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
 import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, logHandlerName, logResult, logSummary } from './dispatchLabels';
@@ -57,14 +58,20 @@ const manualItems = computed(() => {
 });
 
 /* ---------------- 判定过程 ---------------- */
-const gateRows = computed(() => {
-  const d = props.log?.gateDrops;
-  return d ? GATE_ORDER.filter((g) => d[g] != null).map((g) => ({ gate: GATE_LABEL[g], n: d[g]! })) : [];
-});
 const stepGate = computed(() => {
   const l = props.log;
-  if (!l || (l.gateDrops == null && l.candidateCount == null)) return null;
-  return { count: l.candidateCount ?? 0, reason: l.failReason };
+  if (!l || l.candidateCount == null) return null;
+  return { count: l.candidateCount };
+});
+/** 第一个没人满足的条件之前为勾、该条件为叉、其后为「—」；派回原处理人不列条件 */
+const gateRows = computed(() => {
+  const l = props.log;
+  if (!stepGate.value || l?.path === '原处理人') return [];
+  const failedIdx = l?.gateFailedAt ? GATE_ORDER.indexOf(l.gateFailedAt) : GATE_ORDER.length;
+  return GATE_ORDER.map((g, i) => ({
+    gate: GATE_LABEL[g],
+    state: i < failedIdx ? 'pass' : i === failedIdx ? 'fail' : 'skip',
+  }));
 });
 
 /** 人工派单、系统异常、按规则直派都不走原处理人一步 */
@@ -158,7 +165,12 @@ const scoreRows = computed(() => {
             </div>
             <div v-if="stepGate && gateRows.length" class="dd-step-bd">
               <div class="dd-gates">
-                <div v-for="g in gateRows" :key="g.gate" class="dd-kv"><span>{{ g.gate }}</span><b>筛掉 {{ g.n }} 人</b></div>
+                <div v-for="g in gateRows" :key="g.gate" class="dd-kv">
+                  <span>{{ g.gate }}</span>
+                  <CheckOutlined v-if="g.state === 'pass'" class="dd-gate-pass" />
+                  <CloseOutlined v-else-if="g.state === 'fail'" class="dd-gate-fail" />
+                  <b v-else class="dd-gate-skip">—</b>
+                </div>
               </div>
             </div>
           </div>
@@ -247,6 +259,9 @@ const scoreRows = computed(() => {
 .dd-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; line-height: 20px; }
 .dd-kv span { color: #6b7280; min-width: 0; }
 .dd-kv b { color: #374151; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.dd-kv .dd-gate-pass { color: #16a34a; flex: none; }
+.dd-kv .dd-gate-fail { color: #dc2626; flex: none; }
+.dd-kv .dd-gate-skip { color: #9ca3af; font-weight: 400; flex: none; }
 
 .dd-score { width: 100%; border-collapse: collapse; font-size: 13px; }
 .dd-score th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 6px 10px; line-height: 16px; vertical-align: top; }
