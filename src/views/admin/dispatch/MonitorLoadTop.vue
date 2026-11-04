@@ -1,11 +1,10 @@
 <script setup lang="ts">
-// 分派监控 · 处理人负载（PRD 14.1）：按负载比例降序取前 10 的负载条，可按组、状态筛选；「全部处理人」看完整列表
+// 分派监控 · 处理人负载（PRD 14.1）：按负载比例降序取前 10，标题行可按组、状态筛选；「查看全部处理人」跳坐席画像
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDispatchStore } from '@/stores/dispatch';
-import { stdPagination } from '@/config/adminUi';
 import { SIGN_IN_STATUSES } from '@/views/tickets/types/dispatch';
-import { SIGN_TONE, useClock } from './dispatchUi';
+import { useClock } from './dispatchUi';
 import './dispatchTheme.css';
 
 const props = defineProps<{ poolIds: string[] | null }>();
@@ -42,8 +41,6 @@ const loadRows = computed(() => {
     .sort((x, y) => y.ratio - x.ratio);
 });
 const top = computed(() => loadRows.value.slice(0, 10));
-const overLimitCount = computed(() => loadRows.value.filter((r) => r.mark === '超限').length);
-const overAssignedCount = computed(() => loadRows.value.filter((r) => r.mark === '超额指派').length);
 /** 标签色（14.1）：超额指派、满载红，超限橙 */
 const MARK_CLASS: Record<string, string> = { 超额指派: 'dx-bad', 超限: 'dx-warn', 满载: 'dx-bad' };
 function loadFactorColor(f: number) {
@@ -53,7 +50,6 @@ function loadFactorColor(f: number) {
 }
 const SIGN_COLOR: Record<string, string> = { 就绪: '#10b981', 未就绪: '#f97316', 小休: '#f59e0b', 签出: '#9ca3af' };
 
-const allOpen = ref(false);
 function goProfile() { router.push('/admin/dispatch-profile'); }
 
 const topCols = [
@@ -64,27 +60,17 @@ const topCols = [
   { title: '负载系数', key: 'factor', width: 132 },
   { title: '坐席状态', key: 'signIn', width: 88 },
 ];
-const loadCols = [
-  { title: '姓名', key: 'name', width: 140 },
-  { title: '所属组', dataIndex: 'groups', key: 'groups', ellipsis: true },
-  { title: '坐席状态', key: 'signIn', width: 100 },
-  { title: '在途 / 上限', key: 'load', width: 140 },
-  { title: '负载系数', key: 'factor', width: 96, align: 'right' as const },
-  { title: '标记', key: 'mark', width: 84 },
-];
 </script>
 
 <template>
   <section class="block load-block">
     <div class="b-title inline">
       处理人负载
-      <span class="b-tip">按负载系数降序 · 前 10 · 超限 {{ overLimitCount }} 人 · 超额指派 {{ overAssignedCount }} 人</span>
-      <a-button type="link" size="small" class="hd-btn" @click="goProfile">查看全部处理人 →</a-button>
-    </div>
-    <div class="load-toolbar">
-      <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 150px" />
-      <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 110px" />
-      <a-button type="link" size="small" @click="allOpen = true">全部处理人</a-button>
+      <span class="hd-btn load-hd-actions">
+        <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 150px" />
+        <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 110px" />
+        <a-button type="link" size="small" @click="goProfile">查看全部处理人 →</a-button>
+      </span>
     </div>
     <a-table :columns="topCols" :data-source="top" row-key="name" size="middle" :pagination="false" :locale="{ emptyText: '暂无处理人' }">
       <template #bodyCell="{ column, record }">
@@ -104,23 +90,11 @@ const loadCols = [
         </span>
       </template>
     </a-table>
-
-    <a-modal v-model:open="allOpen" title="处理人负载" :width="860" :footer="null">
-      <a-table :columns="loadCols" :data-source="loadRows" row-key="name" size="middle" :pagination="stdPagination()">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'name'"><b>{{ record.name }}</b><span class="text-muted"> {{ record.staffNo }}</span></template>
-          <span v-else-if="column.key === 'signIn'" class="dx-status" :class="`is-${SIGN_TONE[record.signIn]}`">{{ record.signIn }}</span>
-          <span v-else-if="column.key === 'load'" :class="{ 'load-full': record.inTransit >= record.cap }">在途 {{ record.inTransit }} / 上限 {{ record.cap }}</span>
-          <span v-else-if="column.key === 'factor'" class="mono" :style="{ color: loadFactorColor(record.ratio) }">{{ record.ratio.toFixed(2) }}</span>
-          <span v-else-if="column.key === 'mark'" :class="MARK_CLASS[record.mark]">{{ record.mark || '—' }}</span>
-        </template>
-      </a-table>
-    </a-modal>
   </section>
 </template>
 
 <style scoped>
 .staff-no { font-size: 12px; margin-left: 4px; }
-.load-full { color: #ff7d00; }
 .load-mark { margin-left: 6px; font-size: 12px; }
+.load-hd-actions { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; max-width: 100%; font-weight: normal; }
 </style>

@@ -117,13 +117,11 @@
 }
 .monitor-table-row .block { margin-bottom: 0; }
 
-.load-block .ant-table { margin-top: 4px; }
 .load-block .ant-table table { table-layout: fixed; }
 .load-block .ant-table-cell { overflow: hidden; }
 .monitor-block .ant-table table { table-layout: auto; }
 .monitor-block .ant-table-cell { overflow: visible; }
 
-.load-toolbar { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
 .agent-nm { font-weight: 500; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pool-name { font-weight: 500; color: #111827; white-space: nowrap; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }

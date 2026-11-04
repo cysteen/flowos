@@ -135,7 +135,6 @@ export function profileSummary(p: AgentProfile): string {
 
 /* ---------------- 派单方式配色 ---------------- */
 export const MODE_TONE: Record<PoolMode, string> = { 自动派单: 'green', 混合派单: 'orange', 人工派单: 'red' };
-export const SIGN_TONE: Record<string, string> = { 就绪: 'green', 未就绪: 'orange', 小休: 'orange', 签出: 'default' };
 
 export function waitText(min: number): string {
   if (!min) return '—';
