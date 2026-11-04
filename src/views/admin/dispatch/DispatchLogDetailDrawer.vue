@@ -63,10 +63,10 @@ const stepGate = computed(() => {
   if (!l || l.candidateCount == null) return null;
   return { count: l.candidateCount };
 });
-/** 第一个没人满足的条件之前为勾、该条件为叉、其后为「—」；派回原处理人不列条件 */
+/** 第一个没人满足的条件之前为勾、该条件为叉、其后为「—」 */
 const gateRows = computed(() => {
   const l = props.log;
-  if (!stepGate.value || l?.path === '原处理人') return [];
+  if (!stepGate.value) return [];
   const failedIdx = l?.gateFailedAt ? GATE_ORDER.indexOf(l.gateFailedAt) : GATE_ORDER.length;
   return GATE_ORDER.map((g, i) => ({
     gate: GATE_LABEL[g],
