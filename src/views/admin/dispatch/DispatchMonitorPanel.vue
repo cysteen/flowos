@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// 分派监控（PRD 14.1）：页头统一筛选与派单日志入口；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
+// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-  CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, FileSearchOutlined, InboxOutlined, SlidersOutlined,
+  CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, InboxOutlined, SlidersOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -13,7 +13,6 @@ import MonitorTrendChart from './MonitorTrendChart.vue';
 import MonitorPathDonut from './MonitorPathDonut.vue';
 import MonitorPoolCards from './MonitorPoolCards.vue';
 import MonitorLoadTop from './MonitorLoadTop.vue';
-import DispatchLogDrawer from './DispatchLogDrawer.vue';
 import './dispatchTheme.css';
 
 defineProps<{ title: string; subtitle?: string }>();
@@ -120,8 +119,6 @@ const backlogCols = [
   { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
   { title: '最长等待', key: 'maxWait', width: 110, align: 'right' as const },
 ];
-
-const logOpen = ref(false);
 </script>
 
 <template>
@@ -138,7 +135,6 @@ const logOpen = ref(false);
             <span class="filter-label">工单池</span>
             <a-select v-model:value="poolFilter" size="small" class="mon-pool-select" :options="poolFilterOpts" />
           </div>
-          <a-button type="primary" size="small" @click="logOpen = true"><template #icon><FileSearchOutlined /></template>派单日志</a-button>
         </div>
       </template>
     </AdminPageHeader>
@@ -187,8 +183,6 @@ const logOpen = ref(false);
       </section>
       <MonitorLoadTop :pool-ids="poolScope" />
     </div>
-
-    <DispatchLogDrawer v-model:open="logOpen" />
   </div>
 </template>
 
