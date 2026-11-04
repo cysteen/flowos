@@ -46,8 +46,8 @@ function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
 /** 步骤 ② 关系链：各行的适用场景与原处理人取法（PRD 4.2，次序固定） */
 const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }> = {
   本单退回: { scene: '售后转回、回访打回', handler: '本单上一处理人' },
-  关联单: { scene: '承接子单、升级投诉、升级外投的新单', handler: '原单最后一名二线及以上处理人' },
-  同客户近期: { scene: '全部进入派单的工单', handler: '该客户有效期内由二线及以上处理过的最近一张工单的处理人' },
+  关联单: { scene: '承接子单、升级投诉、升级外投的新单', handler: '原单最后一名二线处理人' },
+  同客户近期: { scene: '全部进入派单的工单', handler: '该客户最近一张工单的二线处理人' },
 };
 function saveOut() {
   const checks: [unknown, number, number][] = [

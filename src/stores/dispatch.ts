@@ -12,7 +12,7 @@ import {
   registerDispatchEngine, type DispatchContext, type DispatchOutcome,
 } from '@/views/tickets/composables/aftersaleEvents';
 import {
-  DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_RANK,
+  DEFAULT_POOL_ID, DEFAULT_POOL_LABEL, IN_TRANSIT_COUNT_RULE, MANAGEMENT_ROLES, POOL_NAME_MAX, PRIORITY_RANK, SECOND_LINE_ROLES,
   SCAN_INTERVAL_MINUTES, STALL_REMIND_HOURS, TAKEN_MESSAGE, PROFILE_DIMS, PROTECTED_POOL_TIP,
   computeScore, defaultDispatchConfig, emptyProfile, isProfileConfigured, isProtectedPool, migrateOriginalChain, stricterMode, takeIntensity,
   type OriginalExclusion, type OriginalRelation, type OriginalRelationRule,
@@ -902,12 +902,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const at = parseStamp(x.updatedAt);
     return Number.isFinite(at) ? at : parseStamp(x.createdAt);
   }
-  /** 层级（4.2 通用约束）：只认二线及以上（派单坐席）；技术支持组池只认三线 */
+  /** 层级（4.3）：只认二线（二线专员、小智工单处理人、二线刷机处理人）；技术支持组池只认三线 */
   function layerOk(a: DispatchAgent, st: TicketDispatchState, trigger: DispatchTrigger): boolean {
     if (trigger === '升级三线' || poolGroupIdOf(st.poolId) === 'tech') return a.roles.includes('技术支持');
-    return true;
+    return a.roles.some((r) => SECOND_LINE_ROLES.includes(r));
   }
-  /** 某张历史工单的最后一名二线及以上处理人：当前处理人 → 上次处理人 → 履历中最近的处理人 */
+  /** 某张历史工单的最后一名二线处理人（技术支持组池为三线）：当前处理人 → 上次处理人 → 履历中最近的处理人 */
   function lastHandlerOf(x: Ticket, st: TicketDispatchState, trigger: DispatchTrigger): DispatchAgent | undefined {
     const names = [x.assignee, x.lastHandler, ...[...(x.eventTimeline ?? [])].reverse().map((e) => e.who)];
     for (const n of names) {
