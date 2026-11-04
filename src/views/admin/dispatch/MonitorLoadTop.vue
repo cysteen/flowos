@@ -67,9 +67,9 @@ const topCols = [
     <div class="b-title inline">
       处理人负载
       <span class="hd-btn load-hd-actions">
-        <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" style="width: 150px" />
-        <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 110px" />
-        <a-button type="link" size="small" @click="goProfile">查看全部处理人 →</a-button>
+        <a-select v-model:value="loadGroup" size="small" :options="loadGroupOpts" :dropdown-match-select-width="false" style="width: 124px" />
+        <a-select v-model:value="loadSign" size="small" :options="loadSignOpts" style="width: 92px" />
+        <a-button type="link" size="small" class="load-hd-link" @click="goProfile">查看全部处理人 →</a-button>
       </span>
     </div>
     <a-table :columns="topCols" :data-source="top" row-key="name" size="middle" :pagination="false" :locale="{ emptyText: '暂无处理人' }">
@@ -97,4 +97,5 @@ const topCols = [
 .staff-no { font-size: 12px; margin-left: 4px; }
 .load-mark { margin-left: 6px; font-size: 12px; }
 .load-hd-actions { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; max-width: 100%; font-weight: normal; }
+.load-hd-link { margin-left: 8px; }
 </style>

@@ -116,6 +116,11 @@
   align-items: start;
 }
 .monitor-table-row .block { margin-bottom: 0; }
+/* 并排两表共用的标题行：链接与筛选弱于标题，同高同字号，文字贴表格右缘 */
+.monitor-table-row .b-title.inline { min-height: 24px; margin-bottom: 14px; }
+.monitor-table-row .b-title .ant-btn-link { height: 24px; padding-inline: 0; font-size: 12px; line-height: 22px; }
+.monitor-table-row .b-title .ant-select .ant-select-selection-item { font-size: 12px; color: #6b7280; }
+.monitor-table-row .b-title .ant-select:not(:hover):not(.ant-select-focused) .ant-select-selector { border-color: #e5e7eb; }
 
 .load-block .ant-table table { table-layout: fixed; }
 .load-block .ant-table-cell { overflow: hidden; }
