@@ -3,7 +3,7 @@
 import { computed } from 'vue';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { GATE_ORDER, PRIORITY_LEVEL, SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import { DEFAULT_SCORE_WEIGHTS, GATE_ORDER, PRIORITY_LEVEL, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
 import { EXCLUSION_LABEL, GATE_LABEL, LOG_RESULT_TONE, SCORE_DIMENSION_ROWS, judgeOrdinals, logResult, logSummary } from './dispatchLabels';
 
 const props = defineProps<{ open: boolean; log: DispatchLogEntry | null }>();
@@ -72,7 +72,11 @@ const originalRows = computed(() => {
   return out;
 });
 
-const scoreColumns = SCORE_DIMENSION_ROWS.map((x) => ({ key: x.key, label: x.dimension, weight: SCORE_WEIGHTS[x.key] }));
+/** 表头权重取该条记录判定时的权重 */
+const scoreColumns = computed(() => {
+  const w = props.log?.scoreWeights ?? DEFAULT_SCORE_WEIGHTS;
+  return SCORE_DIMENSION_ROWS.map((x) => ({ key: x.key, label: x.dimension, weight: w[x.key] }));
+});
 const scoreRows = computed(() => {
   const l = props.log;
   if (l?.path !== '加权评分') return [];
@@ -82,7 +86,7 @@ const scoreRows = computed(() => {
     staffNo: t.staffNo,
     chosen: t.name === l.chosen?.name,
     total: t.total.toFixed(1),
-    values: Object.fromEntries(scoreColumns.map((c) => [c.key, t.values[c.key].toFixed(2)])),
+    values: Object.fromEntries(SCORE_DIMENSION_ROWS.map((c) => [c.key, t.values[c.key].toFixed(2)])),
   }));
 });
 </script>

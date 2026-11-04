@@ -6,7 +6,7 @@
 import { computed, ref } from 'vue';
 import { DownOutlined, RightOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import { DEFAULT_SCORE_WEIGHTS, type DispatchLogEntry } from '@/views/tickets/types/dispatch';
 import { EXCLUSION_LABEL, SCORE_DIMENSION_ROWS, pathWithRelation, replacePathNames } from '@/views/admin/dispatch/dispatchLabels';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
@@ -35,10 +35,12 @@ const log = computed<DispatchLogEntry | undefined>(() => {
 const factors = computed(() => {
   const s = log.value?.chosenScore;
   if (!s) return [];
+  // 权重取该条记录判定时的权重
+  const w = log.value?.scoreWeights ?? DEFAULT_SCORE_WEIGHTS;
   return SCORE_DIMENSION_ROWS.map((x) => ({
     key: x.key,
     label: x.dimension,
-    weight: SCORE_WEIGHTS[x.key],
+    weight: w[x.key],
     value: s.values[x.key].toFixed(2),
   }));
 });

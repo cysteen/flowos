@@ -8,7 +8,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
   DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, defaultDispatchConfig,
-  SCORE_WEIGHTS, type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency,
+  type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency,
 } from '@/views/tickets/types/dispatch';
 import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
@@ -32,8 +32,8 @@ watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.v
 watch(active, (v) => emit('update:tab', v));
 
 /* ================= 出池规则 ================= */
-type OutForm = Pick<DispatchConfig, 'originalChain'>;
-const OUT_KEYS: (keyof OutForm)[] = ['originalChain'];
+type OutForm = Pick<DispatchConfig, 'originalChain' | 'scoreWeights'>;
+const OUT_KEYS: (keyof OutForm)[] = ['originalChain', 'scoreWeights'];
 function pickOut(c: DispatchConfig): OutForm {
   const o = {} as Record<string, unknown>;
   OUT_KEYS.forEach((k) => { o[k] = JSON.parse(JSON.stringify(c[k])); });
@@ -52,12 +52,15 @@ const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }
 function saveOut() {
   const checks: [unknown, number, number][] = [
     ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
+    ...SCORE_DIMENSION_ROWS.map((x) => [out.scoreWeights[x.key], 0, 100] as [unknown, number, number]),
   ];
   for (const [v, a, b] of checks) {
     const e = rangeError(v, a, b);
     if (e) { message.error(e); return; }
   }
   if (!out.originalChain.some((x) => x.enabled)) { message.error('请至少启用一种原处理人关系'); return; }
+  const weightSum = SCORE_DIMENSION_ROWS.reduce((s, x) => s + out.scoreWeights[x.key], 0);
+  if (weightSum !== 100) { message.error(`三项权重之和须为 100，当前为 ${weightSum}`); return; }
   const r = store.updateConfig(JSON.parse(JSON.stringify(out)) as Partial<DispatchConfig>);
   if (r.ok) message.success(r.message); else message.error(r.message);
 }
@@ -189,7 +192,7 @@ watch(() => store.config, (c) => {
               <tr v-for="row in SCORE_DIMENSION_ROWS" :key="row.key">
                 <td class="oc-name">{{ row.dimension }}</td>
                 <td>{{ row.factor }}</td>
-                <td class="sd-weight">{{ SCORE_WEIGHTS[row.key] }}</td>
+                <td class="sd-weight"><a-input-number v-model:value="out.scoreWeights[row.key]" size="small" style="width: 64px" /></td>
                 <td>{{ row.meaning }}</td>
               </tr>
             </tbody>
@@ -372,8 +375,8 @@ watch(() => store.config, (c) => {
 .oc-text { color: #4b5563; }
 .oc-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #374151; }
 
-/* 综合打分 · 三维度只读表 */
-.sd-weight { width: 64px; text-align: center !important; font-variant-numeric: tabular-nums; }
+/* 综合打分 · 三维度表 */
+.sd-weight { width: 88px; text-align: center !important; font-variant-numeric: tabular-nums; }
 .sd-tie { margin-top: 8px; font-size: 12px; color: #6b7280; line-height: 18px; }
 
 /* 个人上限 · 单页聚合 */

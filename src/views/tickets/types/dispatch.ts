@@ -249,9 +249,10 @@ export interface DispatchAgent {
 /* 配置（14.2）                                                          */
 /* ------------------------------------------------------------------ */
 
-/** 综合打分三个维度（4.4）：权重固定，不可配置 */
+/** 综合打分三个维度（4.4）：权重在派单策略配置，每项 0–100 的整数，三项之和为 100 */
 export type ScoreDimensionKey = 'proficiency' | 'load' | 'balance';
-export const SCORE_WEIGHTS: Record<ScoreDimensionKey, number> = { proficiency: 20, load: 40, balance: 40 };
+export type ScoreWeights = Record<ScoreDimensionKey, number>;
+export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = { proficiency: 20, load: 40, balance: 40 };
 /** 处理能力 · 技能熟练度取值（附录 A.2） */
 export const PROFICIENCY_SCORE: Record<Proficiency, number> = { 专家: 1, 熟练: 0.6, 初级: 0.3 };
 /** 今日接单强度（附录 A.2）＝今日接单量 ÷ 今日在岗小时（不足 1 小时按 1 小时）÷ 个人上限 */
@@ -265,6 +266,8 @@ export function computeScore(input: {
   intensity: number;
   /** 可接单坐席中的最大今日接单强度 */
   maxIntensity: number;
+  /** 判定时的权重；不传按默认值（演示种子） */
+  weights?: ScoreWeights;
 }): { total: number; values: Record<ScoreDimensionKey, number> } {
   const raw: Record<ScoreDimensionKey, number> = {
     proficiency: PROFICIENCY_SCORE[input.proficiency],
@@ -272,7 +275,8 @@ export function computeScore(input: {
     balance: input.maxIntensity > 0 ? Math.max(0, 1 - input.intensity / input.maxIntensity) : 1,
   };
   const keys = Object.keys(raw) as ScoreDimensionKey[];
-  const total = keys.reduce((s, k) => s + SCORE_WEIGHTS[k] * raw[k], 0);
+  const weights = input.weights ?? DEFAULT_SCORE_WEIGHTS;
+  const total = keys.reduce((s, k) => s + weights[k] * raw[k], 0);
   return {
     total: Math.round(total * 10) / 10,
     values: Object.fromEntries(keys.map((k) => [k, Math.round(raw[k] * 10000) / 10000])) as Record<ScoreDimensionKey, number>,
@@ -347,6 +351,8 @@ export interface DispatchConfig {
   /* 出池规则 */
   /** 步骤 ② 优先派回原处理人：关系链三行（4.2） */
   originalChain: OriginalRelationRule[];
+  /** 步骤 ③ 综合打分三项权重（4.4） */
+  scoreWeights: ScoreWeights;
   /* 个人上限 */
   roleBase: Record<DispatchRole, number>;
   proficiencyCoef: Record<Proficiency, number>;
@@ -355,6 +361,7 @@ export function defaultDispatchConfig(): DispatchConfig {
   return {
     globalMode: '人工派单',
     originalChain: defaultOriginalChain(),
+    scoreWeights: { ...DEFAULT_SCORE_WEIGHTS },
     roleBase: { ...DEFAULT_ROLE_BASE },
     proficiencyCoef: { ...DEFAULT_PROFICIENCY_COEF },
   };
@@ -476,6 +483,8 @@ export interface DispatchLogEntry {
   /** 中选坐席 */
   chosen?: { name: string; staffNo: string; groupLabel: string };
   chosenScore?: ScoreDetail;
+  /** 判定时的综合打分权重；旧记录没有时按默认值显示 */
+  scoreWeights?: ScoreWeights;
   /** 得分前三名候选：含三个维度取值 */
   top3?: Pick<ScoreDetail, 'name' | 'staffNo' | 'total' | 'values'>[];
   failReason?: DispatchFailReason;

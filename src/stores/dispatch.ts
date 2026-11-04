@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 27;
+export const DISPATCH_CACHE_VERSION = 28;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -882,6 +882,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       proficiency: a.proficiency, inTransit, cap: capOf(a),
       intensity: intensityOf(a, now),
       maxIntensity: Math.max(0, ...pool.map((x) => intensityOf(x, now))),
+      weights: config.value.scoreWeights,
     });
     return { name: a.name, staffNo: a.staffNo, total, values, lastTakenAt: a.lastTakenAt, inTransit };
   }
@@ -1287,7 +1288,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ...(d.gateFailedAt ? { gateFailedAt: d.gateFailedAt } : {}),
       candidateCount: d.candidateCount,
       ...(chosenAgent ? { chosen: { name: chosenAgent.name, staffNo: chosenAgent.staffNo, groupLabel: g?.label ?? '' } } : {}),
-      ...(d.score ? { chosenScore: d.score } : {}),
+      ...(d.score ? { chosenScore: d.score, scoreWeights: { ...config.value.scoreWeights } } : {}),
       ...(d.top3 ? { top3: d.top3 } : {}),
       ...(d.failReason ? { failReason: d.failReason } : {}),
       status,
@@ -2054,6 +2055,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
     for (const row of next.originalChain) {
       if (row.relation !== '本单退回' && !intIn(row.days, 1, 30)) return { ok: false, message: '请输入 1–30 的整数' };
     }
+    // 综合打分权重（8.3 校验表）
+    const weightKeys = SCORE_DIMENSION_ROWS.map((x) => x.key);
+    if (weightKeys.some((k) => !intIn(next.scoreWeights[k], 0, 100))) return { ok: false, message: '请输入 0–100 的整数' };
+    const weightSum = weightKeys.reduce((s, k) => s + next.scoreWeights[k], 0);
+    if (weightSum !== 100) return { ok: false, message: `三项权重之和须为 100，当前为 ${weightSum}` };
     if (!next.originalChain.some((r) => r.enabled)) return { ok: false, message: '请至少启用一种原处理人关系' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
@@ -2061,8 +2067,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const { globalMode, ...rest } = next;
     void globalMode;
     const changed = (Object.keys(patch) as (keyof DispatchConfig)[])
-      .filter((k) => k !== 'globalMode' && JSON.stringify(config.value[k]) !== JSON.stringify(next[k]));
+      .filter((k) => k !== 'globalMode' && k !== 'scoreWeights' && JSON.stringify(config.value[k]) !== JSON.stringify(next[k]));
     if (changed.length) audit('派单策略', '全局', changed.join('、'), '已修改', operator);
+    const weightText = (w: DispatchConfig['scoreWeights']) => SCORE_DIMENSION_ROWS.map((x) => `${x.dimension} ${w[x.key]}`).join(' · ');
+    if (JSON.stringify(config.value.scoreWeights) !== JSON.stringify(next.scoreWeights)) {
+      audit('派单策略', '综合打分权重', weightText(config.value.scoreWeights), weightText(next.scoreWeights), operator);
+    }
     config.value = { ...config.value, ...rest };
     persist();
     return { ok: true, message: '已保存，对此后派单生效' };
