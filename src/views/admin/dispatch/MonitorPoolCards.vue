@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 分派监控 · 池状态区（PRD 5.4 / 14.1）：标题行含全局派单方式、切换派单方式入口、切换记录；工单池卡片（启用中的池，按池展示）
+// 分派监控 · 池状态区（PRD 5.4 / 14.1）：标题行含启用池统计、全局派单方式、切换派单方式入口、切换记录、查看全部工单池；工单池卡片（启用中的池按成员数倒序取前 10，筛选单个池时只显示该池）
 import { computed, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { GlobalOutlined, HistoryOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -12,7 +13,10 @@ import { poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTic
 import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 
+const POOL_CARD_LIMIT = 10;
+
 const props = defineProps<{ poolIds: string[] | null }>();
+const router = useRouter();
 const store = useDispatchStore();
 const clock = useClock();
 const reactiveTickets = reactive(TICKETS) as Ticket[];
@@ -23,11 +27,25 @@ const modeOpen = ref(false);
 const modeScope = ref<'global' | string>('global');
 function openMode(scope: 'global' | string) { modeScope.value = scope; modeOpen.value = true; }
 
-const cards = computed(() => {
+function goPoolManage() { router.push('/admin/dispatch-pool'); }
+
+const enabledPools = computed(() => {
   void clock.value;
   void store.ticketStates;
-  return store.poolViews()
-    .filter((p) => p.enabled && (!props.poolIds || props.poolIds.includes(p.id)))
+  return store.poolViews().filter((p) => p.enabled);
+});
+
+/** 全部启用池按生效方式统计，不受卡片数量与页头筛选影响 */
+const modeSummary = computed(() => {
+  const count = (mode: string) => enabledPools.value.filter((p) => p.effectiveMode === mode).length;
+  return `启用 ${enabledPools.value.length} 个 · 自动派单 ${count('自动派单')} · 混合派单 ${count('混合派单')} · 人工派单 ${count('人工派单')}`;
+});
+
+const cards = computed(() => {
+  const scoped = props.poolIds
+    ? enabledPools.value.filter((p) => props.poolIds!.includes(p.id))
+    : [...enabledPools.value].sort((a, b) => b.memberCount - a.memberCount).slice(0, POOL_CARD_LIMIT);
+  return scoped
     .map((p) => ({
       ...p,
       configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
@@ -54,7 +72,7 @@ const recordCols = [
   <section class="ps">
     <div class="dx-sec-hd">
       <span class="dx-sec-title">池状态</span>
-      <span class="dx-sec-sub">共 {{ cards.length }} 个工单池</span>
+      <span class="dx-sec-sub">{{ modeSummary }}</span>
       <span class="dx-sec-extra">
         <span class="ps-global">
           <span class="dx-icon ps-global-ic"><GlobalOutlined /></span>
@@ -63,6 +81,7 @@ const recordCols = [
         </span>
         <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
         <a-button type="link" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
+        <a-button type="link" size="small" @click="goPoolManage">查看全部工单池 →</a-button>
       </span>
     </div>
 
