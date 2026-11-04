@@ -99,22 +99,26 @@ const dist = computed(() => {
 const H = 3_600_000;
 
 /**
- * 小休按原因列出小时数（divisor＝人数时为人均），如「开会 1.2 · 培训 0.0 · 茶歇 0.3 · 用餐 6.8」。
+ * 小休按原因列出小时数（divisor＝人数时为人均），如「开会 1.20 · 培训 0.00 · 茶歇 0.30 · 用餐 6.80」。
  * 各原因按 shownHours（提示里显示的小休时长）配平，之和恰等于该显示值。
  */
 function breakText(reasons: Record<string, number>, divisor: number, shownHours: number): string {
-  const parts = apportion(BREAK_REASONS.map((r) => (reasons[r.key] ?? 0) / H / divisor), Math.round(shownHours * 10));
-  return BREAK_REASONS.map((r, k) => `${r.label} ${parts[k].toFixed(1)}`).join(' · ');
+  const parts = apportion(BREAK_REASONS.map((r) => (reasons[r.key] ?? 0) / H / divisor), hundredths(shownHours), HOUR_SCALE);
+  return BREAK_REASONS.map((r, k) => `${r.label} ${parts[k].toFixed(2)}`).join(' · ');
 }
 
+/** 显示精度：小时两位小数（单位 0.01），占比一位小数（单位 0.1） */
+const HOUR_SCALE = 100;
+const PCT_SCALE = 10;
+
 /**
- * 一位小数的最大余数分配：各项显示值（单位 0.1）相加恰等于给定合计显示值。
- * 用于：组合计 → 各成员合计；成员合计 → 该成员各类型；人均合计 → 人均各类型；占比 → 100%。
+ * 最大余数分配：各项显示值（单位 1/scale）相加恰等于给定合计显示值 target（单位同样是 1/scale 的整数）。
+ * 用于：组合计 → 各成员合计；成员合计 → 该成员各类型；人均合计 → 人均各类型；小休 → 四个原因（小时）；占比 → 100%。
  */
-function apportion(values: number[], targetTenths: number): number[] {
-  const raw = values.map((v) => v * 10);
+function apportion(values: number[], target: number, scale: number): number[] {
+  const raw = values.map((v) => v * scale);
   const out = raw.map(Math.floor);
-  let rest = targetTenths - out.reduce((s, x) => s + x, 0);
+  let rest = target - out.reduce((s, x) => s + x, 0);
   raw
     .map((v, i) => ({ i, frac: v - Math.floor(v) }))
     .sort((a, b) => b.frac - a.frac)
@@ -124,25 +128,27 @@ function apportion(values: number[], targetTenths: number): number[] {
     const big = values.indexOf(Math.max(...values));
     out[big] = Math.max(0, out[big] + rest);
   }
-  return out.map((x) => x / 10);
+  return out.map((x) => x / scale);
 }
-const tenths = (h: number) => Math.round(h * 10);
+/** 小时 → 0.01 小时的整数 */
+const hundredths = (h: number) => Math.round(h * HOUR_SCALE);
 
 const n = computed(() => Math.max(1, memberCount.value));
 
-/** 上半部分：人均口径。人均合计＝组合计 ÷ 人数（四舍五入到 0.1），各类型人均按人均合计配平；占比与组合计口径相同 */
+/** 上半部分：人均口径。人均合计＝组合计 ÷ 人数（四舍五入到 0.01），各类型人均按人均合计配平；占比与组合计口径相同 */
 const perCapita = computed(() => {
   const d = dist.value;
   if (!d) return null;
   // 人均合计取「显示的组合计 ÷ 人数」再四舍五入，保证页面上两数可直接相除核对
-  const totalTenths = Math.round(tenths(d.totalMs / H) / n.value);
-  const h = apportion(d.items.map((i) => i.ms / H / n.value), totalTenths);
-  const p = d.totalMs ? apportion(d.items.map((i) => i.pct), 1000) : d.items.map(() => 0);
+  const groupHundredths = hundredths(d.totalMs / H);
+  const totalHundredths = Math.round(groupHundredths / n.value);
+  const h = apportion(d.items.map((i) => i.ms / H / n.value), totalHundredths, HOUR_SCALE);
+  const p = d.totalMs ? apportion(d.items.map((i) => i.pct), 100 * PCT_SCALE, PCT_SCALE) : d.items.map(() => 0);
   return {
-    total: (totalTenths / 10).toFixed(1),
-    groupTotal: (tenths(d.totalMs / H) / 10).toFixed(1),
+    total: (totalHundredths / HOUR_SCALE).toFixed(2),
+    groupTotal: (groupHundredths / HOUR_SCALE).toFixed(2),
     items: d.items.map((i, k) => {
-      const hText = h[k].toFixed(1);
+      const hText = h[k].toFixed(2);
       const pText = `${p[k].toFixed(1)}%`;
       const tip = i.key === BREAK_ITEM.key
         ? `小休 人均 ${hText} 小时 · ${pText}（${breakText(d.breakReasons, n.value, h[k])}）`
@@ -171,19 +177,19 @@ const memberRows = computed(() => {
   if (!d) return [];
   const names = memberNames.value;
   const row = (name: string) => d.byMember[name];
-  const totals = apportion(names.map((x) => (row(x)?.totalMs ?? 0) / H), tenths(d.totalMs / H));
+  const totals = apportion(names.map((x) => (row(x)?.totalMs ?? 0) / H), hundredths(d.totalMs / H), HOUR_SCALE);
   return names.map((name, k) => {
     const r = row(name);
-    const cells = apportion(d.items.map((i) => (r?.ms[i.key] ?? 0) / H), Math.round(totals[k] * 10));
+    const cells = apportion(d.items.map((i) => (r?.ms[i.key] ?? 0) / H), hundredths(totals[k]), HOUR_SCALE);
     return {
       name,
-      total: totals[k].toFixed(1),
+      total: totals[k].toFixed(2),
       cells: d.items.map((i, j) => ({
         key: i.key,
-        h: cells[j].toFixed(1),
+        h: cells[j].toFixed(2),
         tip: i.key === BREAK_ITEM.key
-          ? `小休 ${cells[j].toFixed(1)} 小时（${breakText(r?.breakReasons ?? {}, 1, cells[j])}）`
-          : `${i.label} ${cells[j].toFixed(1)} 小时 · 占本人 ${r?.totalMs ? (((r.ms[i.key] ?? 0) / r.totalMs) * 100).toFixed(1) : '0.0'}%`,
+          ? `小休 ${cells[j].toFixed(2)} 小时（${breakText(r?.breakReasons ?? {}, 1, cells[j])}）`
+          : `${i.label} ${cells[j].toFixed(2)} 小时 · 占本人 ${r?.totalMs ? (((r.ms[i.key] ?? 0) / r.totalMs) * 100).toFixed(1) : '0.0'}%`,
       })),
     };
   });
