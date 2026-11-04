@@ -121,6 +121,8 @@
 .monitor-table-row .b-title .ant-btn-link { height: 24px; padding-inline: 0; font-size: 12px; line-height: 22px; }
 .monitor-table-row .b-title .ant-select .ant-select-selection-item { font-size: 12px; color: #6b7280; }
 .monitor-table-row .b-title .ant-select:not(:hover):not(.ant-select-focused) .ant-select-selector { border-color: #e5e7eb; }
+/* 并排两表表头收矮：只收上下内边距，高度由内容撑开，两表一致 */
+.monitor-table-row .ant-table-wrapper .ant-table.ant-table-middle .ant-table-thead > tr > th { padding-block: 8px; }
 
 .load-block .ant-table table { table-layout: fixed; }
 .load-block .ant-table-cell { overflow: hidden; }
