@@ -21,7 +21,7 @@ import { IN_TRANSIT_COUNT_RULE, NOT_OWN_POOL_MESSAGE, type DispatchStatus, type 
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
 
-/** ?????????????`<a-tooltip v-bind="STD_TIP_PROPS">`???????????????`color` ???????? */
+/** 智能派单悬停提示的标准样式：<a-tooltip v-bind="STD_TIP_PROPS"> */
 export const STD_TIP_PROPS = {
   color: DISABLED_TIP_COLOR,
   overlayStyle: DISABLED_TIP_OVERLAY_STYLE,

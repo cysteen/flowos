@@ -7,6 +7,7 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
+import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { isProfileConfigured, type DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
@@ -261,7 +262,7 @@ function removeMember(m: Member) {
               <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
               <template v-else-if="column.key === 'op'">
                 <a-button type="link" size="small" :disabled="isLeader(record as Member)" @click="setLeader(record as Member)">设组长</a-button>
-                <a-tooltip :title="lastMemberTip(record as Member) || undefined">
+                <a-tooltip v-bind="STD_TIP_PROPS" :title="lastMemberTip(record as Member) || undefined">
                   <a-button type="link" size="small" danger :disabled="!!lastMemberTip(record as Member)" @click="removeMember(record as Member)">移除</a-button>
                 </a-tooltip>
               </template>

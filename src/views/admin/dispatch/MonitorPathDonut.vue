@@ -33,31 +33,44 @@ const segs = computed(() => {
     const a0 = (acc / props.total) * 360;
     acc += s.count;
     const a1 = (acc / props.total) * 360;
-    return { ...s, i, path: s.count ? segPath(a0, a1) : '' };
+    const mid = polar((R_OUT + R_IN) / 2, (a0 + a1) / 2);
+    return { ...s, i, path: s.count ? segPath(a0, a1) : '', anchor: { left: `${(mid.x / 140) * 100}%`, top: `${(mid.y / 140) * 100}%` } };
   }).filter((s) => s.path);
 });
 const hovered = ref<number | null>(null);
+/** 悬停中的扇区（图例悬停只高亮，不出提示） */
+const tipSeg = ref<number | null>(null);
+/** 提示落在环图上，不接收鼠标，否则会盖住扇区、触发移出而闪烁 */
+const TIP_OVERLAY_STYLE = { ...STD_TIP_PROPS.overlayStyle, pointerEvents: 'none' as const };
 </script>
 
 <template>
   <section class="dx-card algo">
     <div class="dx-sec-hd"><span class="dx-sec-title">派单路径占比</span><span class="dx-sec-sub">{{ rangeText }}</span></div>
     <div class="donut-wrap">
+      <div class="donut-box">
       <svg viewBox="0 0 140 140" class="donut-svg">
         <circle v-if="!segs.length" :cx="CX" :cy="CX" :r="(R_OUT + R_IN) / 2" fill="none" stroke="#f3f4f6" :stroke-width="R_OUT - R_IN" />
         <g v-for="s in segs" :key="s.name">
-          <a-tooltip v-bind="STD_TIP_PROPS" placement="top" :mouse-enter-delay="0.05">
-            <template #title><div class="tip"><b>{{ s.name }}</b><span>{{ s.pct }}% · {{ s.count }} 次</span></div></template>
-            <path
-              :d="s.path" :fill="s.color" class="seg"
-              :class="{ dim: hovered !== null && hovered !== s.i, active: hovered === s.i }"
-              @mouseenter="hovered = s.i" @mouseleave="hovered = null"
-            />
-          </a-tooltip>
+          <path
+            :d="s.path" :fill="s.color" class="seg"
+            :class="{ dim: hovered !== null && hovered !== s.i, active: hovered === s.i }"
+            @mouseenter="hovered = s.i; tipSeg = s.i" @mouseleave="hovered = null; tipSeg = null"
+          />
         </g>
         <text :x="CX" y="66" text-anchor="middle" class="c-label">合计</text>
         <text :x="CX" y="86" text-anchor="middle" class="c-val">{{ total }}</text>
       </svg>
+      <!-- 提示不能写在 svg 内：浮层会继承 SVG 命名空间，渲染尺寸为 0 -->
+      <a-tooltip
+        v-for="s in segs" :key="s.name"
+        v-bind="STD_TIP_PROPS" :overlay-style="TIP_OVERLAY_STYLE"
+        placement="top" :trigger="[]" :open="tipSeg === s.i"
+      >
+        <template #title><div class="tip"><b>{{ s.name }}</b><span>{{ s.pct }}% · {{ s.count }} 次</span></div></template>
+        <span class="seg-anchor" :style="s.anchor" />
+      </a-tooltip>
+      </div>
     </div>
     <div class="legend">
       <div
@@ -75,7 +88,9 @@ const hovered = ref<number | null>(null);
 
 <style scoped>
 .donut-wrap { display: flex; justify-content: center; padding: 0 0 16px; }
-.donut-svg { width: 148px; height: 148px; overflow: visible; }
+.donut-box { position: relative; width: 148px; height: 148px; }
+.donut-svg { display: block; width: 148px; height: 148px; overflow: visible; }
+.seg-anchor { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .seg { cursor: pointer; transition: opacity 0.15s, filter 0.15s; }
 .seg.dim { opacity: 0.4; }
 .seg.active { filter: brightness(1.08); }
