@@ -106,6 +106,25 @@ const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => b
 /** 派单均衡度只计当日在岗满该时长的坐席（13.2） */
 export const BALANCE_MIN_ON_DUTY_HOURS = 2;
 
+/**
+ * 派单均衡度（13.2）：同一熟练度内各坐席「当日每在岗小时接单量」的标准差 ÷ 平均值，再按人数加权。
+ * 某等级不足 2 人或平均值为 0 时不计入；都不计入时为 null。
+ */
+function balanceOf(rows: { proficiency: string; perHour: number }[]): number | null {
+  const levels = new Map<string, number[]>();
+  for (const x of rows) levels.set(x.proficiency, [...(levels.get(x.proficiency) ?? []), x.perHour]);
+  let weighted = 0;
+  let people = 0;
+  for (const xs of levels.values()) {
+    const mean = xs.reduce((s, x) => s + x, 0) / xs.length;
+    if (xs.length < 2 || mean <= 0) continue;
+    const sd = Math.sqrt(xs.reduce((s, x) => s + (x - mean) ** 2, 0) / xs.length);
+    weighted += (sd / mean) * xs.length;
+    people += xs.length;
+  }
+  return people ? Math.round((weighted / people) * 100) / 100 : null;
+}
+
 export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
   /** 坐席当日在岗小时数（就绪时长） */
@@ -135,7 +154,7 @@ export function computeStats(
     if (seg.resp != null && y.resp != null) respDelta = seg.resp - y.resp;
   }
 
-  // 派单均衡度（13.2）：各坐席当日每在岗小时接单量（派单与领取）的标准差 / 平均值；仅计当日在岗 2 小时及以上的坐席，不含直派规则单
+  // 派单均衡度（13.2）：仅计当日在岗 2 小时及以上的坐席，不含直派规则单；接单量含系统派单与人工拿单
   const dayFrom = rangeStart('today', now);
   const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && l.path !== '直派规则');
   const scopeGroupIds = poolIds?.map((id) => poolGroupIdOf(id) ?? id) ?? null;
@@ -143,15 +162,10 @@ export function computeStats(
     .filter((a) => !a.disabled && (!scopeGroupIds || a.groupIds.some((g) => scopeGroupIds.includes(g))))
     .map((a) => ({ a, hours: onDutyHoursOf(a.name) }))
     .filter((x) => x.hours >= BALANCE_MIN_ON_DUTY_HOURS);
-  let balance: number | null = null;
-  if (pool.length >= 2 && todayTakes.length) {
-    const counts = pool.map(({ a, hours }) => todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length / hours);
-    const mean = counts.reduce((s, x) => s + x, 0) / counts.length;
-    if (mean > 0) {
-      const sd = Math.sqrt(counts.reduce((s, x) => s + (x - mean) ** 2, 0) / counts.length);
-      balance = Math.round((sd / mean) * 100) / 100;
-    }
-  }
+  const balance = balanceOf(pool.map(({ a, hours }) => ({
+    proficiency: a.proficiency,
+    perHour: todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length / hours,
+  })));
 
   const pathCounts = PATH_ITEMS.map((p) => ({ name: p.name, color: p.color, count: inRange.filter(p.hit).length }));
   const pathTotal = pathCounts.reduce((s, x) => s + x.count, 0);

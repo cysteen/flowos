@@ -75,7 +75,7 @@ const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
   bk: { accent: '#6366f1', iconBg: '#eef2ff' },
 };
 
-/** 统计卡：数字默认中性，只有真正异常（超出目标、有积压）的数字标橙 */
+/** 统计卡：数字默认中性，只有真正异常（有积压）的数字标橙；派单均衡度目标值待定，只显示数值 */
 const cards = computed(() => {
   const s = stats.value;
   // 筛选单个工单池且本池派单方式为人工派单时，均衡度不展示
@@ -96,8 +96,8 @@ const cards = computed(() => {
     },
     {
       key: 'bal', label: '派单均衡度', value: balance == null ? '—' : balance.toFixed(2), icon: SlidersOutlined,
-      warn: balance != null && balance > 0.25,
-      delta: { text: '目标 ≤ 0.25', tone: 'muted' } as Delta,
+      warn: false,
+      delta: { text: '当日', tone: 'muted' } as Delta,
     },
     {
       key: 'bk', label: '池积压', value: String(backlog.value.count), icon: InboxOutlined, warn: backlog.value.count > 0,
