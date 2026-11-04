@@ -50,7 +50,7 @@ const reasonText = computed(() => {
   const l = log.value;
   if (!l) return '';
   const parts = [`${l.trigger ?? '新单'}进入${l.poolLabel}（${l.ruleName}）`];
-  if (l.path === '原处理人') parts.push(`原处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}可接单，优先派回`);
+  if (l.path === '原处理人') parts.push(`原处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}已签入，优先派回`);
   else if (l.candidateCount != null) parts.push(`可接单 ${l.candidateCount} 人`);
   return parts.join('；');
 });

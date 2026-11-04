@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 28;
+export const DISPATCH_CACHE_VERSION = 29;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;

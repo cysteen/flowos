@@ -736,6 +736,10 @@ export const SPECIAL_POOL_ENTERED_AGO_MIN: Record<string, number> = {
   'IFLYZX-20260918-00008': 33,
 };
 
+/** 王坐席的种子个人上限与派回后的在途（超额指派演示） */
+const WANG_SEED_CAP = 3;
+const WANG_SEED_IN_TRANSIT = 5;
+
 function slaTextOf(min: number): { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' } {
   const m = Math.round(Math.abs(min));
   const t = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -785,7 +789,7 @@ function buildPool(b: Builder, agents: DispatchAgent[], now: number, rules: Pool
       st.everAssigned = true;
       noteTake(who, enteredAt);
       sys('系统派单', `系统派单 → ${who}（原处理人 · ${relation}）`, enteredAt);
-      if (overCap) sys('超额指派', `${who}在途 ${b.capOf(a) + 1} / 上限 ${b.capOf(a)}，记超额指派`, enteredAt);
+      if (overCap) sys('超额指派', `${who}在途 ${WANG_SEED_IN_TRANSIT} / 上限 ${WANG_SEED_CAP}，记超额指派`, enteredAt);
     } else {
       b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null, failReason: '均达个人上限' });
     }
@@ -1008,7 +1012,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
     }
     agentPatch[a.name] = p;
   }
-  agentPatch['王坐席'] = { ...agentPatch['王坐席'], capOverride: 3 };
+  agentPatch['王坐席'] = { ...agentPatch['王坐席'], capOverride: WANG_SEED_CAP };
   agentPatch['张三'] = { ...agentPatch['张三'], capOverride: 32 };
 
   return {
