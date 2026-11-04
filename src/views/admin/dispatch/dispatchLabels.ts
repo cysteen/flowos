@@ -3,7 +3,7 @@
  * 只做显示映射，内部取值（门槛 key、判定路径、未派出原因、维度 key）不变。
  */
 import type {
-  DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreFactorKey,
+  DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreDimensionKey, ScoreFactorKey,
 } from '@/views/tickets/types/dispatch';
 
 /** 接单条件（门槛 4.1） */
@@ -36,6 +36,16 @@ export const FAIL_LABEL: Record<DispatchFailReason, string> = {
   均达个人上限: '均达个人上限',
   系统异常: '系统异常',
 };
+
+/** 综合打分维度（4.4）：出池规则第 3 步只读展示，派单日志与处理履历的打分明细取维度名 */
+export const SCORE_DIMENSION_ROWS: { key: ScoreDimensionKey; dimension: string; factor: string; meaning: string }[] = [
+  { key: 'proficiency', dimension: '处理能力', factor: '技能熟练度', meaning: '熟练度越高，得分越高' },
+  { key: 'load', dimension: '工作负载', factor: '当前负载', meaning: '手上工单占个人上限的比例越低，得分越高' },
+  { key: 'balance', dimension: '分配均衡', factor: '今日接单强度', meaning: '今日每在岗小时接单量相对个人上限越低，得分越高' },
+];
+export const SCORE_DIMENSION_LABEL = Object.fromEntries(SCORE_DIMENSION_ROWS.map((x) => [x.key, x.dimension])) as Record<ScoreDimensionKey, string>;
+/** 同分时的选人次序（4.4） */
+export const SCORE_TIE_RULE = '同分时：距上次分配时间长的优先，其次在途工单少的优先，再次工号小的优先。';
 
 /** 打分因素（4.3） */
 export const FACTOR_LABEL: Record<ScoreFactorKey, string> = {

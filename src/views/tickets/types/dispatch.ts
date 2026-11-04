@@ -270,8 +270,35 @@ export function defaultScoreFactors(): ScoreFactor[] {
     { key: 'idle', label: '空闲时长', enabled: true, weight: 10 },
   ];
 }
-/** 熟练度因子取值（4.3） */
+/** 综合打分三个维度（4.4）：权重固定，不可配置 */
+export type ScoreDimensionKey = 'proficiency' | 'load' | 'balance';
+export const SCORE_WEIGHTS: Record<ScoreDimensionKey, number> = { proficiency: 20, load: 40, balance: 40 };
+/** 处理能力 · 技能熟练度取值（附录 A.2） */
 export const PROFICIENCY_SCORE: Record<Proficiency, number> = { 专家: 1, 熟练: 0.6, 初级: 0.3 };
+/** 今日接单强度（附录 A.2）＝今日接单量 ÷ 今日在岗小时（不足 1 小时按 1 小时）÷ 个人上限 */
+export function takeIntensity(takesToday: number, onDutyHours: number, cap: number): number {
+  return cap > 0 ? takesToday / Math.max(1, onDutyHours) / cap : 0;
+}
+/** 综合打分（附录 A.2）：引擎与演示种子共用。取值留四位小数，综合得分按未取整的取值计算，保留一位小数 */
+export function computeScore(input: {
+  proficiency: Proficiency; inTransit: number; cap: number;
+  /** 本人今日接单强度 */
+  intensity: number;
+  /** 可接单坐席中的最大今日接单强度 */
+  maxIntensity: number;
+}): { total: number; values: Record<ScoreDimensionKey, number> } {
+  const raw: Record<ScoreDimensionKey, number> = {
+    proficiency: PROFICIENCY_SCORE[input.proficiency],
+    load: input.cap > 0 ? Math.max(0, 1 - input.inTransit / input.cap) : 0,
+    balance: input.maxIntensity > 0 ? Math.max(0, 1 - input.intensity / input.maxIntensity) : 1,
+  };
+  const keys = Object.keys(raw) as ScoreDimensionKey[];
+  const total = keys.reduce((s, k) => s + SCORE_WEIGHTS[k] * raw[k], 0);
+  return {
+    total: Math.round(total * 10) / 10,
+    values: Object.fromEntries(keys.map((k) => [k, Math.round(raw[k] * 10000) / 10000])) as Record<ScoreDimensionKey, number>,
+  };
+}
 /** 紧急度 · 优先级分（4.3） */
 export const PRIORITY_SCORE: Record<Priority, number> = { P0: 1, P1: 0.7, P2: 0.4, P3: 0.1 };
 

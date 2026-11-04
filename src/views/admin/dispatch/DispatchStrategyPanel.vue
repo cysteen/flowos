@@ -8,11 +8,11 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
   DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, RESERVE_COMPLAINT_ONLY, defaultDispatchConfig,
-  type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency, type ScoreFactor,
+  SCORE_WEIGHTS, type DispatchConfig, type DispatchRole, type OriginalRelation, type Proficiency,
 } from '@/views/tickets/types/dispatch';
 import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
-import { FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
+import { GATE_LABEL, SCORE_DIMENSION_ROWS, SCORE_TIE_RULE } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
@@ -32,22 +32,17 @@ watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.v
 watch(active, (v) => emit('update:tab', v));
 
 /* ================= 出池规则 ================= */
-type OutForm = Pick<DispatchConfig, 'originalChain' | 'factors' | 'recentHours'>;
-const OUT_KEYS: (keyof OutForm)[] = ['originalChain', 'factors', 'recentHours'];
+type OutForm = Pick<DispatchConfig, 'originalChain'>;
+const OUT_KEYS: (keyof OutForm)[] = ['originalChain'];
 function pickOut(c: DispatchConfig): OutForm {
   const o = {} as Record<string, unknown>;
   OUT_KEYS.forEach((k) => { o[k] = JSON.parse(JSON.stringify(c[k])); });
   return o as OutForm;
 }
 const out = reactive<OutForm>(pickOut(store.config));
-const enabledFactorCount = computed(() => out.factors.filter((x) => x.enabled).length);
-const weightSum = computed(() => out.factors.filter((x) => x.enabled).reduce((s, x) => s + (x.weight || 0), 0));
 /** 谁可以接单（门槛 PRD 4.1，P0 项）：引擎固定判定，此处只展示 */
 const GATES = GATE_ORDER.map((g) => GATE_LABEL[g]);
 function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
-function factorShare(w: number | null | undefined) {
-  return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
-}
 /** 步骤 ② 关系链：各行的适用场景与原处理人取法（PRD 4.2，次序固定） */
 const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }> = {
   本单退回: { scene: '售后转回、回访打回', handler: '本单上一处理人' },
@@ -58,8 +53,6 @@ function saveOut() {
   const checks: [unknown, number, number][] = [
     ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
     ...out.originalChain.flatMap((x) => [[x.reserveMinutes, 1, 60], [x.reserveSlaPercent, 1, 100]] as [unknown, number, number][]),
-    ...out.factors.map((x: ScoreFactor) => [x.weight, 0, 100] as [unknown, number, number]),
-    [out.recentHours, 1, 24],
   ];
   for (const [v, a, b] of checks) {
     const e = rangeError(v, a, b);
@@ -205,23 +198,24 @@ watch(() => store.config, (c) => {
         <div class="cs-hd">
           <span class="cs-seq">3</span>
           <div class="cs-ti"><div class="cs-name">综合打分选人</div></div>
-          <div class="cs-op"><span class="wsum">已启用 {{ enabledFactorCount }} 项 · 权重合计 {{ weightSum }}</span></div>
         </div>
         <div class="cs-bd">
-        <div class="fc-list">
-          <div v-for="fc in out.factors" :key="fc.key" class="fc-row" :class="{ off: !fc.enabled }">
-            <a-checkbox v-model:checked="fc.enabled" class="fc-name">{{ FACTOR_LABEL[fc.key] ?? fc.label }}</a-checkbox>
-            <div class="fc-bar"><i :style="{ width: `${fc.enabled ? factorShare(fc.weight) : 0}%` }" /></div>
-            <span class="fc-share">{{ fc.enabled ? `${factorShare(fc.weight)}%` : '—' }}</span>
-            <div class="fc-w"><a-input-number v-model:value="fc.weight" :precision="0" :disabled="!fc.enabled" style="width: 88px" /><span class="dpf-unit">权重</span></div>
-          </div>
+        <div class="oc-wrap">
+          <table class="oc-table">
+            <thead>
+              <tr><th>维度</th><th>因素</th><th class="sd-weight">权重</th><th>业务含义</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in SCORE_DIMENSION_ROWS" :key="row.key">
+                <td class="oc-name">{{ row.dimension }}</td>
+                <td>{{ row.factor }}</td>
+                <td class="sd-weight">{{ SCORE_WEIGHTS[row.key] }}</td>
+                <td>{{ row.meaning }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="dpf-grid one fc-extra">
-          <div class="dpf-item">
-            <span class="dpf-label">最近接单的统计范围</span>
-            <div class="dpf-ctl"><span class="dpf-unit">近</span><a-input-number v-model:value="out.recentHours" :precision="0" style="width: 100px" /><span class="dpf-unit">小时</span></div>
-          </div>
-        </div>
+        <div class="sd-tie">{{ SCORE_TIE_RULE }}</div>
         </div>
       </div>
       </div>
@@ -401,20 +395,9 @@ watch(() => store.config, (c) => {
 .oc-reserve { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 6px; }
 .oc-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #374151; }
 
-/* 综合打分（对齐 factor-row） */
-.wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
-.fc-list { display: flex; flex-direction: column; gap: 8px; }
-.fc-row {
-  display: flex; align-items: center; gap: 14px; padding: 8px 12px;
-  border: 1px solid #eef0f3; border-radius: 8px; background: #fcfcfd; flex-wrap: wrap;
-}
-.fc-row.off { opacity: 0.55; }
-.fc-name { width: 180px; flex: none; font-size: 14px; color: #1f2329; }
-.fc-bar { flex: 1; min-width: 80px; height: 4px; background: #f2f3f5; border-radius: 2px; overflow: hidden; }
-.fc-bar i { display: block; height: 100%; background: #1a6fff; border-radius: 2px; transition: width 0.2s; }
-.fc-share { width: 40px; text-align: right; font-size: 13px; color: #86909c; }
-.fc-w { display: flex; align-items: center; gap: 8px; }
-.fc-extra .dpf-item { border-bottom: none; }
+/* 综合打分 · 三维度只读表 */
+.sd-weight { width: 64px; text-align: center !important; font-variant-numeric: tabular-nums; }
+.sd-tie { margin-top: 8px; font-size: 12px; color: #6b7280; line-height: 18px; }
 
 /* 个人上限 · 单页聚合 */
 .cap-layout {
