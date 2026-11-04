@@ -90,6 +90,7 @@ const {
   showServiceComplaintCategory,
   reset,
   applyPrefill,
+  applyDraft,
   onTitleInput,
   onProductCategoryChange,
   onProductNameChange,
@@ -386,8 +387,7 @@ watch(
     restoredDraftScene.value = draft ? (draft.xiaozhiScene ? 'xiaozhi' : 'general') : null;
     if (draft) {
       // 从草稿箱继续编辑：恢复表单快照
-      reset();
-      Object.assign(form, draft.form);
+      applyDraft(draft.form);
       // 旧草稿里的投诉分类不在建单投诉分类字典里：置空由坐席重选
       if (!(CREATE_COMPLAINT_L1_OPTIONS as readonly string[]).includes(form.complaintL1)) {
         form.complaintL1 = '';

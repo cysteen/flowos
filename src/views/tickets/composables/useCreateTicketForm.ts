@@ -762,6 +762,28 @@ export function useCreateTicketForm(
     }
   }
 
+  /** 草稿恢复：整批灌回快照，不跑坐席手动改时的联动；已不在当前候选内的产品和问题分类按未选处理 */
+  function applyDraft(snapshot: Record<string, unknown>) {
+    applyingPrefill = true;
+    try {
+      reset();
+      Object.assign(form, snapshot);
+      clearUnavailableSelection();
+    } finally {
+      void nextTick(() => { applyingPrefill = false; });
+    }
+  }
+
+  function clearUnavailableSelection() {
+    if (!PRODUCT_NAMES[form.productCategory]) form.productCategory = '';
+    if (!productNameOptions.value.includes(form.productName)) form.productName = '';
+    const l2Map = productProblemTree.value[form.problemL1];
+    if (!l2Map) form.problemL1 = '';
+    const l3s = l2Map?.[form.problemL2];
+    if (!l3s) form.problemL2 = '';
+    if (!l3s?.includes(form.problemL3)) form.problemL3 = '';
+  }
+
   function fillPrefill(p: CreateTicketPrefill) {
     reset();
     // 小智入口同样固定了工单类型（咨询 + 小智标识，D1）：不再做刷机单识别，两套表单不打架
@@ -1137,6 +1159,7 @@ export function useCreateTicketForm(
     showServiceComplaintCategory,
     reset,
     applyPrefill,
+    applyDraft,
     onTitleInput,
     onProductCategoryChange,
     onProductNameChange,
