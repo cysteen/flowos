@@ -86,7 +86,7 @@ export interface MonitorStats {
   respDelta: number | null;
   balance: number | null;
   successRate: number | null;
-  /** 自动派单成功率的分子 / 分母（工单数） */
+  /** 系统派单成功率的分子 / 分母（工单数） */
   successCount: number;
   successBase: number;
   pathShare: { name: string; count: number; pct: number; color: string }[];
@@ -137,10 +137,10 @@ export function computeStats(
   const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
   const inRange = scoped.filter((l) => inWindow(l, w));
 
-  // 进入派单：判定时生效方式为自动派单的工单（混合派单 / 人工派单留池的单不进入自动派单）
-  const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode === '自动派单');
+  // 进入系统派单：判定时生效方式为自动派单或混合派单的工单（人工派单不走系统派单）
+  const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode !== '人工派单');
   const entered = new Set(formal.map((l) => l.ticketNo));
-  // 自动派单成功率（13.2）：进入派单的工单中，已由系统派出的占比；不含直派规则单
+  // 系统派单成功率（A.3）：进入系统派单的工单中，已由系统派出的占比；不含直派规则单
   const success = new Set(formal.filter((l) => isEngineAssign(l) && l.path !== '直派规则').map((l) => l.ticketNo));
 
   const seg = firstRespSegments(scoped, w);
