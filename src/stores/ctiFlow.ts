@@ -11,7 +11,7 @@ import {
 
 /**
  * 话务条状态流水：每次工作状态 / 子状态切换记一段（人、班组、状态、子状态、起止时刻、关联工单），
- * 外呼忙碌段同样记一段（子状态记 outbound）。另记「工单操作」时刻，供「状态存疑」统计。
+ * 外呼忙碌段同样记一段（子状态记 outbound）。
  *
  * - 实时段落 localStorage（键带版本号），刷新后未结束的段以最后一次保存时刻收尾；
  * - 近 62 天种子按工作日 9:00–18:00 按人按日确定性生成，不入缓存（刷新、跨日都与当日对齐）；
@@ -20,11 +20,8 @@ import {
  */
 
 export const CTI_FLOW_LS_KEY = 'flowos-cti-status-flow';
-/** v2：去掉线下子状态「仍在进行」确认记录（confirmAt） */
-export const CTI_FLOW_VERSION = 2;
-
-/** 状态存疑：线下子状态期间每次工单操作计入其后这段时长（重叠合并，截到段尾） */
-export const SUSPECT_WINDOW_MIN = 10;
+/** v3：去掉工单操作记录（ops） */
+export const CTI_FLOW_VERSION = 3;
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -46,17 +43,10 @@ export interface FlowSegment {
   ticketNo: string | null;
 }
 
-export interface FlowOp {
-  who: string;
-  at: number;
-  ticketNo: string | null;
-}
-
 interface Persisted {
   version: number;
   savedAt: number;
   segments: FlowSegment[];
-  ops: FlowOp[];
 }
 
 export interface DistItem {
@@ -71,12 +61,8 @@ export interface GroupDistribution {
   items: DistItem[];
   /** 在岗时长：各工作类型（外呼计入工单处理）+ 小休（签出、未就绪不计） */
   totalMs: number;
-  /** 线下类工作合计 */
-  offlineMs: number;
-  /** 状态存疑：线下子状态期间又有工单操作的时段 */
-  suspectMs: number;
   memberCount: number;
-  /** 按人拆分：各类型时长（键同 items）、合计、状态存疑；只含区间内有流水的人 */
+  /** 按人拆分：各类型时长（键同 items）、合计；只含区间内有流水的人 */
   byMember: Record<string, MemberDist>;
   /** 小休按原因拆分（meeting / training / tea / meal） */
   breakReasons: Record<string, number>;
@@ -86,7 +72,6 @@ export interface MemberDist {
   ms: Record<string, number>;
   /** 在岗时长：各工作类型（外呼计入工单处理）+ 小休 */
   totalMs: number;
-  suspectMs: number;
   breakReasons: Record<string, number>;
 }
 
@@ -179,7 +164,7 @@ function inProgressNos(name: string): string[] {
 
 /** 线下类型的抽取权重：组内清单越靠前越常见 */
 function pickOffline(rand: () => number, types: WorkTypeDef[]): WorkTypeDef {
-  const offline = types.filter((t) => t.offline);
+  const offline = types.filter((t) => t.key !== DEFAULT_WORK_TYPE);
   const w = offline.map((_, i) => offline.length - i + 1);
   let r = rand() * w.reduce((s, x) => s + x, 0);
   for (let i = 0; i < offline.length; i++) {
@@ -189,7 +174,7 @@ function pickOffline(rand: () => number, types: WorkTypeDef[]): WorkTypeDef {
   return offline[0];
 }
 
-function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: FlowOp[] }) {
+function seedDay(m: FlowMember, day0: number, out: FlowSegment[]) {
   const rand = prng(hash(`${m.name}|${new Date(day0).toDateString()}`));
   const ri = (a: number, b: number) => a + Math.floor(rand() * (b - a + 1));
   const types = workTypesOfGroup(m.groupId);
@@ -197,9 +182,8 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
   let n = 0;
   const push = (status: WorkStatus, sub: string | null, start: number, end: number, ticketNo: string | null = null) => {
     if (end <= start) return;
-    out.segs.push({ id: `seed-${m.name}-${day0}-${n++}`, who: m.name, groupId: m.groupId, status, sub, start, end, ticketNo });
+    out.push({ id: `seed-${m.name}-${day0}-${n++}`, who: m.name, groupId: m.groupId, status, sub, start, end, ticketNo });
   };
-  const op = (t: number, ticketNo: string | null = null) => out.ops.push({ who: m.name, at: t, ticketNo });
   const pickTicket = () => (tickets.length && rand() < 0.65 ? tickets[ri(0, tickets.length - 1)] : null);
 
   /** 就绪时段内的工作排布：工单处理与线下类工作交替，穿插少量外呼 */
@@ -215,17 +199,12 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
       } else if (r < 0.55) {
         const end = Math.min(to, t + ri(20, 60) * MIN);
         push('ready', DEFAULT_WORK_TYPE, t, end);
-        for (let x = t + ri(2, 8) * MIN; x < end; x += ri(4, 15) * MIN) op(x);
         t = end;
       } else {
         const type = pickOffline(rand, types);
         const end = Math.min(to, t + ri(15, 75) * MIN);
         const no = type.linkTicket ? pickTicket() : null;
         push('ready', type.key, t, end, no);
-        if (rand() < 0.15) {
-          const k = ri(1, 2);
-          for (let i = 0; i < k; i++) op(t + Math.floor(rand() * (end - t)), no);
-        }
         t = end;
       }
     }
@@ -262,29 +241,26 @@ function seedDay(m: FlowMember, day0: number, out: { segs: FlowSegment[]; ops: F
 }
 
 /** 整日种子按「当日 + 成员名单」缓存：同一天内只生成一次，每次调用只按此刻截断 */
-let seedCache: { key: string; segs: FlowSegment[]; ops: FlowOp[] } | null = null;
+let seedCache: { key: string; segs: FlowSegment[] } | null = null;
 
 /** 近 62 天（含今日）工作日种子；今日只取到此刻 */
-function buildSeed(now: number): { segs: FlowSegment[]; ops: FlowOp[] } {
+function buildSeed(now: number): FlowSegment[] {
   const today = dayStart(now);
   const members = flowMembers();
   const key = `${today}|${members.map((m) => `${m.name}:${m.groupId}`).join(',')}`;
   if (seedCache?.key !== key) {
-    const out = { segs: [] as FlowSegment[], ops: [] as FlowOp[] };
+    const out: FlowSegment[] = [];
     for (let i = SEED_DAYS - 1; i >= 0; i--) {
       const d0 = dayStart(today - i * DAY + 12 * 60 * MIN);
       const wd = new Date(d0).getDay();
       if (wd === 0 || wd === 6) continue;
       members.forEach((m) => seedDay(m, d0, out));
     }
-    seedCache = { key, ...out };
+    seedCache = { key, segs: out };
   }
-  return {
-    segs: seedCache.segs
-      .filter((s) => s.start < now)
-      .map((s) => (s.end != null && s.end > now ? { ...s, end: now } : s)),
-    ops: seedCache.ops.filter((o) => o.at <= now),
-  };
+  return seedCache.segs
+    .filter((s) => s.start < now)
+    .map((s) => (s.end != null && s.end > now ? { ...s, end: now } : s));
 }
 
 /* ------------------------------------------------------------------ */
@@ -311,14 +287,13 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       .filter((s) => s.start >= keepFrom)
       .map((s) => (s.end == null ? { ...s, end: Math.max(s.start, cached!.savedAt) } : s)),
   );
-  const ops = ref<FlowOp[]>((cached?.ops ?? []).filter((o) => o.at >= keepFrom));
   let seq = segments.value.length;
 
   function save() {
     try {
       const v: Persisted = {
         version: CTI_FLOW_VERSION, savedAt: Date.now(),
-        segments: segments.value, ops: ops.value,
+        segments: segments.value,
       };
       localStorage.setItem(CTI_FLOW_LS_KEY, JSON.stringify(v));
     } catch {
@@ -353,21 +328,13 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     save();
   }
 
-  /** 工单操作信号（打开工单处理页、保存处理记录；外呼不算） */
-  function noteOp(ticketNo: string | null) {
-    const { who } = me();
-    if (!who) return;
-    ops.value.push({ who, at: Date.now(), ticketNo });
-    save();
-  }
-
   /** 进行中段的定时落盘，刷新后以此收尾 */
   function heartbeat() {
     save();
   }
 
   /** 种子 + 实时段合并：某人某日有实时段时，当日种子在实时首段之前截断 */
-  function allSegments(now: number): { segs: FlowSegment[]; ops: FlowOp[] } {
+  function allSegments(now: number): FlowSegment[] {
     const seed = buildSeed(now);
     const liveFirst = new Map<string, number>();
     segments.value.forEach((s) => {
@@ -375,33 +342,23 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       if (!liveFirst.has(k) || s.start < liveFirst.get(k)!) liveFirst.set(k, s.start);
     });
     const segs: FlowSegment[] = [];
-    seed.segs.forEach((s) => {
+    seed.forEach((s) => {
       const lf = liveFirst.get(`${s.who}|${dayStart(s.start)}`);
       if (lf == null) { segs.push(s); return; }
       if (s.start >= lf) return;
       segs.push(s.end! > lf ? { ...s, end: lf } : s);
     });
-    const seedOps = seed.ops.filter((o) => {
-      const lf = liveFirst.get(`${o.who}|${dayStart(o.at)}`);
-      return lf == null || o.at < lf;
-    });
-    return { segs: [...segs, ...segments.value], ops: [...seedOps, ...ops.value] };
+    return [...segs, ...segments.value];
   }
 
-  /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝在岗时长；外呼通话计入工单处理）、线下类合计、状态存疑 */
+  /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝在岗时长；外呼通话计入工单处理） */
   function distribution(groupId: string, from: number, to: number, now: number = Date.now()): GroupDistribution {
-    const { segs, ops: allOps } = allSegments(now);
+    const segs = allSegments(now);
     const types = workTypesOfGroup(groupId);
     const ms: Record<string, number> = {};
-    let suspect = 0;
     const members = new Set<string>();
-    const byMember: Record<string, { ms: Record<string, number>; suspectMs: number; breakReasons: Record<string, number> }> = {};
+    const byMember: Record<string, { ms: Record<string, number>; breakReasons: Record<string, number> }> = {};
     const breakReasons: Record<string, number> = {};
-    const opsByWho = new Map<string, number[]>();
-    allOps.forEach((o) => {
-      if (!opsByWho.has(o.who)) opsByWho.set(o.who, []);
-      opsByWho.get(o.who)!.push(o.at);
-    });
     // 只取本组统计人数口径内的人（二线专员、按第一个所属组归）；班组长等其他角色签入话务条的流水不计入
     const inScope = new Set(groupMembersOf(groupId).map((m) => m.name));
     segs.forEach((s) => {
@@ -418,27 +375,12 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       if (!key) return;
       members.add(s.who);
       ms[key] = (ms[key] ?? 0) + (b - a);
-      const mm = (byMember[s.who] ??= { ms: {}, suspectMs: 0, breakReasons: {} });
+      const mm = (byMember[s.who] ??= { ms: {}, breakReasons: {} });
       mm.ms[key] = (mm.ms[key] ?? 0) + (b - a);
       if (key === BREAK_ITEM.key) {
         const r = s.sub ?? 'meeting';
         breakReasons[r] = (breakReasons[r] ?? 0) + (b - a);
         mm.breakReasons[r] = (mm.breakReasons[r] ?? 0) + (b - a);
-      }
-      if (s.status === 'ready' && workTypeOf(key)?.offline) {
-        // 线下子状态期间的工单操作：每次计其后 SUSPECT_WINDOW_MIN，重叠合并，截到本段
-        let cover = 0;
-        let curEnd = a;
-        (opsByWho.get(s.who) ?? [])
-          .filter((t) => t >= a && t < b)
-          .sort((x, y) => x - y)
-          .forEach((t) => {
-            const st = Math.max(t, curEnd);
-            const en = Math.min(b, t + SUSPECT_WINDOW_MIN * MIN);
-            if (en > st) { cover += en - st; curEnd = en; }
-          });
-        suspect += cover;
-        byMember[s.who].suspectMs += cover;
       }
     });
     const defs = [
@@ -454,21 +396,20 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     });
     const total = defs.reduce((s, d) => s + (ms[d.key] ?? 0), 0);
     const items = defs.map((d) => ({ ...d, ms: ms[d.key] ?? 0, pct: total ? ((ms[d.key] ?? 0) / total) * 100 : 0 }));
-    const offlineMs = items.filter((i) => workTypeOf(i.key)?.offline).reduce((s, i) => s + i.ms, 0);
     const keys = new Set(defs.map((d) => d.key));
     const memberRows: Record<string, MemberDist> = {};
     Object.entries(byMember).forEach(([who, v]) => {
       const rowMs: Record<string, number> = {};
       keys.forEach((k) => { rowMs[k] = v.ms[k] ?? 0; });
       memberRows[who] = {
-        ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), suspectMs: v.suspectMs, breakReasons: v.breakReasons,
+        ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), breakReasons: v.breakReasons,
       };
     });
-    return { items, totalMs: total, offlineMs, suspectMs: suspect, memberCount: members.size, byMember: memberRows, breakReasons };
+    return { items, totalMs: total, memberCount: members.size, byMember: memberRows, breakReasons };
   }
 
   return {
-    segments, ops,
-    transition, noteOp, heartbeat, distribution,
+    segments,
+    transition, heartbeat, distribution,
   };
 });

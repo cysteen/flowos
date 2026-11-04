@@ -2,18 +2,15 @@
 /**
  * 班组看板 · 工作时长分布（组级）。
  *
- * 数据取话务条状态流水（stores/ctiFlow.ts）：本组各工作类型（就绪子状态，外呼通话计入工单处理）与小休的时长、占比；
- * 「状态存疑」＝线下类工作状态期间又有工单操作的时段，单独列示（已含在对应线下类型的时长里，不另加进合计）。
+ * 数据取话务条状态流水（stores/ctiFlow.ts）：本组各工作类型（就绪子状态，外呼通话计入工单处理）与小休的时长、占比。
  * 上半部分为人均口径（组合计 ÷ 统计人数），下半部分为成员明细（顺序同组员明细默认顺序，不排序、不排名、不标高亮），末行「人均」与上半部分一致。可见性随「班组看板」菜单权限（config/roles.ts 各角色 menus 含 team-board，路由守卫按此放行），
  * 块内不另设角色判断；班组跟随看板顶部「班组」筛选（由看板传入 groupId），统计人数与筛选项「（N人）」同一口径。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import { HOME_PERF_RANGE_OPTS, type HomePerfRangeKey } from '@/mock/homeOverview';
-import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
-import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { useCloseOnDeactivate } from '@/composables/useCloseOnDeactivate';
-import { groupMembersOf, SUSPECT_WINDOW_MIN, useCtiFlowStore } from '@/stores/ctiFlow';
+import { groupMembersOf, useCtiFlowStore } from '@/stores/ctiFlow';
 import { BREAK_ITEM, BREAK_REASONS } from '@/mock/ctiWorkTypes';
 
 const props = defineProps<{ groupId: string; memberOrder?: string[] }>();
@@ -81,7 +78,6 @@ const span = computed<[number, number]>(() => {
 const dist = computed(() => {
   if (!props.groupId) return null;
   void flow.segments.length;
-  void flow.ops.length;
   const [from, to] = span.value;
   return flow.distribution(props.groupId, from, to, nowMs.value);
 });
@@ -95,7 +91,7 @@ function breakText(reasons: Record<string, number>, divisor: number): string {
 
 /**
  * 一位小数的最大余数分配：各项显示值（单位 0.1）相加恰等于给定合计显示值。
- * 用于：组合计 → 各成员合计；成员合计 → 该成员各类型；人均合计 → 人均各类型；组存疑 → 各成员存疑；占比 → 100%。
+ * 用于：组合计 → 各成员合计；成员合计 → 该成员各类型；人均合计 → 人均各类型；占比 → 100%。
  */
 function apportion(values: number[], targetTenths: number): number[] {
   const raw = values.map((v) => v * 10);
@@ -127,7 +123,6 @@ const perCapita = computed(() => {
   return {
     total: (totalTenths / 10).toFixed(1),
     groupTotal: (tenths(d.totalMs / H) / 10).toFixed(1),
-    suspect: (Math.round(tenths(d.suspectMs / H) / n.value) / 10).toFixed(1),
     items: d.items.map((i, k) => {
       const hText = h[k].toFixed(1);
       const pText = `${p[k].toFixed(1)}%`;
@@ -151,7 +146,7 @@ const memberNames = computed(() => {
 
 /**
  * 下半部分：成员明细。组合计按最大余数拆成各成员合计（之和＝组合计），
- * 每人各类型再按本人合计配平（之和＝本人合计）；状态存疑同样从组存疑拆给各人。
+ * 每人各类型再按本人合计配平（之和＝本人合计）。
  */
 const memberRows = computed(() => {
   const d = dist.value;
@@ -159,14 +154,12 @@ const memberRows = computed(() => {
   const names = memberNames.value;
   const row = (name: string) => d.byMember[name];
   const totals = apportion(names.map((x) => (row(x)?.totalMs ?? 0) / H), tenths(d.totalMs / H));
-  const suspects = apportion(names.map((x) => (row(x)?.suspectMs ?? 0) / H), tenths(d.suspectMs / H));
   return names.map((name, k) => {
     const r = row(name);
     const cells = apportion(d.items.map((i) => (r?.ms[i.key] ?? 0) / H), Math.round(totals[k] * 10));
     return {
       name,
       total: totals[k].toFixed(1),
-      suspect: suspects[k].toFixed(1),
       cells: d.items.map((i, j) => ({
         key: i.key,
         h: cells[j].toFixed(1),
@@ -177,16 +170,7 @@ const memberRows = computed(() => {
     };
   });
 });
-const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(60px, 1fr)) minmax(72px, 0.9fr)`);
-
-function pctText(p: number): string {
-  return `${p.toFixed(1)}%`;
-}
-const suspectPct = computed(() => {
-  const d = dist.value;
-  return d && d.offlineMs ? (d.suspectMs / d.offlineMs) * 100 : 0;
-});
-const suspectTip = { define: `线下类工作状态期间又有工单操作的时段（每次操作计其后 ${SUSPECT_WINDOW_MIN} 分钟），已含在对应工作类型内` };
+const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(60px, 1fr))`);
 </script>
 
 <template>
@@ -230,14 +214,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
           <span class="wtp-stat-u">人</span>
           <span class="wtp-stat-x">组合计 {{ perCapita.groupTotal }} 小时</span>
         </div>
-        <div class="wtp-stat wtp-suspect">
-          <ExclamationCircleOutlined class="wtp-suspect-ic" />
-          <span class="wtp-stat-l">状态存疑</span>
-          <MetricTipIcon :tip="suspectTip" />
-          <span class="wtp-stat-v">{{ perCapita.suspect }}</span>
-          <span class="wtp-stat-u">小时 / 人</span>
-          <span class="wtp-stat-x">占线下类工作 {{ pctText(suspectPct) }}</span>
-        </div>
       </div>
 
       <div v-if="dist.totalMs > 0" class="wtp-bar" role="img" :aria-label="`工作时长分布，人均 ${perCapita.total} 小时`">
@@ -265,7 +241,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
           <div v-for="i in dist.items" :key="i.key" class="wtp-th num" role="columnheader">
             <span class="wtp-th-sw" :style="{ background: i.color }" />{{ i.label }}
           </div>
-          <div class="wtp-th num" role="columnheader">状态存疑</div>
         </div>
         <div v-for="r in memberRows" :key="r.name" class="wtp-trow" role="row" :style="{ gridTemplateColumns: gridCols }">
           <div class="wtp-td wtp-td-name" role="cell">
@@ -276,7 +251,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
           <a-tooltip v-for="c in r.cells" :key="c.key" :title="c.tip">
             <div class="wtp-td num" role="cell">{{ c.h }}</div>
           </a-tooltip>
-          <div class="wtp-td num" role="cell">{{ r.suspect }}</div>
         </div>
         <div class="wtp-trow wtp-avg" role="row" :style="{ gridTemplateColumns: gridCols }">
           <div class="wtp-td wtp-td-name" role="cell">人均</div>
@@ -284,7 +258,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
           <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined">
             <div class="wtp-td num" role="cell">{{ i.hText }}</div>
           </a-tooltip>
-          <div class="wtp-td num" role="cell">{{ perCapita.suspect }}</div>
         </div>
       </div>
     </div>
@@ -338,9 +311,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 .wtp-stat-v { font-size: 18px; font-weight: 700; color: #0f172a; }
 .wtp-stat-u { font-size: 12px; color: #64748b; }
 .wtp-stat-x { font-size: 12px; color: #64748b; margin-left: 6px; }
-.wtp-suspect { align-items: center; padding: 2px 10px; border-radius: 999px; background: #fffbeb; border: 1px solid #fde68a; }
-.wtp-suspect .wtp-stat-v { font-size: 15px; }
-.wtp-suspect-ic { color: #d97706; font-size: 13px; }
 
 .wtp-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; }
 .wtp-seg { display: block; min-width: 2px; height: 100%; flex-basis: 0; }

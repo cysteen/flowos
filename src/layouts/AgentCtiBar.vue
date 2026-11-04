@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { useHandleLogStore } from '@/stores/handleLog';
 import { message } from 'ant-design-vue';
 import {
   CoffeeOutlined, CustomerServiceOutlined, DownOutlined, PhoneFilled,
@@ -42,18 +41,6 @@ const route = useRoute();
 const activeTicketNo = computed(() =>
   (route.name === 'ticket-operation' ? String(route.params.ticketNo ?? '') : ''),
 );
-/** 工单操作信号：打开工单处理页 */
-watch(
-  activeTicketNo,
-  (no) => { if (no && cti.isSignedIn) flow.noteOp(no); },
-  { immediate: true },
-);
-/** 工单操作信号：保存处理（写入「工单处理」履历） */
-const stopHandleLog = useHandleLogStore().$onAction(({ name, args, after }) => {
-  if (name !== 'append') return;
-  after(() => { if (cti.isSignedIn) flow.noteOp(String(args[0] ?? '') || null); });
-});
-onBeforeUnmount(stopHandleLog);
 /** 进行中的流水段定时落盘，刷新后以此收尾 */
 const heartbeat = window.setInterval(() => { if (cti.isSignedIn) flow.heartbeat(); }, 30_000);
 onBeforeUnmount(() => window.clearInterval(heartbeat));
