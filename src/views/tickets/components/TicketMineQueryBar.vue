@@ -70,7 +70,9 @@ const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
   ...BASELINE_STATUSES
     .filter((s) => s !== '自动刷机中' && s !== REFUND_STATUS_SYSTEM)
     .flatMap((s) => (s === '处理中' ? [s, '自动刷机中' as NodeStatus, REFUND_STATUS_SYSTEM as NodeStatus] : [s]))
-    .map((s) => ({ value: s, label: statusDisplayName(s) })),
+    .map((s) => ({ value: s, label: statusDisplayName(s) }))
+    // 【1215】「排队中」是自动派单池未认领单的展示名，紧跟「待领取」
+    .flatMap((o) => (o.value === '未认领' ? [o, { value: '排队中' as NodeStatus, label: '排队中' }] : [o])),
 ];
 
 const productNameOptions = computed(() =>

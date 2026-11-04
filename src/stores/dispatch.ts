@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { reactive, ref, toRaw } from 'vue';
 import { TICKETS } from '@/mock/tickets';
-import { POOL_GROUPS, isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
+import { POOL_GROUPS, isFirstResponded, registerUnclaimedStatusLabel, type Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { CUSTOMER_DIRECTORY } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 29;
+export const DISPATCH_CACHE_VERSION = 30;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -844,6 +844,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const remain = slaRemainRaw(t, st, now);
     return remain == null ? undefined : Math.max(0, Math.round(remain));
   }
+  /** 小智产研退回、确认未解决的原处理人（4.3）：本单上一处理人 */
+  function xiaozhiReturned(t: Ticket, st: TicketDispatchState, name: string): boolean {
+    return isXiaozhiTicket(t) && st.prevHandler === name;
+  }
+
   /* ---------------- 门槛（4.1） ---------------- */
 
   function gates(t: Ticket, st: TicketDispatchState): GateOutcome {
@@ -865,7 +870,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     step('画像匹配', (a) => profileMatches(a, t));
     const matched = list;
     step('个人上限', (a) => inTransitOf(a.name, t.no) < capOf(a));
-    return { passed: list, blockedByCap: matched.filter((a) => !list.includes(a)), onDuty: ready.length, matchedReady, failedAt };
+    const blockedByCap = matched.filter((a) => !list.includes(a));
+    // 小智退回的原处理人不参与本次打分：只从候选里去掉，不记入第一个没人满足的接单条件
+    list = list.filter((a) => !xiaozhiReturned(t, st, a.name));
+    return { passed: list, blockedByCap, onDuty: ready.length, matchedReady, failedAt };
   }
 
   /* ---------------- 评分（4.4） ---------------- */
@@ -902,7 +910,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const at = parseStamp(x.updatedAt);
     return Number.isFinite(at) ? at : parseStamp(x.createdAt);
   }
-  /** 层级（4.3）：只认二线（二线专员、小智工单处理人、二线刷机处理人）；技术支持组池只认三线 */
+  /** 层级（4.3）：只认二线（除技术支持外的全部派单角色）；技术支持组池只认三线 */
   function layerOk(a: DispatchAgent, st: TicketDispatchState, trigger: DispatchTrigger): boolean {
     if (trigger === '升级三线' || poolGroupIdOf(st.poolId) === 'tech') return a.roles.includes('技术支持');
     return a.roles.some((r) => SECOND_LINE_ROLES.includes(r));
@@ -969,8 +977,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const a = agentOf(c.name);
     const gid = poolGroupIdOf(st.poolId);
     if (!a || a.disabled || !gid || !a.groupIds.includes(gid)) return '不在归属组或已停用';
-    // 小智产研退回、确认未解决：回小智工单处理组池待领，不派回原处理人（【1120】）
-    if (c.relation === '本单退回' && isXiaozhiTicket(t)) return '小智退回';
+    // 小智产研退回、确认未解决：不派回原处理人，此人也不参与本次打分（见 `gates`）
+    if (xiaozhiReturned(t, st, c.name)) return '小智退回';
     if (lastSurveyBad(t, c.name)) return '上次回访不满意';
     return null;
   }
@@ -2133,6 +2141,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
   // 接入售后回传的派单落点（`aftersaleEvents.dispatchByCurrentRule`）：store 建立时注册，
   // 不在模块加载时注册 —— 种子单在模块加载期经同一函数构建，须仍走原落池口径
   registerDispatchEngine((t, ctx) => resolveForAftersale(t, ctx));
+  // 未认领工单的展示名（9.2）：自动派单池排队中，混合派单、人工派单池待领取，不进入派单的不接管
+  registerUnclaimedStatusLabel((t) => {
+    const pid = poolIdOf(t);
+    if (!pid) return null;
+    return effectiveModeOf(pid) === '自动派单' ? '排队中' : '待领取';
+  });
 
   if (typeof window !== 'undefined') {
     // 每 5 分钟一轮；刷新不打断节奏（按上一轮时刻接着算）

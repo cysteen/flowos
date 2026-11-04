@@ -7,7 +7,7 @@ import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetai
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { TicketFlash } from '@/views/tickets/types/flash';
 import {
-  isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus, statusDisplayName,
+  isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus, ticketStatusDisplayName,
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
@@ -56,7 +56,7 @@ function findAftersalePeer(
 ): { no: string; status: string } | undefined {
   const peer = TICKETS.find((x) => x.no !== selfNo
     && (selfSlot === 'source' ? x.aftersaleOriginNo === asNo : x.linkedAftersaleNo === asNo));
-  return peer ? { no: peer.no, status: statusDisplayName(peer.nodeStatus) } : undefined;
+  return peer ? { no: peer.no, status: ticketStatusDisplayName(peer) } : undefined;
 }
 
 // ---- 列表行 SLA 摘要 → 操作页时钟（保证工作台 ↔ 操作页状态一致，PRD §8.1/§8.2）----
@@ -644,7 +644,7 @@ export function useTicketOperation() {
 
     // 客户全景：按本单手机号从工单库现算；号码查不到时只计本单
     const insight = buildCustomerInsight((t.customerPhone ?? '').replace(/\D/g, ''));
-    const ownRow = { no: t.no, type: t.type as string, createdAt: t.createdAt ?? '', statusText: statusDisplayName(t.nodeStatus) };
+    const ownRow = { no: t.no, type: t.type as string, createdAt: t.createdAt ?? '', statusText: ticketStatusDisplayName(t) };
     const rows = insight?.tickets.length
       ? insight.tickets.map((r) => ({ no: r.no, type: r.type, createdAt: r.createdAt, statusText: r.statusText }))
       : [ownRow];

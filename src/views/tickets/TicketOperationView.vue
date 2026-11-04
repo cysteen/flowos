@@ -77,7 +77,7 @@ import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } fro
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, isCurrentHandler, STATUS_GROUP, WORKBENCH_HANDLER, statusDisplayName, statusStyle, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, isCurrentHandler, STATUS_GROUP, WORKBENCH_HANDLER, statusStyle, ticketStatusDisplayName, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -2317,7 +2317,7 @@ function syncSuccessionCard() {
   const peer = TICKETS.find((x) => x.no === peerNo);
   const cards = tabData.value.relatedTickets;
   if (!peer || cards.some((c) => c.no === peer.no)) return;
-  const statusText = statusDisplayName(peer.nodeStatus);
+  const statusText = ticketStatusDisplayName(peer);
   cards.unshift({
     no: peer.no,
     title: peer.title,
@@ -2347,7 +2347,7 @@ function syncWeakLinkCards() {
     cards.push({
       no: r.no,
       title: peer?.title ?? r.title ?? r.no,
-      status: peer ? statusDisplayName(peer.nodeStatus) : '',
+      status: peer ? ticketStatusDisplayName(peer) : '',
       statusColor: peer ? statusStyle(peer.nodeStatus).color : '#6b7280',
       type: peer?.type ?? '',
       typeColor: peer?.type === '投诉' ? '#EF4444' : '#1A6FFF',

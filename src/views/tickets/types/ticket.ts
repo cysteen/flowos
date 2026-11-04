@@ -323,9 +323,22 @@ export function statusDisplayName(status: string): string {
   return STATUS_DISPLAY_NAME[status as TicketStatus] ?? status;
 }
 
-/** 列表行取状态展示名的收口（与 statusDisplayName 同一张表，调用处不必自己拼） */
+/**
+ * 未认领工单的展示名（【1215】9.2）：自动派单池「排队中」，混合派单、人工派单池「待领取」；
+ * 不属于派单范围的工单按原表。判据在派单侧，由 `stores/dispatch` 建立时登记；只改显示，不改子状态。
+ */
+type UnclaimedLabelResolver = (t: Pick<Ticket, 'no' | 'groupId'>) => string | null;
+let unclaimedLabelResolver: UnclaimedLabelResolver | null = null;
+export function registerUnclaimedStatusLabel(fn: UnclaimedLabelResolver) {
+  unclaimedLabelResolver = fn;
+}
+export function unclaimedDisplayName(t: Pick<Ticket, 'no' | 'groupId'>): string {
+  return unclaimedLabelResolver?.(t) ?? statusDisplayName('未认领');
+}
+
+/** 列表行取状态展示名的收口（调用处不必自己拼）：未认领单按派单方式区分，其余同 statusDisplayName */
 export function ticketStatusDisplayName(t: Ticket): string {
-  return statusDisplayName(t.nodeStatus);
+  return t.nodeStatus === '未认领' && !t.assignee ? unclaimedDisplayName(t) : statusDisplayName(t.nodeStatus);
 }
 
 /**

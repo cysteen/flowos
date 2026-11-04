@@ -1,7 +1,7 @@
 import { matchesSearchText } from '@/views/query/queryCenterSearch';
 import { TICKETS } from '@/mock/tickets';
 import type { Priority, SlaFilterKey, Ticket, TicketType } from '@/views/tickets/types/ticket';
-import { matchSlaFilters, resolveTicketGroupNames } from '@/views/tickets/types/ticket';
+import { matchSlaFilters, resolveTicketGroupNames, ticketStatusDisplayName } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
 import { prototypeDayEnd } from '@/config/prototypeDate';
 import { isFlashTicket } from '@/views/tickets/types/flash';
@@ -237,7 +237,12 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.productName && t.product !== q.productName) return false;
   if (q.poolGroup && t.groupId !== q.poolGroup) return false;
   if (q.customer && !includes(t.customer, q.customer)) return false;
-  if (q.nodeStatus && t.nodeStatus !== q.nodeStatus) return false;
+  // 【1215】筛选结果与显示一致：「排队中」取自动派单池的未认领单，「待领取」（未认领）不含它们
+  if (q.nodeStatus === '排队中') {
+    if (ticketStatusDisplayName(t) !== '排队中') return false;
+  } else if (q.nodeStatus && (t.nodeStatus !== q.nodeStatus || ticketStatusDisplayName(t) === '排队中')) {
+    return false;
+  }
   if (q.assignee) {
     const name = t.assignee ?? '';
     if (!includes(name, q.assignee)) return false;

@@ -9,7 +9,7 @@ import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
+  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle, unclaimedDisplayName,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -20,7 +20,6 @@ import { buildEscalateVerdict, isTicketTerminated } from '../../composables/comp
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
 import OpSupersededBanner from './OpSupersededBanner.vue';
-import DispatchStatusTag from './dispatch/DispatchStatusTag.vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
 
 const props = defineProps<{
@@ -239,7 +238,9 @@ const relations = computed(() => buildTicketRelations(props.detail));
  * 此前这里靠上下文拼名，漏传 transferredToType 就渲染不出「已转咨询 / 已转建议 / 已转商机」，
  * 拆细子状态后该缺陷不复存在。
  */
-const statusText = computed(() => statusDisplayName(props.detail.status));
+const statusText = computed(() => (props.detail.status === '未认领'
+  ? unclaimedDisplayName({ no: props.ticketNo, groupId: props.detail.groupId })
+  : statusDisplayName(props.detail.status)));
 
 /**
  * 状态徽章配色 —— **直接用全仓唯一那套标准** `statusStyle()`（`types/ticket.ts`），
@@ -283,8 +284,6 @@ function priorityHex(p: string): string {
           >
             <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
-          <!-- 【1215】在池工单的派单状态：排队中 -->
-          <DispatchStatusTag v-if="!isSuperseded" :ticket-no="ticketNo" />
           <!--
             类型位徽章 —— **三档互斥，恒只出一枚**：
             · 刷机单只出「刷机单」，不再并排「咨询」（1014）；

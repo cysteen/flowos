@@ -50,8 +50,8 @@ export type DispatchRole =
 export const DISPATCH_ROLES: DispatchRole[] = [
   '二线专员', '小智工单处理人', '二线刷机处理人', '技术支持', '班组长', '客诉专员', '督导', '运营', '管理员',
 ];
-/** 二线处理角色：原处理人只认这些角色（4.3）；技术支持组池另只认技术支持 */
-export const SECOND_LINE_ROLES: DispatchRole[] = ['二线专员', '小智工单处理人', '二线刷机处理人'];
+/** 二线工单处理角色（除技术支持外的全部派单角色）：原处理人只认这些角色（4.3）；技术支持组池另只认技术支持 */
+export const SECOND_LINE_ROLES: DispatchRole[] = DISPATCH_ROLES.filter((r) => r !== '技术支持');
 /** 管理角色：个人开关默认关闭（8.1 / 澄清 #68） */
 export const MANAGEMENT_ROLES: DispatchRole[] = ['班组长', '客诉专员', '督导', '运营', '管理员'];
 

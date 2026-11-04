@@ -27,8 +27,8 @@ function openInsight() {
 
 const activeFilter = ref<CustomerHistoryFilter>('all');
 
-/** 未认领 / 待响应按子状态判；展示名「待领取」同义 */
-const isUnclaimed = (t: CustomerHistoryTicket) => t.status === '未认领' || t.status === '待领取';
+/** 未认领 / 待响应按子状态判；展示名「待领取」「排队中」同义 */
+const isUnclaimed = (t: CustomerHistoryTicket) => t.status === '未认领' || t.status === '待领取' || t.status === '排队中';
 const isUnresponded = (t: CustomerHistoryTicket) => t.status === '待响应';
 
 const FILTERS: { key: CustomerHistoryFilter; label: (d: CustomerHistoryData) => string }[] = [
