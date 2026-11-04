@@ -6,6 +6,7 @@
  * - 只由 `stores/dispatch.ts` 在无缓存（或版本闸失效）时调用一次，结果随 `flowos-dispatch` 落库；改本文件须升 `DISPATCH_CACHE_VERSION`。
  * - 日志里的工单号为历史单（号段 5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
  * - 历史单的派单后首响时刻记在日志 `firstRespAt`（工单库查不到该单时，分派监控按此取首响）。
+ * - 种子值由确定性随机序列生成：新增种子放在 `buildRuleCases`（序列末尾），不扰动前面的数字。
  */
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
@@ -53,10 +54,6 @@ function dayStartOf(ms: number): number {
   const d = new Date(ms);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
-}
-function hm(ms: number): string {
-  const d = new Date(ms);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** 确定性随机（同一天每次生成一致） */
@@ -188,12 +185,14 @@ interface JudgeOpts {
   /** 本次判定的候选数（不传按池成员估算） */
   candidates?: number;
   firstRespAt?: number;
-  /** 派回原处理人 / 为原处理人保留命中的关系（不传按触发：售后转回 → 本单退回，其余 → 同客户近期） */
+  /** 派回原处理人命中的关系（不传按触发：售后转回 → 本单退回，其余 → 同客户近期） */
   relation?: OriginalRelation;
-  /** 因例外不派回的原处理人 */
+  /** 因例外或不在岗不派回的原处理人 */
   excluded?: DispatchLogEntry['originalExcluded'];
-  /** 为原处理人保留：被保留的坐席与保留到期时刻 */
-  reserved?: { name: string; until: number };
+  /** 第一个没人满足的接单条件（派回原处理人时第 ① 步可能没人可接） */
+  gateFailedAt?: GateKey;
+  /** 满额派回原处理人：记超额指派 */
+  overCap?: boolean;
 }
 
 /** 种子日志里原处理人的关系：售后转回、回访打回为本单退回；其余按时刻分到关联单 / 同客户近期（不消耗随机序列） */
@@ -291,6 +290,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       if (o.path === '原处理人') {
         // 派回原处理人不比分，得分照记：组内最高强度按比他多接一张估
         const me = drawCandidate(o.chosen, at, false);
+        if (o.overCap) me.inTransit = capOf(o.chosen);
         chosenScore = scoreOf(me, takeIntensity(me.takes + 1, me.hours, capOf(o.chosen)));
       } else {
         const me = drawCandidate(o.chosen, at, true);
@@ -320,18 +320,20 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       groupMode: o.mode.groupMode,
       effectiveMode: o.mode.effectiveMode,
       path: o.path,
-      ...(o.path === '原处理人' || o.path === '预留' ? { originalRelation: o.relation ?? relationOf(o.trigger, at) } : {}),
+      ...(o.path === '原处理人' ? { originalRelation: o.relation ?? relationOf(o.trigger, at) } : {}),
       ...(o.excluded?.length ? { originalExcluded: o.excluded } : {}),
-      ...(o.path === '留池' || o.path === '预留' ? {} : gateResultOf(t.pool, assignLike ? candidates : 0, capBlocked, o.failReason)),
+      ...(o.path === '留池'
+        // 混合派单走完三步仍没人可接：记第一个没人满足的条件；人工派单、系统异常不走三步
+        ? (o.failReason && o.failReason !== '系统异常' ? { gateFailedAt: QUEUE_FAILED_GATE[o.failReason], candidateCount: 0 } : {})
+        : gateResultOf(t.pool, assignLike ? candidates : 0, capBlocked, o.failReason)),
+      ...(o.gateFailedAt ? { gateFailedAt: o.gateFailedAt } : {}),
       ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
       ...(chosenScore ? { chosenScore } : {}),
       ...(top3 ? { top3 } : {}),
-      ...(o.reserved
-        ? { reserved: { name: o.reserved.name, staffNo: agents.find((a) => a.name === o.reserved!.name)?.staffNo ?? '', until: stamp(o.reserved.until) } }
-        : {}),
       ...(o.failReason ? { failReason: o.failReason } : {}),
       status,
       snapshot: snapshotOf(t, at),
+      ...(o.overCap ? { overCap: '超额指派' as const } : {}),
       ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
     };
     logs.push(e);
@@ -378,6 +380,10 @@ const QUEUE_FAILED_GATE: Partial<Record<DispatchFailReason, GateKey>> = {
   无画像匹配成员: '画像匹配',
   均达个人上限: '个人上限',
 };
+/** 混合派单留池的种子原因：按时刻取，不消耗随机序列 */
+function mixedFailOf(at: number): DispatchFailReason {
+  return QUEUE_REASONS[Math.floor(at / MIN) % QUEUE_REASONS.length];
+}
 
 /* ------------------------------------------------------------------ */
 /* 上线以来（前 13 天）                                                   */
@@ -457,18 +463,18 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const pool = pools.length === 1 ? 'line2' : x < 0.4 ? 'line2' : x < 0.7 ? 'general' : x < 0.88 ? 'hardware' : 'tech';
       const elig = b.eligible(pool);
       const sc = r();
-      // 全局混合派单期间：留池，组内领取
+      // 全局混合派单期间：没人可接的留池，组内领取
       if (ts >= tl.mixedStart && ts < tl.mixedEnd) {
         const t = newTk(pool, ts);
-        b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_MIXED, status: null });
+        b.judge(t, ts, { trigger: '新单', path: '留池', mode: GLOBAL_MIXED, status: null, failReason: mixedFailOf(ts) });
         const who = b.pick(elig);
         const take = ts + b.between(4, 12) * MIN;
         b.manual(t, take, '二线领取', who.name, GLOBAL_MIXED, { target: who.name, firstRespAt: respAt(take) });
         noteTake(who.name, take);
         continue;
       }
-      const reserve = sc >= 0.82 && sc < 0.85;
-      const t = newTk(pool, ts, reserve ? '投诉' : undefined);
+      const complaintBack = sc >= 0.82 && sc < 0.85;
+      const t = newTk(pool, ts, complaintBack ? '投诉' : undefined);
       const trigger: DispatchTrigger = pool === 'tech' ? (r() < 0.6 ? '升级三线' : '调剂到池') : r() < 0.1 ? '售后转回' : '新单';
       const agent = b.pick(elig);
       let assignAt: number | null = null;
@@ -485,11 +491,11 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       } else if (sc < 0.82) {
         assignAt = ts;
         b.judge(t, ts, { trigger, path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts) });
-      } else if (reserve) {
-        const relation = relationOf(trigger, ts);
-        b.judge(t, ts, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation, reserved: { name: agent.name, until: ts + 15 * MIN } });
-        assignAt = ts + b.between(3, 12) * MIN;
-        b.judge(t, assignAt, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(assignAt), relation });
+      } else if (complaintBack) {
+        // 投诉单派回已签入的原处理人
+        b.between(3, 12); // 保持种子序列不变
+        assignAt = ts;
+        b.judge(t, ts, { trigger, path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(ts), relation: relationOf(trigger, ts) });
       } else if (sc < 0.93) {
         // 排队期间被人工接走
         b.judge(t, ts, { trigger, path: '排队', mode: FORMAL, status: '排队中', failReason: b.pick(QUEUE_REASONS) });
@@ -553,10 +559,9 @@ const TODAY_ASSIGNS: [string, string, number][] = [
   ['line2', '林坐席', 0.65], ['general', '刘洋', 0.7], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
   ['line2', '林坐席', 0.8], ['general', '林坐席', 0.92],
 ];
-/** 派出方式：d 加权评分直派、o 原处理人、q 排队后由扫描派出、r 预留后由扫描派回原处理人 */
+/** 派出方式：d 加权评分直派、o 原处理人、q 排队后由扫描派出、r 投诉单派回已签入的原处理人 */
 const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdqrdoq';
 const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12];
-const RESERVE_WAITS = [6, 9];
 /** 今日组内领取：[池, 坐席, 比例] */
 const TODAY_CLAIMS: [string, string, number][] = [
   ['xiaozhi', '谭小智', 0.07], ['edu', '何教支', 0.1], ['edu-flash', '许文静', 0.14], ['line2', '王组长', 0.28],
@@ -599,12 +604,11 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   };
 
   let qi = 0;
-  let ri = 0;
   TODAY_ASSIGNS.forEach(([pool, name, f], i) => {
     const agent = A(name);
     const take = at(f);
     const via = TODAY_VIA[i];
-    const wait = via === 'q' ? QUEUE_WAITS[qi++] : via === 'r' ? RESERVE_WAITS[ri++] : 0;
+    const wait = via === 'q' ? QUEUE_WAITS[qi++] : 0;
     const enter = take - wait * MIN;
     const t = newTk(pool, enter, via === 'r' ? '投诉' : undefined);
     const trigger: DispatchTrigger = pool === 'tech' ? '升级三线' : i % 7 === 3 ? '售后转回' : '新单';
@@ -612,9 +616,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
       b.judge(t, enter, { trigger, path: '排队', mode: FORMAL, status: '排队中', failReason: '均达个人上限' });
       b.judge(t, take, { trigger: '补单扫描', path: '加权评分', mode: FORMAL, chosen: agent, firstRespAt: respAt(take) });
     } else if (via === 'r') {
-      const relation = relationOf(trigger, enter);
-      b.judge(t, enter, { trigger, path: '预留', mode: FORMAL, status: '等原处理人', relation, reserved: { name: agent.name, until: enter + 15 * MIN } });
-      b.judge(t, take, { trigger: '补单扫描', path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation });
+      b.judge(t, take, { trigger, path: '原处理人', mode: FORMAL, chosen: agent, firstRespAt: respAt(take), relation: relationOf(trigger, enter) });
     } else {
       const path: DispatchPath = via === 'o' ? '原处理人' : '加权评分';
       // 今日三次派回原处理人各取一种关系；一次综合打分前，同客户近期的原处理人因上次回访不满意不派回
@@ -631,7 +633,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     }
   });
 
-  // 硬件缺陷组池切为混合派单后：留池，组内领取、指派、调剂到人
+  // 硬件缺陷组池切为混合派单后：没人可接的留池，组内领取、指派、调剂到人
   const hw: [number, ManualAction, string, string | undefined][] = [
     [0.35, '调剂到人', '李四', '李四熟悉学习机返修流程'],
     [0.45, '二线领取', '陈坐席', undefined],
@@ -640,7 +642,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   for (const [f, action, target, reason] of hw) {
     const enter = Math.max(at(f), hwMixedAt + MIN);
     const t = newTk('hardware', enter);
-    b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_MIXED, status: null });
+    b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_MIXED, status: null, failReason: '均达个人上限' });
     const take = enter + b.between(6, 14) * MIN;
     b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_MIXED, { target, reason, firstRespAt: respAt(take) });
     noteTake(target, take);
@@ -682,6 +684,8 @@ interface PoolSeed {
   /** 进入派单时首响剩余（分钟） */
   remain0: number;
   status: DispatchStatus | null;
+  /** 派回已签入的原处理人（关系「同客户近期」）：单子落到他名下 */
+  backTo?: { who: string; candidates: number; gateFailedAt?: GateKey; overCap?: boolean };
 }
 
 const POOL_SEEDS: PoolSeed[] = [
@@ -692,20 +696,22 @@ const POOL_SEEDS: PoolSeed[] = [
   { key: 'L-Q3', pool: 'line2', type: '咨询', priority: 'P1', title: '录音笔转写结果出现乱码', customer: '冯涛',
     snap: SNAPS.line2[2], enteredAgo: 48, remain0: -5, status: '排队中' },
   { key: 'L-R1', pool: 'line2', type: '投诉', priority: 'P1', title: '翻译机识别不准，二次来电投诉', customer: '顾婷',
-    snap: { ...SNAPS.line2[4], ticketType: '投诉' }, enteredAgo: 2, remain0: 300, status: '等原处理人' },
+    snap: { ...SNAPS.line2[4], ticketType: '投诉' }, enteredAgo: 2, remain0: 300, status: null,
+    backTo: { who: '王坐席', candidates: 1, overCap: true } },
   { key: 'G-Q1', pool: 'general', type: '咨询', priority: 'P2', title: '扫地机器人 APP 无法绑定新手机', customer: '韦力',
     snap: SNAPS.general[2], enteredAgo: 12, remain0: 430, status: '排队中' },
   { key: 'G-R1', pool: 'general', type: '投诉', priority: 'P1', title: '门锁安装预约两次爽约投诉', customer: '褚倩',
     snap: { businessType: '智能硬件', ticketType: '投诉', productCategory: '智能硬件', product: '智能门锁 L1', ticketSource: '电话', customerType: '个人用户' },
-    enteredAgo: 1, remain0: 320, status: '等原处理人' },
+    enteredAgo: 1, remain0: 320, status: null, backTo: { who: '刘洋', candidates: 1 } },
   { key: 'G-Q2', pool: 'general', type: '咨询', priority: 'P2', title: '会员续费后权益未到账', customer: '房宇',
     snap: SNAPS.general[1], enteredAgo: 50, remain0: 150, status: '排队中' },
   { key: 'T-Q1', pool: 'tech', type: '咨询', priority: 'P2', title: 'API 回调签名校验失败，需三线排查', customer: '欧阳青',
     snap: SNAPS.tech[0], enteredAgo: 28, remain0: 400, status: '排队中' },
   { key: 'T-R1', pool: 'tech', type: '投诉', priority: 'P1', title: '质检系统单点登录反复失败，投诉响应慢', customer: '程立',
-    snap: { ...SNAPS.tech[1], ticketType: '投诉' }, enteredAgo: 2, remain0: 330, status: '等原处理人' },
+    snap: { ...SNAPS.tech[1], ticketType: '投诉' }, enteredAgo: 2, remain0: 330, status: null,
+    backTo: { who: '陈技支', candidates: 0, gateFailedAt: '画像已配置' } },
   { key: 'H-R1', pool: 'hardware', type: '投诉', priority: 'P1', title: '学习机 T20 返修后再次花屏', customer: '包蕾',
-    snap: SNAPS.hardware[2], enteredAgo: 1, remain0: 350, status: '等原处理人' },
+    snap: SNAPS.hardware[2], enteredAgo: 1, remain0: 350, status: null, backTo: { who: '李四', candidates: 1 } },
   { key: 'H-P1', pool: 'hardware', type: '咨询', priority: 'P2', title: '门锁断网后无法远程开锁', customer: '尹航',
     snap: SNAPS.hardware[1], enteredAgo: 16, remain0: 420, status: null },
 ];
@@ -730,9 +736,6 @@ export const SPECIAL_POOL_ENTERED_AGO_MIN: Record<string, number> = {
   'IFLYZX-20260918-00008': 33,
 };
 
-/** 预留目标（当日在班、当前不可用：满额或小休） */
-const RESERVE_FOR: Record<string, string> = { 'L-R1': '王坐席', 'G-R1': '刘洋', 'T-R1': '陈技支', 'H-R1': '李四' };
-
 function slaTextOf(min: number): { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' } {
   const m = Math.round(Math.abs(min));
   const t = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -740,7 +743,7 @@ function slaTextOf(min: number): { slaText: string; slaSub: string; slaState: 'o
   return { slaText: `${t}:00`, slaSub: min < 60 ? '距超时' : '充足', slaState: min < 60 ? 'soon' : 'ok' };
 }
 
-function buildPool(b: Builder, now: number, rules: PoolRule[]) {
+function buildPool(b: Builder, agents: DispatchAgent[], now: number, rules: PoolRule[], noteTake: (name: string, at: number) => void) {
   const rows: Ticket[] = [];
   const states: Record<string, TicketDispatchState> = {};
   POOL_SEEDS.forEach((s, i) => {
@@ -772,15 +775,19 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       st.designatedPool = true;
       sys('调剂到池', `调剂到池 → ${pl}；原因：需技术支持排查接口问题`, movedAt);
       sys('排队等待', `${pl}排队：无画像相符的成员`, movedAt);
-    } else if (s.status === '等原处理人') {
-      const who = RESERVE_FOR[s.key];
-      const until = enteredAt + 15 * MIN;
+    } else if (s.backTo) {
+      const { who, candidates, gateFailedAt, overCap } = s.backTo;
       const relation: OriginalRelation = '同客户近期';
-      b.judge(t, enteredAt, { trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '预留', mode, status: '等原处理人', relation, reserved: { name: who, until } });
-      Object.assign(st, { reserveFor: who, reserveUntil: until, reserveRelation: relation, reservedOnce: true, complaintTarget: undefined });
-      sys('等原处理人', `等原处理人 ${who}（${relation}），${hm(until)} 到期`, enteredAt);
+      const a = agents.find((x) => x.name === who)!;
+      b.judge(t, enteredAt, {
+        trigger: s.pool === 'tech' ? '升级三线' : '新单', path: '原处理人', mode, chosen: a, relation, candidates, gateFailedAt, overCap,
+      });
+      st.everAssigned = true;
+      noteTake(who, enteredAt);
+      sys('系统派单', `系统派单 → ${who}（原处理人 · ${relation}）`, enteredAt);
+      if (overCap) sys('超额指派', `${who}在途 ${b.capOf(a) + 1} / 上限 ${b.capOf(a)}，记超额指派`, enteredAt);
     } else {
-      b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null });
+      b.judge(t, enteredAt, { trigger: '新单', path: '留池', mode, status: null, failReason: '均达个人上限' });
     }
     st.seq = t.seq;
     // 命中入池规则（按规则名对应 stores/dispatch 种子规则；技术支持组池为指定池、综合处理组池为默认池，无规则）
@@ -796,35 +803,35 @@ function buildPool(b: Builder, now: number, rules: PoolRule[]) {
       product: s.snap.product, productCategory: s.snap.productCategory, businessType: s.snap.businessType,
       ...(s.snap.problem ? (() => { const [l1, l2, l3] = splitProblemPath(s.snap.problem!); return { problemL1: l1, problemL2: l2, problemL3: l3 }; })() : {}),
       ticketSource: s.snap.ticketSource,
-      nodeStatus: '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority,
+      nodeStatus: s.backTo ? '待响应' : '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority,
       ...slaTextOf(remainNow), slaMinutes: remainNow,
       resolveSlaText: '24:00:00', resolveSlaState: 'ok',
-      assignee: null, tab: 'pool', groupId: s.pool, groupNames: [label],
+      assignee: s.backTo?.who ?? null, tab: s.backTo ? 'mine' : 'pool', groupId: s.pool, groupNames: [label],
       createdAt: stamp(created), updatedAt: stamp(enteredAt),
       eventTimeline: tl.map((e, k) => ({ ...e, id: `dispatch-${no}-seed-${k + 1}` })) as TimelineEntry[],
     } as unknown as Ticket);
   });
   rows.push(surveyBadRow(now, b.groupLabel('line2')));
-  rows.push(...reserveHistoryRows(now, b));
+  rows.push(...originalHistoryRows(now, b));
   return { rows, states };
 }
 
-/** 四张等原处理人种子单的客户手机号（与 `buildPool` 同一算法） */
+/** 四张派回原处理人种子单的客户手机号（与 `buildPool` 同一算法） */
 function seedPhoneOf(i: number): string {
   return `1591200${pad(80 + i)}${pad(i * 7 % 100)}`;
 }
 
-/** 等原处理人种子单的上一张工单标题：同一客户 2 天前由原处理人结案（关系「同客户近期」的依据，4.2） */
-const RESERVE_HISTORY_TITLE: Record<string, string> = {
+/** 派回原处理人种子单的上一张工单标题：同一客户 2 天前由原处理人结案（关系「同客户近期」的依据，4.3） */
+const ORIGINAL_HISTORY_TITLE: Record<string, string> = {
   'L-R1': '翻译机识别不准，首次来电反馈',
   'G-R1': '门锁安装预约改期',
   'T-R1': '质检系统单点登录失败排查',
   'H-R1': '学习机 T20 花屏返修登记',
 };
-function reserveHistoryRows(now: number, b: Builder): Ticket[] {
+function originalHistoryRows(now: number, b: Builder): Ticket[] {
   const at = now - 2 * DAY;
   return POOL_SEEDS.flatMap((s, i) => {
-    const title = RESERVE_HISTORY_TITLE[s.key];
+    const title = ORIGINAL_HISTORY_TITLE[s.key];
     if (!title) return [];
     return [{
       id: `dispatch-seed-history-${i + 1}`, no: `IFLYZX-${ymd(at)}-${79100 + i}`, type: '咨询', channel: s.snap.ticketSource === 'IM' ? '在线客服' : '电话',
@@ -834,7 +841,7 @@ function reserveHistoryRows(now: number, b: Builder): Ticket[] {
       ticketSource: s.snap.ticketSource,
       nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
       slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
-      assignee: RESERVE_FOR[s.key], tab: 'done', groupId: s.pool, groupNames: [b.groupLabel(s.pool)],
+      assignee: s.backTo?.who, tab: 'done', groupId: s.pool, groupNames: [b.groupLabel(s.pool)],
       responded: true,
       createdAt: stamp(at - 5 * HOUR), updatedAt: stamp(at),
     } as unknown as Ticket];
@@ -842,8 +849,8 @@ function reserveHistoryRows(now: number, b: Builder): Ticket[] {
 }
 
 /**
- * 原处理人例外「上次回访不满意」的历史单（4.2）：客户庞悦 3 天前由林坐席结案，回访人员服务打 2 分（≤ 3 计服务不满意）。
- * 该客户 7 天内再来新单时，同客户近期的原处理人林坐席不派回、不保留。
+ * 原处理人例外「上次回访不满意」的历史单（4.3）：客户庞悦 3 天前由林坐席结案，回访人员服务打 2 分（≤ 3 计服务不满意）。
+ * 该客户 7 天内再来新单时，同客户近期的原处理人林坐席不派回。
  */
 export const SURVEY_BAD_PHONE = '15912009901';
 function surveyBadRow(now: number, groupLabel: string): Ticket {
@@ -864,6 +871,67 @@ function surveyBadRow(now: number, groupLabel: string): Ticket {
 }
 
 /* ------------------------------------------------------------------ */
+/* 规则演示：混合派单两种结果、原处理人三种在岗情形                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 今日的规则演示日志（工单号段 6xxxx，不在工单库）：放在随机序列末尾，不扰动前面的种子。
+ * 混合派单各池都有综合打分派出与待手动领单；人工派单有待手动领单；
+ * 原处理人已签入但满额（超额指派）、已签入但小休都派回，已签出的转综合打分。
+ */
+function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: number, hwMixedAt: number, noteTake: (name: string, at: number) => void) {
+  const A = (n: string) => agents.find((a) => a.name === n)!;
+  let serial = 60000;
+  const tk = (pool: string, enter: number, snapIdx = 0, type?: '咨询' | '投诉'): Tk => {
+    const base = SNAPS[pool][snapIdx];
+    const snap: Snap = type ? { ...base, ticketType: type } : base;
+    serial += 1;
+    return {
+      no: `${snap.ticketType === '投诉' ? 'IFLYTS' : 'IFLYZX'}-${ymd(now)}-${serial}`,
+      pool, snap, priority: 'P2', remain0: 400, enteredAt: enter, seq: 0,
+    };
+  };
+  // 专属工单线的混合派单池与教育刷机人工派单池
+  const span = now - t0;
+  const at = (f: number) => t0 + f * span;
+  const dispatched = (pool: string, who: string, f: number, mode: Mode, snapIdx = 0) => {
+    const ts = Math.max(at(f), pool === 'hardware' ? hwMixedAt + MIN : t0);
+    b.judge(tk(pool, ts, snapIdx), ts, { trigger: '新单', path: '加权评分', mode, chosen: A(who), candidates: 1 });
+    noteTake(who, ts);
+  };
+  const waiting = (pool: string, f: number, mode: Mode, failReason?: DispatchFailReason, snapIdx = 0) => {
+    const ts = Math.max(at(f), pool === 'hardware' ? hwMixedAt + MIN : t0);
+    b.judge(tk(pool, ts, snapIdx), ts, { trigger: '新单', path: '留池', mode, status: null, ...(failReason ? { failReason } : {}) });
+  };
+  dispatched('hardware', '陈坐席', 0.5, HW_MIXED);
+  dispatched('hardware', '陈坐席', 0.68, HW_MIXED, 1);
+  dispatched('xiaozhi', '谭小智', 0.4, OFF_GROUP);
+  waiting('xiaozhi', 0.76, OFF_GROUP, '组内暂无已就绪成员', 1);
+  dispatched('edu', '何教支', 0.45, OFF_GROUP);
+  waiting('edu', 0.79, OFF_GROUP, '均达个人上限', 1);
+  waiting('edu-flash', 0.42, FLASH_MANUAL);
+  waiting('edu-flash', 0.83, FLASH_MANUAL, undefined, 1);
+
+  // 原处理人：已签入但满额 → 派回，记超额指派
+  const full = at(0.86);
+  b.judge(tk('line2', full, 2), full, {
+    trigger: '新单', path: '原处理人', mode: FORMAL, chosen: A('王坐席'), relation: '同客户近期', candidates: 1, overCap: true, firstRespAt: full + 11 * MIN,
+  });
+  noteTake('王坐席', full);
+  // 原处理人：已签入但小休 → 派回
+  const rest = Math.max(now - 15 * MIN, full);
+  b.judge(tk('general', rest, 1), rest, { trigger: '新单', path: '原处理人', mode: FORMAL, chosen: A('刘洋'), relation: '同客户近期', candidates: 2 });
+  noteTake('刘洋', rest);
+  // 原处理人：已签出 → 转综合打分
+  const left = Math.max(now - 8 * MIN, rest);
+  b.judge(tk('general', left, 4), left, {
+    trigger: '新单', path: '加权评分', mode: FORMAL, chosen: A('林坐席'), candidates: 2,
+    excluded: [{ relation: '同客户近期', name: '徐璐', reason: '不在岗' }],
+  });
+  noteTake('林坐席', left);
+}
+
+/* ------------------------------------------------------------------ */
 /* 审计（近两周）                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -881,9 +949,9 @@ function buildAudits(tl: Timeline, today: { hwMixedAt: number; t0: number; now: 
     ...toMixed.map((id) => a(tl.launchStart, ADMIN, '派单方式', pl(id), '自动派单', '混合派单', '首批只开放二线处理组池自动派单')),
     a(tl.launchStart + MIN, ADMIN, '派单方式', '全局', '人工派单', '自动派单'),
     ...toAuto.map((id) => a(tl.multiStart, ADMIN, '派单方式', pl(id), '混合派单', '自动派单')),
-    a(tl.mixedStart, ADMIN, '派单方式', '全局', '自动派单', '混合派单', '派单服务异常，暂停自动派单，改由组内领取'),
+    a(tl.mixedStart, ADMIN, '派单方式', '全局', '自动派单', '混合派单', '派单服务异常，暂停排队重试，派不出的单由组内领取'),
     a(tl.mixedEnd, ADMIN, '派单方式', '全局', '混合派单', '自动派单'),
-    a(today.hwMixedAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，硬件故障单需人工核对备件后再派'),
+    a(today.hwMixedAt, ADMIN, '派单方式', '硬件缺陷组池', '自动派单', '混合派单', '备件库存系统今日升级，派不出的硬件故障单由组内领取，不再排队重试'),
     a(today.t0 + 0.45 * E, LEADER, '个人上限', '王坐席', '默认 13', '3'),
     a(today.t0 + 0.55 * E, LEADER, '个人上限', '张三', '40', '32'),
   ];
@@ -915,7 +983,8 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
 
   buildHistory(b, agents, tl, r, now, noteTake);
   const { hwMixedAt } = buildToday({ b, agents, now, t0, r, noteTake });
-  const pool = buildPool(b, now, rules);
+  const pool = buildPool(b, agents, now, rules, noteTake);
+  buildRuleCases(b, agents, now, t0, hwMixedAt, noteTake);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
   const agentPatch: Record<string, Partial<DispatchAgent>> = {};
@@ -929,13 +998,13 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
     };
     const away = AWAY[a.name];
     if (OFF_TODAY.includes(a.name)) {
-      Object.assign(p, { signIn: '签出', signedInToday: false, signInSince: null, onDutyMs: 0 });
+      Object.assign(p, { signIn: '签出', signInSince: null, onDutyMs: 0 });
     } else if (NOT_READY.includes(a.name)) {
-      Object.assign(p, { signIn: '未就绪', signedInToday: true, signInSince: null, onDutyMs: 0 });
+      Object.assign(p, { signIn: '未就绪', signInSince: null, onDutyMs: 0 });
     } else if (away) {
-      Object.assign(p, { signIn: away.signIn, signedInToday: true, signInSince: null, onDutyMs: Math.max(0, now - away.agoMin * MIN - t0) });
+      Object.assign(p, { signIn: away.signIn, signInSince: null, onDutyMs: Math.max(0, now - away.agoMin * MIN - t0) });
     } else {
-      Object.assign(p, { signIn: '就绪', signedInToday: true, signInSince: t0, onDutyMs: 0 });
+      Object.assign(p, { signIn: '就绪', signInSince: t0, onDutyMs: 0 });
     }
     agentPatch[a.name] = p;
   }
