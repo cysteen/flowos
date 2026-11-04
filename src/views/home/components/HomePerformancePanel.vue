@@ -68,17 +68,31 @@ watch(rangeKey, (key) => {
   }
 });
 
-/** 自定义区间最长 31 天 */
+/**
+ * 浮层打开期间选择器显示这组正在选的日期：每次打开从空开始，点外面放弃时不会把只改了一端的区间提交出去。
+ * 两端都选完才写入 customRange。
+ */
+type PickingDates = [Dayjs | null, Dayjs | null] | [];
+const pickingDates = ref<PickingDates>([]);
+const pickerValue = computed(() => (pickerOpen.value ? pickingDates.value : customRange.value) as [Dayjs, Dayjs] | undefined);
+watch(pickerOpen, () => { pickingDates.value = []; });
+function onCalendarChange(dates: unknown) {
+  pickingDates.value = (dates ?? []) as PickingDates;
+}
+function onRangeChange(dates: unknown) {
+  if (!dates) return;
+  customRange.value = dates as [Dayjs, Dayjs];
+  // 选中「自定义」时浮层由代码打开，选择器选完终点后会转回起点继续选：两端选完即关闭。放到下一轮，排在它转回起点之后
+  setTimeout(() => { pickerOpen.value = false; }, 0);
+}
+
+/** 自定义区间最长 31 天：以已选的一端为准，前后各 30 天内可选；不晚于今天 */
 function disabledPerfDate(current: Dayjs) {
   if (!current) return false;
   if (current.isAfter(dayjs().endOf('day'))) return true;
-  const picked = customRange.value;
-  if (picked?.[0] && !picked[1]) {
-    const start = picked[0];
-    const min = start.subtract(30, 'day');
-    const max = start.add(30, 'day');
-    return current.isBefore(min, 'day') || current.isAfter(max, 'day');
-  }
+  const [start, end] = pickingDates.value;
+  if (start && Math.abs(current.diff(start, 'day')) > 30) return true;
+  if (end && Math.abs(current.diff(end, 'day')) > 30) return true;
   return false;
 }
 
@@ -124,8 +138,10 @@ function onDrill(card: HomePerformanceCard, e: Event) {
           />
           <a-range-picker
             v-if="rangeKey === 'custom'"
-            v-model:value="customRange"
+            :value="pickerValue"
             v-model:open="pickerOpen"
+            @calendar-change="onCalendarChange"
+            @change="onRangeChange"
             size="small"
             :allow-clear="false"
             :disabled-date="disabledPerfDate"
