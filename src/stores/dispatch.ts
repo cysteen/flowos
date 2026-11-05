@@ -57,7 +57,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 35;
+export const DISPATCH_CACHE_VERSION = 36;
 const LOG_LIMIT = 2000;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -457,7 +457,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   let stallNoticed: Record<string, boolean> = cached?.stallNoticed ?? {};
   const errorNoticed = new Set<string>();
 
-  /** 无缓存时铺运行中种子：近 30 日派单日志、近两周审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
+  /** 无缓存时铺运行中种子：近 30 日派单日志、上线以来审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
   const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value, rules.value);
   if (demo) {
     for (const a of agents.value) Object.assign(a, demo.agentPatch[a.name] ?? {});
