@@ -409,7 +409,7 @@ watch(
       activeDraftId.value = null;
     }
     void nextTick(() => {
-      if (isXiaozhiType.value) applyXiaozhiFrontlineDefault(!draft);
+      if (isXiaozhiType.value && !draft) applyXiaozhiFrontlineDefault(true);
     });
   },
 );

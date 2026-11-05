@@ -504,7 +504,11 @@ export function useCreateTicketForm(
   /** 换客户即重新按新客户的域账号对齐（没登记的客户 → 清空，不留上一位客户的账号） */
   watch(
     () => form.customer?.id ?? '',
-    () => { applyXiaozhiFrontlineDefault(true); },
+    () => {
+      // 预填在灌值时已对齐；草稿里的账号（含手改值和留空）以保存时为准
+      if (applyingPrefill) return;
+      applyXiaozhiFrontlineDefault(true);
+    },
   );
 
   // 改动小智信息：已补上的字段收起必填提示
@@ -767,7 +771,8 @@ export function useCreateTicketForm(
     applyingPrefill = true;
     try {
       reset();
-      Object.assign(form, snapshot);
+      // 深拷贝：表单上的改动不能写回草稿箱里的那份记录
+      Object.assign(form, JSON.parse(JSON.stringify(snapshot)));
       clearUnavailableSelection();
     } finally {
       void nextTick(() => { applyingPrefill = false; });
