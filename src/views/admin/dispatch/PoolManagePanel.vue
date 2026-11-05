@@ -243,13 +243,12 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           </div>
           <div class="pm-cond" :title="rulesOf(p.id)"><em>入池</em>{{ rulesOf(p.id) }}</div>
           <div class="pm-stats">
-            <div class="pm-stat pm-stat-lead">
-              <span class="pm-stat-val is-calm">{{ pendingOf(p.id) }}</span>
-              <span class="pm-stat-lb">池内待派</span>
-            </div>
             <div class="pm-stat">
-              <span class="pm-stat-val" :class="slaAlertOf(p.id) > 0 ? 'is-bad' : 'is-zero'">{{ slaAlertOf(p.id) }}</span>
-              <span class="pm-stat-lb">SLA 临期/超期</span>
+              <div class="pm-lead-line">
+                <span class="pm-stat-val is-calm">{{ pendingOf(p.id) }}</span>
+                <span class="pm-lead-sla" :class="{ 'is-bad': slaAlertOf(p.id) > 0 }">其中 SLA 临期/超期 <b>{{ slaAlertOf(p.id) }}</b></span>
+              </div>
+              <span class="pm-stat-lb">池内待派</span>
             </div>
             <div class="pm-stat">
               <span class="pm-stat-val">{{ p.memberCount }}</span>
@@ -447,17 +446,18 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 .pm-cond { font-size: 11px; color: #6b7280; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-cond em { font-style: normal; color: #9ca3af; margin-right: 6px; }
 .pm-stats {
-  display: grid; grid-template-columns: repeat(3, auto) minmax(63px, auto); justify-content: space-between; gap: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(46px, auto) minmax(80px, auto); gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
 }
 .pm-stat { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 0; padding-right: 4px; }
 .pm-stat + .pm-stat { padding-left: 6px; border-left: 1px solid #f2f3f5; }
-.pm-stat-val { font-size: 20px; font-weight: 700; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.pm-stat-lead .pm-stat-val { font-size: 26px; }
+.pm-stat-val { font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .pm-stat-val.is-calm { color: #1a6fff; }
 .pm-stat-val.is-warn { color: #ff7d00; }
-.pm-stat-val.is-bad { color: #f53f3f; }
-.pm-stat-val.is-zero { color: #c9cdd4; }
+.pm-lead-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; }
+.pm-lead-sla { font-size: 11px; color: #86909c; line-height: 1.3; white-space: nowrap; }
+.pm-lead-sla b { font-weight: 600; }
+.pm-lead-sla.is-bad { color: #f53f3f; }
 .pm-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
 .pm-sub { font-size: 11px; color: #6b7280; line-height: 1.4; padding-top: 4px; }
 .pm-sub .muted { color: #9ca3af; }

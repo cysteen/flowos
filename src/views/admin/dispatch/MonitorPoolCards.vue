@@ -121,13 +121,12 @@ const recordCols = [
             <span v-if="c.poolMode !== c.effectiveMode" class="pc-tag">本池 {{ c.poolMode }}</span>
           </div>
           <div class="pc-stats">
-            <div class="pc-stat pc-stat-lead">
-              <span class="pc-stat-val is-calm">{{ c.pending }}</span>
-              <span class="pc-stat-lb">池内待派</span>
-            </div>
             <div class="pc-stat">
-              <span class="pc-stat-val" :class="c.slaAlert > 0 ? 'is-bad' : 'is-zero'">{{ c.slaAlert }}</span>
-              <span class="pc-stat-lb">SLA 临期/超期</span>
+              <div class="pc-lead-line">
+                <span class="pc-stat-val is-calm">{{ c.pending }}</span>
+                <span class="pc-lead-sla" :class="{ 'is-bad': c.slaAlert > 0 }">其中 SLA 临期/超期 <b>{{ c.slaAlert }}</b></span>
+              </div>
+              <span class="pc-stat-lb">池内待派</span>
             </div>
             <div class="pc-stat">
               <span class="pc-stat-val">{{ c.memberCount }}</span>
@@ -206,20 +205,21 @@ const recordCols = [
   background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6; font-variant-numeric: tabular-nums;
 }
 .pc-stats {
-  display: grid; grid-template-columns: repeat(3, auto) minmax(63px, auto); justify-content: space-between; gap: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(46px, auto) minmax(80px, auto); gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
 }
 .pc-stat { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 0; padding-right: 4px; }
 .pc-stat + .pc-stat { padding-left: 6px; border-left: 1px solid #f2f3f5; }
 .pc-stat-val {
-  font-size: 20px; font-weight: 700; color: #111827; line-height: 1.1;
+  font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.pc-stat-lead .pc-stat-val { font-size: 26px; }
 .pc-stat-val.is-calm { color: #1a6fff; }
-.pc-stat-val.is-bad { color: #f53f3f; }
-.pc-stat-val.is-zero { color: #c9cdd4; }
 .pc-stat-val.is-warn { color: #ff7d00; }
+.pc-lead-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; }
+.pc-lead-sla { font-size: 11px; color: #86909c; line-height: 1.3; white-space: nowrap; }
+.pc-lead-sla b { font-weight: 600; }
+.pc-lead-sla.is-bad { color: #f53f3f; }
 .pc-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>
