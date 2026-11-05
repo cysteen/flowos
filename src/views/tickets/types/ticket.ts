@@ -1868,6 +1868,14 @@ function ticketSlaClocks(t: Ticket): TicketSlaClocks {
     : { stopped: false, first: t.slaState, solve: t.resolveSlaState ?? null, firstBreached };
 }
 
+/**
+ * 首响钟此刻的状态（与「首响临期 / 首响超时」筛选同一份两钟判定）。
+ * 已首响、挂起、终态、未起算的单没有在走的首响钟，返回 null。
+ */
+export function firstRespClockState(t: Ticket): SlaState | null {
+  return ticketSlaClocks(t).first;
+}
+
 export function matchSlaFilter(t: Ticket, key: SlaFilterKey): boolean {
   const c = ticketSlaClocks(t);
   if (c.stopped) return false;

@@ -9,7 +9,7 @@ import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { stdPagination } from '@/config/adminUi';
 import type { DispatchAuditEntry } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
+import { poolSlaAlertOf, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 
@@ -47,12 +47,16 @@ const cards = computed(() => {
     ? enabledPools.value.filter((p) => props.poolIds!.includes(p.id))
     : [...enabledPools.value].sort((a, b) => b.memberCount - a.memberCount).slice(0, POOL_CARD_LIMIT);
   return scoped
-    .map((p) => ({
-      ...p,
-      configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
+    .map((p) => {
       /** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态 */
-      pending: poolTicketsOfPool(p.id, reactiveTickets).length,
-    }));
+      const list = poolTicketsOfPool(p.id, reactiveTickets);
+      return {
+        ...p,
+        configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
+        pending: list.length,
+        slaAlert: poolSlaAlertOf(list).total,
+      };
+    });
 });
 
 const recordOpen = ref(false);
@@ -90,13 +94,12 @@ const recordCols = [
         v-for="c in cards"
         :key="c.id"
         class="pc"
-        :class="[`pc--${MODE_TONE[c.effectiveMode]}`, { 'pc--hot': c.pending > 0 }]"
+        :class="{ 'pc--sla': c.slaAlert > 0 }"
       >
-        <div class="pc-accent" aria-hidden="true" />
         <div class="pc-inner">
           <div class="pc-hd">
             <span class="pc-name" :title="c.poolLabel">{{ c.poolLabel }}</span>
-            <span class="pc-mode" :class="`is-${MODE_TONE[c.effectiveMode]}`">{{ c.effectiveMode }}</span>
+            <span class="pc-mode">{{ c.effectiveMode }}</span>
             <a-tooltip v-bind="STD_TIP_PROPS" :title="globalMode === '人工派单' ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn pc-op" :disabled="globalMode === '人工派单'" @click="openMode(c.id)">
                 <template #icon><SwapOutlined /></template>
@@ -118,8 +121,12 @@ const recordCols = [
           </div>
           <div class="pc-stats">
             <div class="pc-stat pc-stat-lead">
-              <span class="pc-stat-val" :class="c.pending ? 'is-warn' : 'is-calm'">{{ c.pending }}</span>
+              <span class="pc-stat-val">{{ c.pending }}</span>
               <span class="pc-stat-lb">池内待派</span>
+            </div>
+            <div class="pc-stat">
+              <span class="pc-stat-val" :class="{ 'is-bad': c.slaAlert > 0 }">{{ c.slaAlert }}</span>
+              <span class="pc-stat-lb">SLA 临期/超期</span>
             </div>
             <div class="pc-stat">
               <span class="pc-stat-val">{{ c.memberCount }}</span>
@@ -168,10 +175,7 @@ const recordCols = [
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .pc:hover { border-color: #e5e7eb; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }
-.pc--hot { border-color: #fed7aa; }
-.pc-accent { height: 3px; background: #10b981; }
-.pc--orange .pc-accent { background: #ff7d00; }
-.pc--red .pc-accent { background: #f53f3f; }
+.pc--sla, .pc--sla:hover { border-color: #f87171; }
 .pc-inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .pc-hd { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pc-name {
@@ -182,9 +186,6 @@ const recordCols = [
   flex: none; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 4px;
   background: #f2f3f5; color: #4e5969;
 }
-.pc-mode.is-green { background: #ecfdf5; color: #047857; }
-.pc-mode.is-orange { background: #fff7ed; color: #c2410c; }
-.pc-mode.is-red { background: #fef2f2; color: #dc2626; }
 .pc-op { flex: none; margin-right: -4px; }
 .pc-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .pc-tag {
@@ -202,17 +203,16 @@ const recordCols = [
   background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6; font-variant-numeric: tabular-nums;
 }
 .pc-stats {
-  display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
+  display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
 }
-.pc-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 8px; }
-.pc-stat + .pc-stat { padding-left: 12px; border-left: 1px solid #f2f3f5; }
-.pc-stat-lead { padding-right: 12px; }
+.pc-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 4px; }
+.pc-stat + .pc-stat { padding-left: 6px; border-left: 1px solid #f2f3f5; }
 .pc-stat-val {
-  font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1;
+  font-size: 22px; font-weight: 700; color: #111827; line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.pc-stat-val.is-calm { color: #1a6fff; }
+.pc-stat-val.is-bad { color: #f53f3f; }
 .pc-stat-val.is-warn { color: #ff7d00; }
 .pc-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }

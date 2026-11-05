@@ -6,7 +6,7 @@
  * 等待时长口径与池列表「等待时长」列一致：自进入派单起算；未进入派单的取最近更新时间（无则取创建时间）。
  */
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
+import { firstRespClockState, slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DISPATCH_STATUS_ORDER, waitMinutesOf } from '@/views/tickets/composables/dispatchUi';
 
@@ -32,6 +32,14 @@ export function poolTicketsOfPool(poolId: string | null | undefined, tickets: Ti
   if (!poolId) return [];
   const dispatch = useDispatchStore();
   return sortPool(tickets.filter((t) => isPending(t) && dispatch.poolIdOf(t) === poolId));
+}
+
+/** 一组池内工单里首响临期、已超时的张数（工单池卡片「SLA 临期/超期」） */
+export function poolSlaAlertOf(tickets: Ticket[]): { soon: number; overdue: number; total: number } {
+  const states = tickets.map(firstRespClockState);
+  const soon = states.filter((s) => s === 'soon').length;
+  const overdue = states.filter((s) => s === 'overdue').length;
+  return { soon, overdue, total: soon + overdue };
 }
 
 /** 单张池内工单等待时长（分钟），与池列表「等待时长」列同口径 */

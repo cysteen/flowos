@@ -20,7 +20,7 @@ import MonitorTrendChart from './MonitorTrendChart.vue';
 import MonitorInflowDonut from './MonitorInflowDonut.vue';
 import MonitorOutflowDonut from './MonitorOutflowDonut.vue';
 import { buildPoolFlow, type RangeKey } from './dispatchMetrics';
-import { maxPoolWaitMinutes, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
+import { maxPoolWaitMinutes, poolSlaAlertOf, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import { waitText as poolWaitText } from '@/views/tickets/composables/dispatchUi';
 import './dispatchTheme.css';
 
@@ -36,11 +36,12 @@ const pendingStats = computed(() => {
   const now = Date.now();
   return new Map(allRows.value.map((p) => {
     const list = poolTicketsOfPool(p.id, reactiveTickets);
-    return [p.id, { count: list.length, maxWait: maxPoolWaitMinutes(list, now) ?? 0 }];
+    return [p.id, { count: list.length, maxWait: maxPoolWaitMinutes(list, now) ?? 0, slaAlert: poolSlaAlertOf(list).total }];
   }));
 });
 const pendingOf = (id: string) => pendingStats.value.get(id)?.count ?? 0;
 const pendingWaitOf = (id: string) => pendingStats.value.get(id)?.maxWait ?? 0;
+const slaAlertOf = (id: string) => pendingStats.value.get(id)?.slaAlert ?? 0;
 
 const allRows = computed(() => {
   void clock.value;
@@ -111,7 +112,6 @@ function confirmToggle() {
   if (r.message) message.success(r.message);
   if (!toggleTo.value && detailId.value === toggleId.value) detailId.value = null;
 }
-const backlogOf = (p: { queued: number }) => p.queued;
 /** 指向本池的已启用入池规则（按优先级）；默认池另含「未命中任何规则」 */
 function rulesOf(poolId: string): string {
   const names = [...store.rules].filter((r) => r.enabled && r.poolId === poolId).sort((a, b) => a.priority - b.priority).map((r) => r.name);
@@ -219,13 +219,12 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
         :key="p.id"
         class="pm-card"
         :data-pool-id="p.id"
-        :class="[`pm--${MODE_TONE[p.effectiveMode]}`, { 'pm--hot': backlogOf(p) > 0, 'pm--focus': focusPoolId === p.id }]"
+        :class="{ 'pm--sla': slaAlertOf(p.id) > 0, 'pm--focus': focusPoolId === p.id }"
       >
-        <div class="pm-accent" aria-hidden="true" />
         <div class="pm-inner">
           <div class="pm-card-hd">
             <span class="pm-name" :title="p.poolLabel">{{ p.poolLabel }}</span>
-            <span class="pm-mode" :class="`is-${MODE_TONE[p.effectiveMode]}`">{{ p.effectiveMode }}</span>
+            <span class="pm-mode">{{ p.effectiveMode }}</span>
             <a-tooltip v-bind="STD_TIP_PROPS" :title="globalStopped ? '全局为人工派单，本池派单方式不可切换' : '切换派单方式'">
               <a-button type="text" size="small" class="dx-icon-btn" :disabled="globalStopped" @click="openMode(p.id)">
                 <template #icon><SwapOutlined /></template>
@@ -245,8 +244,12 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           <div class="pm-cond" :title="rulesOf(p.id)"><em>入池</em>{{ rulesOf(p.id) }}</div>
           <div class="pm-stats">
             <div class="pm-stat pm-stat-lead">
-              <span class="pm-stat-val" :class="backlogOf(p) ? 'is-warn' : 'is-calm'">{{ pendingOf(p.id) }}</span>
+              <span class="pm-stat-val">{{ pendingOf(p.id) }}</span>
               <span class="pm-stat-lb">池内待派</span>
+            </div>
+            <div class="pm-stat">
+              <span class="pm-stat-val" :class="{ 'is-bad': slaAlertOf(p.id) > 0 }">{{ slaAlertOf(p.id) }}</span>
+              <span class="pm-stat-lb">SLA 临期/超期</span>
             </div>
             <div class="pm-stat">
               <span class="pm-stat-val">{{ p.memberCount }}</span>
@@ -413,11 +416,8 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .pm-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }
-.pm--hot { border-color: #fed7aa; }
+.pm--sla, .pm--sla:hover { border-color: #f87171; }
 .pm-card.pm--focus { border-color: #1a6fff; box-shadow: 0 0 0 3px rgba(26, 111, 255, 0.15); }
-.pm-accent { height: 3px; background: #10b981; }
-.pm--orange .pm-accent { background: #ff7d00; }
-.pm--red .pm-accent { background: #f53f3f; }
 .pm-inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pm-card-hd { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .pm-name {
@@ -428,9 +428,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
   flex: none; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 4px;
   background: #f2f3f5; color: #4e5969;
 }
-.pm-mode.is-green { background: #ecfdf5; color: #047857; }
-.pm-mode.is-orange { background: #fff7ed; color: #c2410c; }
-.pm-mode.is-red { background: #fef2f2; color: #dc2626; }
 .pm-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -2px 0; }
 .pm-row .pm-cond { flex: 1; min-width: 0; }
 .pm-ops { flex: none; display: inline-flex; align-items: center; gap: 2px; margin-left: auto; margin-right: -4px; }
@@ -447,16 +444,14 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 .pm-cond { font-size: 11px; color: #6b7280; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-cond em { font-style: normal; color: #9ca3af; margin-right: 6px; }
 .pm-stats {
-  display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
+  display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
 }
-.pm-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 8px; }
-.pm-stat + .pm-stat { padding-left: 12px; border-left: 1px solid #f2f3f5; }
-.pm-stat-lead { padding-right: 12px; }
-.pm-stat-val { font-size: 26px; font-weight: 700; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.pm-stat-val.is-calm { color: #1a6fff; }
-.pm-stat-val.is-warn { color: #ff7d00; }
-.pm-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; }
+.pm-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 4px; }
+.pm-stat + .pm-stat { padding-left: 6px; border-left: 1px solid #f2f3f5; }
+.pm-stat-val { font-size: 22px; font-weight: 700; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pm-stat-val.is-bad { color: #f53f3f; }
+.pm-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
 .pm-sub { font-size: 11px; color: #6b7280; line-height: 1.4; padding-top: 4px; }
 .pm-sub .muted { color: #9ca3af; }
 .pm-sub-st { min-width: 0; }
