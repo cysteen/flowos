@@ -78,6 +78,7 @@ function openResult(t: DelegateTask) {
 </script>
 
 <template>
+  <a-config-provider :auto-insert-space-in-button="false">
   <div class="dt-panel">
     <div class="dt-head">
       <span class="dt-title"><i class="dt-bar" />{{ isDelegatee ? '委派给我的任务' : '委派任务' }}</span>
@@ -183,6 +184,7 @@ function openResult(t: DelegateTask) {
       </table>
     </OpActionModal>
   </div>
+  </a-config-provider>
 </template>
 
 <style scoped>
