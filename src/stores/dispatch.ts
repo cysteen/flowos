@@ -44,7 +44,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 自动派单与混合派单都走完三步，区别只在派不出时：自动派单留池排队、每 5 分钟重试，不可领取；混合派单留池待领取，无派单状态、不再重试。
  * 第 ② 步不依赖第 ① 步：原处理人只看是否已签入，坐席状态与个人上限不挡，满额派回记超额指派。
  * 派单方式（全局 / 各池）与个人开关全部由人手动切换，系统不自动切换。
- * 【两个判定时点】进池当场判定一次（新单、调剂到池、升级三线、售后转回、回访打回、池停用重新入池、重新进池）；
+ * 【两个判定时点】进池当场判定一次（新单、调剂到池、升级三线、售后转回、回访打回、重新进池）；
  * 自动派单池其余一律等 `scanPools()`，每 5 分钟扫一轮。坐席点就绪、名额释放、开个人开关、改画像、改上限、切派单方式都不立即派。
  * 【每轮扫描】
  * ① 取启用的自动派单池内未领取的单（含排队中、无派单状态的单）；混合派单池、人工派单池不取。
@@ -56,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 32;
+export const DISPATCH_CACHE_VERSION = 33;
 const LOG_LIMIT = 2000;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -294,7 +294,7 @@ function normalizeLogs(raw: DispatchLogEntry[]): DispatchLogEntry[] {
 }
 
 /** 进池事件：混合派单、人工派单下进池且未派出发待领取提醒（重新进池不重发） */
-const POOL_ENTRY_TRIGGERS: DispatchTrigger[] = ['新单', '调剂到池', '升级三线', '售后转回', '回访打回', '池停用'];
+const POOL_ENTRY_TRIGGERS: DispatchTrigger[] = ['新单', '调剂到池', '升级三线', '售后转回', '回访打回'];
 
 /**
  * 专属工单的到组通知（11.6：刷机、退费、小智到组通知同待领取提醒口径）。
@@ -1187,7 +1187,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 从未进入过派单、由扫描纳入的单：归属池取所在池
     const scanned = trigger === '补单扫描';
     const fresh = trigger === '新单' || trigger === '调剂到池' || trigger === '升级三线' || trigger === '售后转回' || trigger === '回访打回'
-      || trigger === '池停用' || trigger === '重新进池' || resumed;
+      || trigger === '重新进池' || resumed;
     const prev = ticketStates.value[t.no];
     if (prev && !fresh && isPoolEnabled(prev.poolId)) {
       if (opts.complaintTarget) prev.complaintTarget = opts.complaintTarget;
@@ -1198,7 +1198,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     let ruleId: string | null = null;
     let designated = !!opts.poolId && poolId === opts.poolId && (trigger === '调剂到池' || trigger === '升级三线');
     if (!poolId) {
-      // 售后转回 / 回访打回 / 切为自动派单 / 扫描：回本单所在池（启用中，已停用按入池规则）；新单、池停用重新入池按入池规则
+      // 售后转回 / 回访打回 / 切为自动派单 / 扫描：回本单所在池（启用中，已停用按入池规则）；新单按入池规则
       const cur = trigger === '售后转回' || trigger === '回访打回' || resumed || scanned ? poolIdOf(t) : undefined;
       if (cur && isPoolEnabled(cur)) poolId = cur;
       else {
@@ -1355,7 +1355,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       notifyAssigned(t, st, actualAssign);
       st.status = null;
     } else if (!actualAssign && POOL_ENTRY_TRIGGERS.includes(trigger) && effectiveMode !== '自动派单' && !poolOf(st.poolId)?.isDefault) {
-      // 混合派单、人工派单：进池且未派出即发（新单、调剂到池、升级三线、售后转回、回访打回、池停用重新入池），进入默认池不发；
+      // 混合派单、人工派单：进池且未派出即发（新单、调剂到池、升级三线、售后转回、回访打回），进入默认池不发；
       // 刷机、退费、小智单发各自的到组通知；重新进池的单不重发
       notifyPoolArrival(t, st.poolId);
     }
@@ -1766,24 +1766,29 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { ok: true, message: '已保存' };
   }
 
-  /** 停用影响（二次确认文案用）：指向该池的启用中入池规则数、池内未领取工单数 */
-  function poolDisableImpact(id: string): { rules: number; tickets: number } {
-    return {
-      rules: rules.value.filter((r) => r.poolId === id && r.enabled).length,
-      tickets: pendingTicketsOf(id).length,
-    };
+  /** 不可停用的原因（2.4）：固定落点池 → 有启用中入池规则指向 → 池内有未领取工单；可停用返回空串 */
+  function poolDisableTip(id: string): string {
+    if (isProtectedPool(id)) return PROTECTED_POOL_TIP[id];
+    const ruleCount = rules.value.filter((r) => r.poolId === id && r.enabled).length;
+    if (ruleCount) return `还有 ${ruleCount} 条入池规则指向该池，请先调整`;
+    const ticketCount = pendingTicketsOf(id).length;
+    return ticketCount ? `池内还有 ${ticketCount} 张未领取工单，领完后可停用` : '';
   }
 
   /**
-   * 停用 / 启用工单池（14.3）。固定落点池（默认池、技术支持、小智、教育刷机、教育支持）不可停用。
-   * 停用：指向该池的入池规则自动停用；池内未领取工单按入池规则重新确定归属池并交引擎判定；已派出的工单保留在处理人名下。
+   * 停用 / 启用工单池（14.3）。
+   * 停用：须满足 `poolDisableTip` 的前提；已派出的工单保留在处理人名下。
    * 启用：入池规则不自动恢复。
    */
-  function setPoolEnabled(id: string, enabled: boolean, operator?: string): OccupyResult & { moved?: number; rulesOff?: number } {
+  function setPoolEnabled(id: string, enabled: boolean, operator?: string): OccupyResult {
     const p = poolOf(id);
     if (!p) return { ok: false, message: '' };
     if ((p.status === '启用') === enabled) return { ok: true, message: '' };
-    if (!enabled && isProtectedPool(id)) return { ok: false, message: PROTECTED_POOL_TIP[id] };
+    if (!enabled) {
+      ensureAllSpecialServices();
+      const tip = poolDisableTip(id);
+      if (tip) return { ok: false, message: tip };
+    }
     const op = operator ?? operatorName();
     const at = stamp();
     if (enabled) {
@@ -1797,34 +1802,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
       persist();
       return { ok: true, message: '已启用' };
     }
-    // 先停规则、再停池，重新入池时不再命中本池
-    let rulesOff = 0;
-    rules.value = rules.value.map((r) => {
-      if (r.poolId !== id || !r.enabled) return r;
-      rulesOff += 1;
-      audit('入池规则', r.name, `${r.priority} · ${p.name} · 启用`, `${r.priority} · ${p.name} · 停用`, op, '工单池停用');
-      return { ...r, enabled: false, updatedBy: op, updatedAt: at };
-    });
     audit('工单池', p.name, '启用', '停用', op);
     resumePoolIds.delete(id);
     p.status = '停用';
     p.updatedBy = op;
     p.updatedAt = at;
-    ensureAllSpecialServices();
-    const pending = pendingTicketsOf(id);
-    clearStatuses([id]);
-    let moved = 0;
-    for (const raw of pending) {
-      const t = reactive(raw) as Ticket;
-      // 履历先记重新入池，再由引擎判定（与 ensureState 同一入池规则判定）
-      touchRow(t);
-      writeTimeline(t, '重新入池', `${p.name}已停用，按入池规则重新入池 → ${poolLabel(resolvePool(t).poolId)}`, Date.now());
-      if (run(t, '池停用', {}, true)) moved += 1;
-    }
-    notifyAdmins('工单池停用', [id],
-      `${op}已停用${p.name}，指向该池的 ${rulesOff} 条入池规则已停用，池内 ${moved} 张未领取工单已按入池规则重新入池。`);
+    notifyAdmins('工单池停用', [id], `${op}已停用${p.name}。`);
     persist();
-    return { ok: true, message: '已停用', moved, rulesOff };
+    return { ok: true, message: '已停用' };
   }
 
   /* ---------------- 入池规则 CRUD（3.3） ---------------- */
@@ -2068,7 +2053,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (weightKeys.some((k) => !intIn(next.scoreWeights[k], 0, 100))) return { ok: false, message: '请输入 0–100 的整数' };
     const weightSum = weightKeys.reduce((s, k) => s + next.scoreWeights[k], 0);
     if (weightSum !== 100) return { ok: false, message: `三项权重之和须为 100，当前为 ${weightSum}` };
-    if (!next.originalChain.some((r) => r.enabled)) return { ok: false, message: '请至少启用一种原处理人关系' };
+    if (!next.originalChain.some((r) => r.enabled)) return { ok: false, message: '请至少启用一种历史处理人关系' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
     // 全局派单方式走 setGlobalMode（带审计与重派），不随派单策略保存
@@ -2197,7 +2182,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     // 派单方式
     setGlobalMode, setPoolMode, onDutyHoursOf,
     // 工单池
-    validatePoolName, addPool, renamePool, poolDisableImpact, setPoolEnabled,
+    validatePoolName, addPool, renamePool, poolDisableTip, setPoolEnabled,
     // 入池规则
     addPoolRule, updatePoolRule, setPoolRuleEnabled, removePoolRule,
     // 坐席

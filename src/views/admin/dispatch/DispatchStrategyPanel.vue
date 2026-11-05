@@ -58,7 +58,7 @@ function saveOut() {
     const e = rangeError(v, a, b);
     if (e) { message.error(e); return; }
   }
-  if (!out.originalChain.some((x) => x.enabled)) { message.error('请至少启用一种原处理人关系'); return; }
+  if (!out.originalChain.some((x) => x.enabled)) { message.error('请至少启用一种历史处理人关系'); return; }
   const weightSum = SCORE_DIMENSION_ROWS.reduce((s, x) => s + out.scoreWeights[x.key], 0);
   if (weightSum !== 100) { message.error(`三项权重之和须为 100，当前为 ${weightSum}`); return; }
   const r = store.updateConfig(JSON.parse(JSON.stringify(out)) as Partial<DispatchConfig>);
@@ -150,13 +150,13 @@ watch(() => store.config, (c) => {
       <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">2</span>
-          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div></div>
+          <div class="cs-ti"><div class="cs-name">优先派给历史处理人</div></div>
         </div>
         <div class="cs-bd">
         <div class="oc-wrap">
           <table class="oc-table">
             <thead>
-              <tr><th class="oc-seq">次序</th><th>关系</th><th>原处理人</th><th>有效期</th><th class="oc-on">启用</th></tr>
+              <tr><th class="oc-seq">次序</th><th>关系</th><th>历史处理人</th><th>有效期</th><th class="oc-on">启用</th></tr>
             </thead>
             <tbody>
               <tr v-for="(row, i) in out.originalChain" :key="row.relation" :class="{ off: !row.enabled }">

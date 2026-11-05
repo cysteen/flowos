@@ -20,8 +20,8 @@ export const GATE_LABEL: Record<GateKey, string> = {
 
 /** 判定路径（13.1） */
 export const PATH_LABEL: Record<DispatchPath, string> = {
-  直派规则: '按规则直派',
-  原处理人: '派回原处理人',
+  直派规则: '指定人派单',
+  原处理人: '历史处理人派单',
   加权评分: '综合打分',
   排队: '排队等待',
   留池: '留在工单池',
@@ -46,19 +46,19 @@ export const SCORE_DIMENSION_LABEL = Object.fromEntries(SCORE_DIMENSION_ROWS.map
 /** 同分时的选人次序（4.4） */
 export const SCORE_TIE_RULE = '同分时：距上次分配时间长的优先，其次在途工单少的优先，再次工号小的优先。';
 
-/** 原处理人不派回的情况（4.3） */
+/** 不优先派给历史处理人的情况（4.3） */
 export const EXCLUSION_LABEL: Record<OriginalExclusion, string> = {
-  被投诉人: '被投诉人是原处理人',
-  不在归属组或已停用: '原处理人不在归属组或已停用',
+  被投诉人: '被投诉人是历史处理人',
+  不在归属组或已停用: '历史处理人不在归属组或已停用',
   上次回访不满意: '上次回访不满意',
   小智退回: '小智工单产研退回、确认未解决',
-  不在岗: '原处理人未签入',
+  不在岗: '历史处理人未签入',
 };
 
 export function pathLabel(p?: DispatchPath | null): string {
   return p ? PATH_LABEL[p] ?? p : '';
 }
-/** 判定路径带命中关系：「派回原处理人 · 本单退回」 */
+/** 判定路径带命中关系：「历史处理人派单 · 本单退回」 */
 export function pathWithRelation(p?: DispatchPath | null, relation?: OriginalRelation | null): string {
   const base = pathLabel(p);
   return relation && p === '原处理人' ? `${base} · ${relation}` : base;

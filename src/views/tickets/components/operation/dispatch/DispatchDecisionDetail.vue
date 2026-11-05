@@ -50,12 +50,12 @@ const reasonText = computed(() => {
   const l = log.value;
   if (!l) return '';
   const parts = [`${l.trigger ?? '新单'}进入${l.poolLabel}（${l.ruleName}）`];
-  if (l.path === '原处理人') parts.push(`原处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}已签入，优先派回`);
+  if (l.path === '原处理人') parts.push(`历史处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}已签入，优先派给此人`);
   else if (l.candidateCount != null) parts.push(`可接单 ${l.candidateCount} 人`);
   return parts.join('；');
 });
 
-/** 因例外不派回的原处理人：「林坐席（同客户近期）：上次回访不满意」 */
+/** 因例外不优先派给的历史处理人：「林坐席（同客户近期）：上次回访不满意」 */
 const excludedText = computed(() => (log.value?.originalExcluded ?? [])
   .map((x) => `${x.name}（${x.relation}）：${EXCLUSION_LABEL[x.reason]}`).join('；'));
 
@@ -73,7 +73,7 @@ const whatText = computed(() => {
   <div v-if="log" class="dd">
     <div class="dd-row"><span class="dd-k">派单路径</span><span class="dd-v">{{ pathWithRelation(log.path, log.originalRelation) }}</span></div>
     <div class="dd-row"><span class="dd-k">派单原因</span><span class="dd-v">{{ reasonText }}</span></div>
-    <div v-if="excludedText" class="dd-row"><span class="dd-k">不派回</span><span class="dd-v">{{ excludedText }}</span></div>
+    <div v-if="excludedText" class="dd-row"><span class="dd-k">不优先派给</span><span class="dd-v">{{ excludedText }}</span></div>
     <div v-if="log.chosenScore" class="dd-row">
       <span class="dd-k">综合得分</span>
       <span class="dd-v dd-score">{{ log.chosenScore.total.toFixed(1) }}</span>

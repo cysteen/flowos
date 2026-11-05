@@ -182,7 +182,6 @@ const IN_ITEMS: { name: string; color: string; triggers: DispatchTrigger[] }[] =
   { name: '调剂到池', color: '#0891b2', triggers: ['调剂到池'] },
   { name: '升级三线', color: '#4ade80', triggers: ['升级三线'] },
   { name: '退回', color: '#be185d', triggers: ['售后转回', '回访打回', '重新进池'] },
-  { name: '池停用', color: '#64748b', triggers: ['池停用'] },
 ];
 const POOL_IN_TRIGGERS: ReadonlySet<DispatchTrigger> = new Set(IN_ITEMS.flatMap((x) => x.triggers));
 
@@ -192,8 +191,8 @@ function isPoolIn(l: DispatchLogEntry): boolean {
 
 /** 工单离开工单池的五种方式（前三项由系统派出）。改派、调剂到人、调剂到池、升级三线指定人、升级投诉直派不计入 */
 const OUT_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
-  { name: '按规则直派', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
-  { name: '派回原处理人', color: '#14b8a6', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
+  { name: '指定人派单', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
+  { name: '历史处理人派单', color: '#14b8a6', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
   { name: '综合打分', color: '#60a5fa', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
   { name: '领取', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
   { name: '指派', color: '#84cc16', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },

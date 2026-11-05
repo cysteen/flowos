@@ -51,23 +51,23 @@ const gateRows = computed(() => {
   }));
 });
 
-/** 人工派单、系统异常、按规则直派都不走原处理人一步 */
+/** 人工派单、系统异常、指定人派单都不走原处理人一步 */
 const stepOriginalEntered = computed(() => {
   const l = props.log;
   return !!l && l.effectiveMode !== '人工派单' && l.failReason !== '系统异常' && l.path !== '直派规则';
 });
 const originalVerdict = computed(() => {
   const l = props.log;
-  return l?.path === '原处理人' ? '派回原处理人' : '未派回原处理人';
+  return l?.path === '原处理人' ? '派给历史处理人' : '未派给历史处理人';
 });
 const originalRows = computed(() => {
   const l = props.log;
   if (!l) return [];
   const out: { k: string; v: string }[] = [];
   if (l.originalRelation && l.path === '原处理人') out.push({ k: '关系', v: l.originalRelation });
-  if (l.path === '原处理人' && l.chosen) out.push({ k: '原处理人', v: `${l.chosen.name}（${l.chosen.staffNo}）` });
+  if (l.path === '原处理人' && l.chosen) out.push({ k: '历史处理人', v: `${l.chosen.name}（${l.chosen.staffNo}）` });
   for (const x of l.originalExcluded ?? []) {
-    out.push({ k: `不派回 · ${x.name}（${x.relation}）`, v: EXCLUSION_LABEL[x.reason] });
+    out.push({ k: `不优先派给 · ${x.name}（${x.relation}）`, v: EXCLUSION_LABEL[x.reason] });
   }
   return out;
 });
@@ -146,7 +146,7 @@ const scoreRows = computed(() => {
           <div class="dd-step">
             <div class="dd-step-hd">
               <span class="dd-seq">2</span>
-              <span class="dd-step-name">优先派回原处理人</span>
+              <span class="dd-step-name">优先派给历史处理人</span>
               <span v-if="stepOriginalEntered" class="dd-step-res">{{ originalVerdict }}</span>
               <span v-else class="dd-step-off">未进入</span>
             </div>

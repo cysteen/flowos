@@ -146,7 +146,7 @@ export function waitText(min: number): string {
 
 /** 派单策略字段 → 中文名（审计记录展示 updateConfig 记下的字段键） */
 export const CONFIG_FIELD_LABEL: Record<string, string> = {
-  originalChain: '优先派回原处理人',
+  originalChain: '优先派给历史处理人',
   roleBase: '角色基准值',
   proficiencyCoef: '熟练度系数',
 };

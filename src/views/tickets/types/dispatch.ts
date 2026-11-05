@@ -189,7 +189,7 @@ export interface DispatchGroup {
   leaders: string[];
 }
 
-/** 工单池状态（14.3）：停用后由系统收尾，可再启用 */
+/** 工单池状态（14.3）：无启用中入池规则指向且池内无未领取工单时可停用，可再启用 */
 export type PoolStatus = '启用' | '停用';
 /** 池名称最多 20 字（14.3） */
 export const POOL_NAME_MAX = 20;
@@ -426,7 +426,6 @@ export type DispatchTrigger =
   | '升级三线'
   | '售后转回'
   | '回访打回'
-  | '池停用'
   | '重新进池';
 
 /** 判定路径（13.1）。直派规则为 P1 */

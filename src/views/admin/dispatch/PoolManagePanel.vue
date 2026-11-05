@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 工单池管理（PRD 14.3）：工单池在此新建（建池时选处理组），一个处理组可有多个池；
-// 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认，固定落点池不可停用）；
+// 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认；固定落点池、有启用中入池规则指向、池内有未领取工单时不可停用）；
 // 停用的池另列「已停用」；池详情列池内待领工单，管理员可指派
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -9,7 +9,7 @@ import { InboxOutlined, SwapOutlined } from '@ant-design/icons-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
 import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
-import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, PROTECTED_POOL_TIP, isProtectedPool, type PoolMode } from '@/views/tickets/types/dispatch';
+import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { MODE_TONE, useClock } from './dispatchUi';
@@ -91,10 +91,14 @@ function openToggle(id: string, enabled: boolean) {
   if (enabled) {
     toggleTip.value = `启用后「${p.name}」可重新作为入池规则的归属池，原指向该池的入池规则保持停用，需手动启用`;
   } else {
-    const im = store.poolDisableImpact(id);
-    toggleTip.value = `停用后指向该池的 ${im.rules} 条入池规则将停用，池内 ${im.tickets} 张未领取工单将按入池规则重新入池`;
+    toggleTip.value = `停用后「${p.name}」不再作为入池规则的归属池和调剂到池的选项`;
   }
   toggleOpen.value = true;
+}
+/** 「停用」置灰的悬停提示；可停用时无提示。池内工单变化经 pendingStats 触发刷新 */
+function disableTipOf(id: string): string | undefined {
+  void pendingStats.value;
+  return store.poolDisableTip(id) || undefined;
 }
 function confirmToggle() {
   if (!toggleId.value) return;
@@ -225,8 +229,8 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             <span class="pm-ops">
               <a-button type="link" size="small" class="pm-op" @click="detailId = p.id">池详情</a-button>
               <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
-              <a-tooltip v-bind="STD_TIP_PROPS" :title="PROTECTED_POOL_TIP[p.id]">
-                <a-button type="link" size="small" danger class="pm-op" :disabled="isProtectedPool(p.id)" @click="openToggle(p.id, false)">停用</a-button>
+              <a-tooltip v-bind="STD_TIP_PROPS" :title="disableTipOf(p.id)">
+                <a-button type="link" size="small" danger class="pm-op" :disabled="!!disableTipOf(p.id)" @click="openToggle(p.id, false)">停用</a-button>
               </a-tooltip>
             </span>
           </div>
