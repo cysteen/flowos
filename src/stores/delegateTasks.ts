@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { TICKETS } from '@/mock/tickets';
 import { DELEGATE_TASK_SEEDS, type DelegateTask } from '@/mock/delegateTasks';
 import type { DelegatePayload } from '@/views/tickets/composables/opActions';
@@ -163,10 +163,8 @@ export const useDelegateTaskStore = defineStore('delegateTasks', () => {
     logs.value = { ...logs.value, [no]: [...logsOf(no), ...entries.map((e) => JSON.parse(JSON.stringify(e)) as TimelineEntry)] };
   }
 
-  const count = computed(() => tasks.value.length);
-
   return {
-    tasks, count, tasksOf, pendingOf, currentBatchOf, myTasksOf, poolOf, groupPoolOf,
+    tasks, tasksOf, pendingOf, currentBatchOf, myTasksOf, poolOf, groupPoolOf,
     createBatch, revoke, complete, completeAll, claim, logsOf, appendLogs,
   };
 });
