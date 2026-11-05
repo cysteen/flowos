@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 派单策略 · 入池规则（PRD 3.3）：按优先级升序；表尾固定默认池行（综合处理组池，不可删除、不可停用）
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { InboxOutlined, PlusOutlined } from '@ant-design/icons-vue';
+import { InboxOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, type PoolRule } from '@/views/tickets/types/dispatch';
 import { condItems } from './dispatchUi';
@@ -14,6 +14,38 @@ const store = useDispatchStore();
 
 const rows = computed(() => [...store.rules].sort((a, b) => a.priority - b.priority));
 const enabledCount = computed(() => rows.value.filter((r) => r.enabled).length);
+
+/* ---------------- 筛选：点查询生效；统计保持全量 ---------------- */
+const TYPE_ANY = '不限';
+const STATUS_OPTS = [{ value: 'on', label: '启用' }, { value: 'off', label: '停用' }];
+const emptyFilter = () => ({
+  name: '',
+  poolId: undefined as string | undefined,
+  status: undefined as string | undefined,
+  ticketType: undefined as string | undefined,
+});
+const draft = reactive(emptyFilter());
+const applied = ref(emptyFilter());
+function query() { applied.value = { ...draft }; }
+function reset() { Object.assign(draft, emptyFilter()); query(); }
+const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
+const typeOpts = computed(() => [TYPE_ANY, ...new Set(store.rules.flatMap((r) => r.conditions.ticketTypes))].map((v) => ({ value: v, label: v })));
+const filtering = computed(() => {
+  const q = applied.value;
+  return !!(q.name.trim() || q.poolId || q.status || q.ticketType);
+});
+const filteredRows = computed(() => {
+  const q = applied.value;
+  const kw = q.name.trim().toLowerCase();
+  return rows.value.filter((r) => {
+    if (kw && !r.name.toLowerCase().includes(kw)) return false;
+    if (q.poolId && r.poolId !== q.poolId) return false;
+    if (q.status && r.enabled !== (q.status === 'on')) return false;
+    if (q.ticketType === TYPE_ANY && r.conditions.ticketTypes.length) return false;
+    if (q.ticketType && q.ticketType !== TYPE_ANY && !r.conditions.ticketTypes.includes(q.ticketType)) return false;
+    return true;
+  });
+});
 const cols = [
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 80, align: 'center' as const },
   { title: '规则名称', dataIndex: 'name', key: 'name', width: 210 },
@@ -67,15 +99,42 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
         <span class="meta-chip-val">{{ enabledCount }}</span>
         <span class="meta-chip-lb">条启用</span>
       </div>
+      <div v-if="filtering" class="meta-chip">
+        <span class="meta-chip-lb">筛选结果</span>
+        <span class="meta-chip-val">{{ filteredRows.length }}</span>
+        <span class="meta-chip-lb">条</span>
+      </div>
       <span class="meta-hint">按优先级匹配入池</span>
       <div class="meta-actions">
         <a-button type="primary" size="small" @click="openNew"><template #icon><PlusOutlined /></template>新增入池规则</a-button>
       </div>
     </div>
+    <div class="pr-filter">
+      <label class="pr-cell">
+        <span class="pr-label">规则名称</span>
+        <a-input v-model:value="draft.name" class="pr-ctl" placeholder="请输入关键词" allow-clear @press-enter="query" />
+      </label>
+      <div class="pr-cell">
+        <span class="pr-label">归属池</span>
+        <a-select v-model:value="draft.poolId" class="pr-ctl" placeholder="全部" allow-clear :options="poolOpts" />
+      </div>
+      <div class="pr-cell">
+        <span class="pr-label">状态</span>
+        <a-select v-model:value="draft.status" class="pr-ctl" placeholder="全部" allow-clear :options="STATUS_OPTS" />
+      </div>
+      <div class="pr-cell">
+        <span class="pr-label">工单类型</span>
+        <a-select v-model:value="draft.ticketType" class="pr-ctl" placeholder="全部" allow-clear :options="typeOpts" />
+      </div>
+      <div class="pr-btns">
+        <a-button @click="reset">重置</a-button>
+        <a-button type="primary" @click="query"><template #icon><SearchOutlined /></template>查询</a-button>
+      </div>
+    </div>
     <div class="table-shell">
       <a-table
         :columns="cols"
-        :data-source="rows"
+        :data-source="filteredRows"
         row-key="id"
         size="small"
         :pagination="false"
@@ -118,6 +177,23 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 
 <style scoped>
 .inpool-panel { padding: 0; min-width: 0; }
+/* 筛选：与派单日志同一套样式 */
+.pr-filter {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px 16px; align-items: center;
+  margin-bottom: 14px; padding: 14px 16px 12px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+}
+.pr-cell { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; }
+.pr-label { flex: none; font-size: 13px; font-weight: 500; color: #6b7280; line-height: 20px; white-space: nowrap; }
+.pr-btns { display: flex; align-items: center; gap: 8px; flex: none; }
+.pr-ctl { flex: 1; min-width: 0; width: auto; }
+.pr-ctl :deep(.ant-select-selector), .pr-ctl.ant-input-affix-wrapper {
+  border-radius: 8px !important; border-color: #e5e7eb !important; background: #fff !important; font-size: 13px !important;
+}
+.pr-ctl :deep(.ant-select-selection-item), .pr-ctl :deep(.ant-select-selection-placeholder) { font-size: 13px !important; }
+@media (max-width: 1180px) {
+  .pr-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pr-btns { grid-column: 1 / -1; justify-content: flex-end; }
+}
 .pr-cond { display: flex; flex-wrap: wrap; gap: 2px 16px; line-height: 20px; }
 .pr-chip { font-size: 12px; color: #111827; }
 .pr-chip em { font-style: normal; color: #9ca3af; margin-right: 6px; }
