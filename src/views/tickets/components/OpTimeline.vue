@@ -115,7 +115,7 @@ function howOf(e: TimelineEntry): string {
 /** 超出徽章一行可容纳字数的操作名，悬浮看全文 */
 function longHowOf(e: TimelineEntry): string {
   const how = howOf(e);
-  return how.length > 10 ? how : '';
+  return how.length > 8 ? how : '';
 }
 
 /** 处理时间：SLA 关钟行取关钟时刻，其余取事件时刻 */
@@ -323,6 +323,13 @@ function hasDetail(e: TimelineEntry): boolean {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
+  container-type: inline-size;
+}
+/* 卡片窄于四列规格宽度时收窄定宽列，处理意见列保留可读宽度 */
+@container (max-width: 760px) {
+  .tl-table :deep(col:nth-child(2)) { width: 164px !important; }
+  .tl-table :deep(col:nth-child(3)) { width: 130px !important; }
+  .tl-table :deep(col:nth-child(4)) { width: 110px !important; }
 }
 .tl-header {
   display: flex;
