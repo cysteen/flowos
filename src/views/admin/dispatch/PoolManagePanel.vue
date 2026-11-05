@@ -12,7 +12,7 @@ import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
-import { MODE_TONE, useClock } from './dispatchUi';
+import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
@@ -21,7 +21,6 @@ import MonitorInflowDonut from './MonitorInflowDonut.vue';
 import MonitorOutflowDonut from './MonitorOutflowDonut.vue';
 import { buildPoolFlow, type RangeKey } from './dispatchMetrics';
 import { maxPoolWaitMinutes, poolSlaAlertOf, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
-import { waitText as poolWaitText } from '@/views/tickets/composables/dispatchUi';
 import './dispatchTheme.css';
 
 const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
@@ -118,12 +117,12 @@ function rulesOf(poolId: string): string {
   if (poolId === DEFAULT_POOL_ID) names.push('未命中任何规则');
   return names.join('、') || '—';
 }
-/** 次要派单计数：只列非 0 项并标色；均为 0 时显示一句汇总；池内有未领单时末尾附最长等待（池内全部未领单口径） */
+/** 次要派单计数：只列非 0 项；均为 0 时显示一句汇总；池内有未领单时末尾附最长等待（池内全部未领单口径） */
 function waitItems(p: { id: string; queued: number }) {
-  const xs: { label: string; value: string | number; tone: string }[] = [];
-  if (p.queued) xs.push({ label: '排队中', value: p.queued, tone: 'dx-warn' });
-  if (!xs.length) xs.push({ label: '排队中为 0', value: '', tone: '' });
-  if (pendingOf(p.id)) xs.push({ label: '最长等待', value: poolWaitText(pendingWaitOf(p.id)), tone: '' });
+  const xs: { label: string; value: string | number }[] = [];
+  if (p.queued) xs.push({ label: '排队中', value: p.queued });
+  if (!xs.length) xs.push({ label: '排队中为 0', value: '' });
+  if (pendingOf(p.id)) xs.push({ label: '最长等待', value: waitText(pendingWaitOf(p.id)) });
   return xs;
 }
 const globalStopped = computed(() => store.globalEffectiveMode() === '人工派单');
@@ -263,7 +262,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           </div>
           <div class="pm-sub">
             <span class="pm-sub-st">
-              <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i><span v-if="s.value === ''" class="muted">{{ s.label }}</span><template v-else>{{ s.label }} <b :class="s.tone">{{ s.value }}</b></template></template>
+              <template v-for="(s, i) in waitItems(p)" :key="s.label"><i v-if="i" class="dx-meta-sep">·</i><span v-if="s.value === ''" class="muted">{{ s.label }}</span><template v-else>{{ s.label }} <b>{{ s.value }}</b></template></template>
             </span>
           </div>
         </div>
@@ -465,8 +464,6 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 .pm-sub-st { min-width: 0; }
 .pm-sub-st .dx-meta-sep { font-style: normal; }
 .pm-sub b { font-weight: 600; color: #1f2329; }
-.pm-sub b.dx-warn { color: #ff7d00; }
-.pm-sub b.dx-bad { color: #f53f3f; }
 .pd-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .pd-overview {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
