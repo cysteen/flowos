@@ -48,7 +48,7 @@ const cards = computed(() => {
     : [...enabledPools.value].sort((a, b) => b.memberCount - a.memberCount).slice(0, POOL_CARD_LIMIT);
   return scoped
     .map((p) => {
-      /** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态 */
+      /** 池内工单：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态 */
       const list = poolTicketsOfPool(p.id, reactiveTickets);
       return {
         ...p,
@@ -126,7 +126,7 @@ const recordCols = [
                 <span class="pc-stat-val is-calm">{{ c.pending }}</span>
                 <span class="pc-lead-sla" :class="{ 'is-bad': c.slaAlert > 0 }">其中 SLA 临期/超期 <b>{{ c.slaAlert }}</b></span>
               </div>
-              <span class="pc-stat-lb">池内待派</span>
+              <span class="pc-stat-lb">池内工单</span>
             </div>
             <div class="pc-stat">
               <span class="pc-stat-val">{{ c.memberCount }}</span>

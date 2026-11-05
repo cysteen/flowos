@@ -55,7 +55,7 @@ const poolRows = computed(() => {
   void store.ticketStates;
   return store.poolViews();
 });
-/** 积压工单：池内全部未领取的单（排队中、待领取），与工单池卡片「池内待派」同一取数 */
+/** 池内工单：池内全部未领取的单（排队中、待领取），与工单池卡片同一取数 */
 const backlogTableRows = computed(() => poolRows.value
   .filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id)))
   .map((p) => {
@@ -127,7 +127,7 @@ const cards = computed(() => {
 const backlogCols = [
   { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
   { title: '派单方式', key: 'mode', width: 90 },
-  { title: '积压工单', dataIndex: 'backlogCount', key: 'backlogCount', width: 76, align: 'right' as const },
+  { title: '池内工单', dataIndex: 'backlogCount', key: 'backlogCount', width: 76, align: 'right' as const },
   { title: '最长等待', key: 'maxWait', width: 110, align: 'right' as const },
 ];
 </script>

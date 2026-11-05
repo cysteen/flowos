@@ -17,7 +17,7 @@ const router = useRouter();
 const DISPATCH_PAGE_META: Record<string, { title: string; subtitle: string }> = {
   'dispatch-monitor': { title: '分派监控', subtitle: '派单效果、派单方式、池积压与处理人负载。' },
   'dispatch-strategy': { title: '派单策略', subtitle: '入池规则、出池规则、个人上限与指定人规则；保存即生效。' },
-  'dispatch-pool': { title: '工单池管理', subtitle: '新建工单池并选择处理组；各池的派单方式、派单状态与成员画像配置，池内待领工单可指派。' },
+  'dispatch-pool': { title: '工单池管理', subtitle: '新建工单池并选择处理组；各池的派单方式、派单状态与成员画像配置，池内工单可指派。' },
   'dispatch-profile': { title: '坐席画像', subtitle: '坐席的人员画像、熟练度、个人上限与个人开关。' },
   'dispatch-log': { title: '派单日志', subtitle: '按工单查看每次派单结果、处理人与未派出原因；支持筛选与导出。' },
 };

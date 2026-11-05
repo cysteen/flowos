@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 工单池管理（PRD 14.3）：工单池在此新建（建池时选处理组），一个处理组可有多个池；
 // 卡片：派单方式、派单状态计数与成员画像配置，编辑（只改名称）、停用 / 启用（二次确认；固定落点池、有启用中入池规则指向、池内有未领取工单时不可停用）；
-// 停用的池另列「已停用」；池详情列池内待领工单，管理员可指派
+// 停用的池另列「已停用」；池详情列池内工单，管理员可指派
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
@@ -28,7 +28,7 @@ const poolDetailBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 const store = useDispatchStore();
 const clock = useClock();
 const reactiveTickets = reactive(TICKETS) as Ticket[];
-/** 池内待派与其最长等待：池内全部未领取（无处理人）的工单，不区分派单方式与派单状态（与班组看板同口径） */
+/** 池内工单与其最长等待：池内全部未领取（无处理人）的工单，不区分派单方式与派单状态（与班组看板同口径） */
 const pendingStats = computed(() => {
   void clock.value;
   void store.ticketStates;
@@ -248,7 +248,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
                 <span class="pm-stat-val is-calm">{{ pendingOf(p.id) }}</span>
                 <span class="pm-lead-sla" :class="{ 'is-bad': slaAlertOf(p.id) > 0 }">其中 SLA 临期/超期 <b>{{ slaAlertOf(p.id) }}</b></span>
               </div>
-              <span class="pm-stat-lb">池内待派</span>
+              <span class="pm-stat-lb">池内工单</span>
             </div>
             <div class="pm-stat">
               <span class="pm-stat-val">{{ p.memberCount }}</span>
@@ -350,7 +350,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           </span>
           <div class="pd-stats">
             <div class="pd-stat">
-              <b>{{ detailRows.length }}</b><span>待领</span>
+              <b>{{ detailRows.length }}</b><span>池内工单</span>
             </div>
             <div class="pd-stat">
               <b :class="{ warn: detailPool.queued }">{{ detailPool.queued }}</b><span>排队</span>
@@ -371,7 +371,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
         </div>
 
         <div class="pd-table-hd">
-          <span>池内待领工单</span>
+          <span>池内工单</span>
           <span class="pd-table-sub">{{ detailRows.length }} 单</span>
         </div>
         <div class="table-shell pd-table">
@@ -382,7 +382,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             size="small"
             :pagination="false"
             :scroll="{ x: 652 }"
-            :locale="{ emptyText: '池内暂无待领工单' }"
+            :locale="{ emptyText: '池内暂无工单' }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
