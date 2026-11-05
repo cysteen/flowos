@@ -348,7 +348,7 @@ interface DlgConfig {
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   // 【1215】PRD 9.4：标题「调剂」，按钮 [ 取消 ] [ 确定 ]
   调剂: { title: '调剂', icon: SwapOutlined, tone: 'primary', width: 520, okTone: 'primary', okText: '确定' },
-  委派: { title: '委派协办', icon: undefined, tone: 'primary', width: 600, okTone: 'primary', okText: '确认委派' },
+  委派: { title: '委派协办', icon: undefined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
   强结: { title: '强结', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交挂起申请' },

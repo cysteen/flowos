@@ -517,7 +517,7 @@ watch(
 <template>
   <a-modal
     :open="open"
-    :width="800"
+    :width="isEscalateMode ? 640 : 800"
     :footer="null"
     :closable="false"
     class="create-ticket-modal"
