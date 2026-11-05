@@ -99,11 +99,11 @@ function poolLabelOf(label: string): string {
 /** 不进入派单的组：一线客服组（含一线刷机池，1.2） */
 const NON_DISPATCH_GROUP_IDS = new Set(['line1']);
 const LEADER = '王组长';
-/** 配多名班组长的组，其余组只有王组长 */
+/** 配多名班组长的组（都取本组成员），其余组只有王组长 */
 const EXTRA_LEADERS: Record<string, string[]> = {
-  line2: ['李组长', '张组长', '林组长'],
-  hardware: ['李组长'],
-  [DEFAULT_POOL_ID]: ['徐璐', '林坐席'],
+  line2: ['张三'],
+  hardware: ['李四'],
+  [DEFAULT_POOL_ID]: ['徐璐', '刘洋', '张三'],
 };
 
 function seedGroups(): DispatchGroup[] {
