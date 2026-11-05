@@ -177,7 +177,7 @@ function rowClass(name: string) {
           <a-select v-model:value="f.signIn" class="pf-ctl pf-sel" :options="opts(SIGN_IN_STATUSES)" placeholder="坐席状态" allow-clear />
           <a-select v-model:value="f.proficiency" class="pf-ctl pf-sel" :options="opts(PROFICIENCIES)" placeholder="熟练度" allow-clear />
           <a-select v-model:value="f.personal" class="pf-ctl pf-sel" :options="personalOpts" placeholder="个人开关" allow-clear />
-          <a-checkbox v-model:checked="f.unconfigured" class="pf-unconfigured">是否配置了画像</a-checkbox>
+          <a-checkbox v-model:checked="f.unconfigured" class="pf-unconfigured">画像未配置</a-checkbox>
         </div>
         <div class="ap-hd-btns">
           <a-button size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>变更记录</a-button>
@@ -337,8 +337,8 @@ function rowClass(name: string) {
   flex: 1; min-width: 0;
   display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
 }
-.pf-search { width: 128px; flex: none; }
-.pf-sel { width: 102px; flex: none; }
+.pf-search { flex: 0 1 128px; min-width: 96px; }
+.pf-sel { flex: 0 1 102px; min-width: 76px; }
 .pf-unconfigured { margin: 0; flex: none; font-size: 12px; color: #4e5969; white-space: nowrap; }
 .pf-unconfigured :deep(.ant-checkbox + span) { padding-inline-end: 0; }
 .pf-search-icon { color: #c9cdd4; font-size: 13px; }
