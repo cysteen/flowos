@@ -103,6 +103,7 @@ const LEADER = '王组长';
 const EXTRA_LEADERS: Record<string, string[]> = {
   line2: ['李组长', '张组长', '林组长'],
   hardware: ['李组长'],
+  [DEFAULT_POOL_ID]: ['徐璐', '林坐席'],
 };
 
 function seedGroups(): DispatchGroup[] {

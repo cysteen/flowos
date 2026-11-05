@@ -200,7 +200,7 @@ const recordCols = [
 .pc-leaders-names { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-leaders-more {
   flex: none; line-height: 16px; padding: 0 4px; border-radius: 4px;
-  background: #f2f3f5; color: #4e5969; font-variant-numeric: tabular-nums;
+  background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6; font-variant-numeric: tabular-nums;
 }
 .pc-stats {
   display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
