@@ -24,7 +24,7 @@ import {
   NOT_OWN_POOL_MESSAGE,
   type ScoreDetail, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
-import { DESIGNATED_SEED_RULE, POOL_ENTERED_AGO_MIN, SPECIAL_POOL_ENTERED_AGO_MIN, buildDispatchDemo } from '@/mock/dispatchDemo';
+import { DESIGNATED_SEED_RULE, buildDispatchDemo, poolEnteredAtSeed, specialPoolEnteredAtSeed } from '@/mock/dispatchDemo';
 import { SCORE_DIMENSION_ROWS, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
@@ -57,7 +57,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 36;
+export const DISPATCH_CACHE_VERSION = 37;
 const LOG_LIMIT = 2000;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -544,16 +544,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
       if (!TICKETS.some((x) => x.no === row.no)) TICKETS.unshift(row);
       touchRow(row);
     }
-    for (const [no, ago] of Object.entries(POOL_ENTERED_AGO_MIN)) {
+    for (const [no, at] of Object.entries(poolEnteredAtSeed(now0))) {
       const row = TICKETS.find((x) => x.no === no);
       if (!row) continue;
-      row.poolEnteredAt = stamp(now0 - ago * MIN);
+      row.poolEnteredAt = stamp(at);
       touchRow(row);
     }
   }
-  const specialPoolEnteredAt: Record<string, number> = cached?.specialPoolEnteredAt ?? Object.fromEntries(
-    Object.entries(SPECIAL_POOL_ENTERED_AGO_MIN).map(([no, ago]) => [no, now0 - ago * MIN]),
-  );
+  const specialPoolEnteredAt: Record<string, number> = cached?.specialPoolEnteredAt ?? specialPoolEnteredAtSeed(now0);
 
   function persist() {
     try {

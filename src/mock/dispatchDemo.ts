@@ -18,6 +18,7 @@ import {
 } from '@/views/tickets/types/dispatch';
 import { splitProblemPath } from '@/stores/problemTags';
 import { CAMPUS_MANAGERS } from '@/mock/refund/managers';
+import { REFUND_SEEDS } from '@/mock/refund/seedTickets';
 
 type Priority = Ticket['priority'];
 
@@ -401,7 +402,7 @@ type Builder = ReturnType<typeof makeBuilder>;
 /** 混合派单池进入派单后由系统派出的占比，其余留池待领取 */
 const MIXED_SYSTEM_RATE = 0.9;
 /** 历史补量里自动派单池排队后被人工接走的占比 */
-const QUEUE_TAKEN_RATE = 0.1;
+const QUEUE_TAKEN_RATE = 0.08;
 
 /** 历史种子覆盖的天数（今日之前），与分派监控近 30 日范围一致 */
 const HISTORY_DAYS = 29;
@@ -598,11 +599,11 @@ const TODAY_ASSIGNS: [string, string, number][] = [
   ['tech', '陈技支', 0.22], ['general', '刘洋', 0.25], ['line2', '王坐席', 0.3], ['general', '徐璐', 0.33],
   ['general', '张三', 0.35], ['line2', '张三', 0.4], ['line2', '王坐席', 0.42], ['general', '刘洋', 0.47],
   ['line2', '林坐席', 0.5], ['tech', '陈技支', 0.55], ['general', '林坐席', 0.58], ['general', '徐璐', 0.6],
-  ['line2', '林坐席', 0.65], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
+  ['line2', '林坐席', 0.65], ['tech', '陈技支', 0.75],
   ['line2', '林坐席', 0.8], ['tech', '陈技支', 0.32],
 ];
 /** 派出方式：d 加权评分直派、o 原处理人、q 排队后由扫描派出、r 投诉单派回已签入的原处理人 */
-const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdrdoq';
+const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdroq';
 const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5];
 /** 今日组内领取：[池, 坐席, 比例] */
 const TODAY_CLAIMS: [string, string, number][] = [
@@ -688,6 +689,7 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   {
     const take = at(0.62);
     const t = newTk('line2', take - 5 * MIN);
+    b.judge(t, take - 5 * MIN, { trigger: '新单', path: '排队', mode: FORMAL, status: '排队中', failReason: '均达个人上限', noDraw: true });
     b.manual(t, take, '班组长指派', LEADER, FORMAL, { target: '王坐席', reason: '客户点名要求王坐席跟进', overCap: '超额指派', firstRespAt: respAt(take) });
     noteTake('王坐席', take);
   }
@@ -767,26 +769,61 @@ const POOL_SEEDS: PoolSeed[] = [
 ];
 
 /**
- * 未经派单进池的种子单（硬件缺陷组池的客服⇄售后单、二线技术支持组池的两张老单）：进池时间距今（分钟）。
- * 业务时间线（建单、转出、回流时间）不动，池内等待时长从进池时间起算；不给时按建单时间算，老单的等待会到 8 小时以上。
+ * 工单库里的积压单（真实工单行，无派单状态）：每张都写一条进池判定（`buildBacklogEntries`），各池「进池 − 出池 ＝ 积压工单」。
+ * 业务时间线（建单、转出、回流时间）不动，池内等待时长从这里的进池时刻起算。
+ * 除教育刷机（人工派单，不计系统派单成功率）外都是昨日傍晚进池、留到今天：今日进池约 60 张，这些单若也算今日，成功率会跌到八成以下。
  */
-export const POOL_ENTERED_AGO_MIN: Record<string, number> = {
-  'IFLYZX-20260610-00012': 35,
-  'IFLYZX-20260610-00015': 22,
-  'IFLYZX-20260924-00012': 26,
-  'IFLYZX-20260930-00041': 55,
-  'IFLYZX-20261003-00047': 38,
-};
+interface BacklogEntry {
+  no: string;
+  pool: string;
+  snap: Snap;
+  at: (today0: number, now: number) => number;
+  /** 工单行由专属服务落库，进池时刻记在派单缓存（否则写在工单行） */
+  special?: boolean;
+}
+const lastEvening = (min: number) => (today0: number) => today0 - DAY + 18 * HOUR + min * MIN;
+const minutesAgo = (min: number) => (_today0: number, now: number) => now - min * MIN;
+const BACKLOG_ENTRIES: BacklogEntry[] = [
+  { no: 'IFLYZX-20260930-00041', pool: 'hardware', snap: SNAPS.hardware[3], at: lastEvening(5) },
+  { no: 'IFLYTS-20260610-00014', pool: 'hardware', snap: SNAPS.hardware[2], at: lastEvening(12) },
+  { no: 'IFLYZX-20261003-00047', pool: 'hardware', snap: SNAPS.hardware[0], at: lastEvening(22) },
+  { no: 'IFLYZX-20260924-00012', pool: 'hardware', snap: SNAPS.hardware[1], at: lastEvening(40) },
+  { no: 'IFLYZX-20260610-00012', pool: 'line2', snap: SNAPS.line2[0], at: lastEvening(30) },
+  { no: 'IFLYZX-20260610-00015', pool: 'line2', snap: SNAPS.line2[5], at: lastEvening(48) },
+  { no: 'IFLYZX-20260918-00008', pool: 'xiaozhi', snap: SNAPS.xiaozhi[0], at: lastEvening(15), special: true },
+  { no: 'IFLYZX-20260915-00011', pool: 'edu-flash', snap: SNAPS['edu-flash'][0], at: minutesAgo(42), special: true },
+  { no: 'IFLYZX-20260915-00020', pool: 'edu-flash', snap: SNAPS['edu-flash'][1], at: minutesAgo(18), special: true },
+  // 个册退费的池内单：工单号随种子日期变化，取退费种子里未领取的单
+  ...REFUND_SEEDS.tickets
+    .filter((t) => t.tab === 'pool' && t.assignee === null)
+    .map((t, i): BacklogEntry => ({ no: t.no, pool: 'edu', snap: SNAPS.edu[0], at: lastEvening(8 + i * 27), special: true })),
+];
 
-/**
- * 教育刷机处理组池、小智工单处理组池的老种子单：未经派单进池，进池时间距今（分钟）。
- * 业务时间线字段不动；工单行由各自服务落库，进池时间单独记在派单缓存里。
- */
-export const SPECIAL_POOL_ENTERED_AGO_MIN: Record<string, number> = {
-  'IFLYZX-20260915-00011': 42,
-  'IFLYZX-20260915-00020': 18,
-  'IFLYZX-20260918-00008': 33,
-};
+function enteredAtMap(now: number, special: boolean): Record<string, number> {
+  const today0 = dayStartOf(now);
+  return Object.fromEntries(BACKLOG_ENTRIES.filter((x) => !!x.special === special).map((x) => [x.no, x.at(today0, now)]));
+}
+/** 通用工单的进池时刻 */
+export const poolEnteredAtSeed = (now: number) => enteredAtMap(now, false);
+/** 专属工单（刷机、小智、个册退费）的进池时刻 */
+export const specialPoolEnteredAtSeed = (now: number) => enteredAtMap(now, true);
+
+/** 积压单的进池判定（不占随机序列）：序号记 0，这些单还没有派单状态，之后的判定从 1 起 */
+function buildBacklogEntries(b: Builder, now: number) {
+  const today0 = dayStartOf(now);
+  for (const x of BACKLOG_ENTRIES) {
+    const at = x.at(today0, now);
+    const t: Tk = { no: x.no, pool: x.pool, snap: x.snap, priority: 'P2', remain0: 470, enteredAt: at, seq: -1 };
+    if (x.pool === 'hardware' || x.pool === 'line2') {
+      // 昨日硬件缺陷组池还是自动派单（今日才切混合派单）：排队等待
+      b.judge(t, at, { trigger: '新单', path: '排队', mode: FORMAL, status: '排队中', failReason: '均达个人上限', noDraw: true });
+    } else if (x.pool === 'edu-flash') {
+      b.judge(t, at, { trigger: '新单', path: '留池', mode: FLASH_MANUAL, status: null, noDraw: true });
+    } else {
+      b.judge(t, at, { trigger: '新单', path: '留池', mode: OFF_GROUP, status: null, failReason: '均达个人上限', noDraw: true });
+    }
+  }
+}
 
 /** 王坐席的种子个人上限与派回后的在途（超额指派演示） */
 const WANG_SEED_CAP = 3;
@@ -931,7 +968,7 @@ function surveyBadRow(now: number, groupLabel: string): Ticket {
 
 /**
  * 今日的规则演示日志（工单号段 6xxxx，不在工单库）：放在随机序列末尾，不扰动前面的种子。
- * 硬件、小智池有综合打分派出与待领取，教育支持池今日都已派出；人工派单有待领取；
+ * 硬件、小智、教育支持池有综合打分派出；待领取的日志见 `buildBacklogEntries`，对应真实的积压单；
  * 原处理人已签入但满额（超额指派）、已签入但小休都派回，已签出的转综合打分。
  */
 function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: number, hwMixedAt: number, noteTake: (name: string, at: number) => void) {
@@ -954,10 +991,6 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
     b.judge(tk(pool, ts, snapIdx), ts, { trigger: '新单', path: '加权评分', mode, chosen: A(who), candidates: 1 });
     noteTake(who, ts);
   };
-  const waiting = (pool: string, f: number, mode: Mode, failReason?: DispatchFailReason, snapIdx = 0) => {
-    const ts = Math.max(at(f), pool === 'hardware' ? hwMixedAt + MIN : t0);
-    b.judge(tk(pool, ts, snapIdx), ts, { trigger: '新单', path: '留池', mode, status: null, ...(failReason ? { failReason } : {}) });
-  };
   dispatched('hardware', '陈坐席', 0.5, HW_MIXED);
   dispatched('hardware', '陈坐席', 0.68, HW_MIXED, 1);
   dispatched('hardware', '陈坐席', 0.82, HW_MIXED);
@@ -966,14 +999,12 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
   dispatched('xiaozhi', '谭小智', 0.4, OFF_GROUP);
   dispatched('xiaozhi', '谭小智', 0.6, OFF_GROUP, 1);
   dispatched('xiaozhi', '谭小智', 0.72, OFF_GROUP, 1);
-  waiting('xiaozhi', 0.76, OFF_GROUP, '组内暂无已就绪成员', 1);
   dispatched('edu', '何教支', 0.18, OFF_GROUP, 1);
   dispatched('edu', '何教支', 0.3, OFF_GROUP);
   dispatched('edu', '何教支', 0.45, OFF_GROUP);
   dispatched('edu', '何教支', 0.66, OFF_GROUP, 1);
   dispatched('edu', '何教支', 0.55, OFF_GROUP);
   dispatched('edu', '何教支', 0.72, OFF_GROUP, 1);
-  waiting('edu-flash', 0.42, FLASH_MANUAL);
 
   // 原处理人：已签入但满额 → 派回，记超额指派
   const full = at(0.86);
@@ -1181,6 +1212,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
   buildRuleCases(b, agents, now, t0, hwMixedAt, noteTake);
   buildBackfill(b, tl, r);
   buildDesignatedCases(b, agents, tl, now, t0);
+  buildBacklogEntries(b, now);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
   const agentPatch: Record<string, Partial<DispatchAgent>> = {};
