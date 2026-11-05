@@ -1,12 +1,15 @@
 <script setup lang="ts">
 // 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与进池、出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   CheckCircleOutlined, ClockCircleOutlined, FieldTimeOutlined, InboxOutlined, SlidersOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
+import { maxPoolWaitMinutes, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
+import type { Ticket } from '@/views/tickets/types/ticket';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import { buildPoolFlow, computeStats, minText, type RangeKey } from './dispatchMetrics';
 import MonitorTrendChart from './MonitorTrendChart.vue';
@@ -21,6 +24,7 @@ defineProps<{ title: string; subtitle?: string }>();
 const router = useRouter();
 const store = useDispatchStore();
 const clock = useClock();
+const reactiveTickets = reactive(TICKETS) as Ticket[];
 
 function goPoolManage() { router.push('/admin/dispatch-pool'); }
 
@@ -51,17 +55,19 @@ const poolRows = computed(() => {
   void store.ticketStates;
   return store.poolViews();
 });
-const backlogTableRows = computed(() => {
-  const shownWait = (p: { queued: number; maxWaitMin: number }) => (p.queued ? p.maxWaitMin : 0);
-  return poolRows.value
-    .filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id)))
-    .sort((a, b) => b.queued - a.queued || shownWait(b) - shownWait(a));
-});
+/** 积压工单：池内全部未领取的单（排队中、待领取），与工单池卡片「池内待派」同一取数 */
+const backlogTableRows = computed(() => poolRows.value
+  .filter((p) => p.enabled && (!poolScope.value || poolScope.value.includes(p.id)))
+  .map((p) => {
+    const list = poolTicketsOfPool(p.id, reactiveTickets);
+    return { ...p, backlogCount: list.length, backlogWait: maxPoolWaitMinutes(list) ?? 0 };
+  })
+  .sort((a, b) => b.backlogCount - a.backlogCount || b.backlogWait - a.backlogWait));
 const backlog = computed(() => {
   const rows = backlogTableRows.value;
   return {
-    count: rows.reduce((s, p) => s + p.queued, 0),
-    maxWait: rows.filter((p) => p.queued).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
+    count: rows.reduce((s, p) => s + p.backlogCount, 0),
+    maxWait: rows.reduce((m, p) => Math.max(m, p.backlogWait), 0),
   };
 });
 
@@ -121,7 +127,7 @@ const cards = computed(() => {
 const backlogCols = [
   { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
   { title: '派单方式', key: 'mode', width: 90 },
-  { title: '排队中', dataIndex: 'queued', key: 'queued', width: 76, align: 'right' as const },
+  { title: '积压工单', dataIndex: 'backlogCount', key: 'backlogCount', width: 76, align: 'right' as const },
   { title: '最长等待', key: 'maxWait', width: 110, align: 'right' as const },
 ];
 </script>
@@ -182,8 +188,8 @@ const backlogCols = [
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'poolLabel'" class="pool-name">{{ record.poolLabel }}</span>
             <span v-else-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
-            <span v-else-if="column.key === 'queued'" :class="{ 'n-hot': record.queued > 0, 'n-zero': !record.queued }">{{ record.queued }}</span>
-            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.queued ? record.maxWaitMin : 0) }}</span>
+            <span v-else-if="column.key === 'backlogCount'" :class="{ 'n-hot': record.backlogCount > 0, 'n-zero': !record.backlogCount }">{{ record.backlogCount }}</span>
+            <span v-else-if="column.key === 'maxWait'">{{ waitText(record.backlogWait) }}</span>
           </template>
         </a-table>
       </section>

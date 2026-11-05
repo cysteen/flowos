@@ -410,8 +410,6 @@ export interface DispatchPoolView {
   /** 池内待派（未领取）张数 */
   pending: number;
   queued: number;
-  /** 池内最长等待（分钟） */
-  maxWaitMin: number;
   memberCount: number;
   configuredCount: number;
 }
@@ -2281,7 +2279,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
   }
   /** 每池一行（含已停用池，按 `enabled` 区分）；池内工单按所在池计 */
   function poolViews(): DispatchPoolView[] {
-    const now = Date.now();
     const byPool = new Map<string, Ticket[]>();
     for (const t of TICKETS) {
       if (t.tab !== 'pool' || t.assignee || t.archived || t.isDraft) continue;
@@ -2305,8 +2302,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
         leaders: g?.leaders ?? [],
         pending: inPool.length,
         queued: st.filter((x) => x.status === '排队中').length,
-        // 池积压口径：只算有派单状态的单；工单池管理、班组看板按全部未领单（poolTicketsOfPool）
-        maxWaitMin: st.filter((x) => x.status).reduce((m, x) => Math.max(m, Math.round((now - x.enteredAt) / MIN)), 0),
         memberCount: members.length,
         configuredCount: members.filter((a) => isProfileConfigured(a.profile)).length,
       };
