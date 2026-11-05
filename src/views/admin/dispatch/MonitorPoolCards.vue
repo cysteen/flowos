@@ -14,6 +14,7 @@ import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 
 const POOL_CARD_LIMIT = 10;
+const LEADER_SHOW_LIMIT = 2;
 
 const props = defineProps<{ poolIds: string[] | null }>();
 const router = useRouter();
@@ -104,7 +105,16 @@ const recordCols = [
             </a-tooltip>
           </div>
           <div class="pc-tags">
-            <span class="pc-tag">{{ c.label }}</span>
+            <div class="pc-tags-main">
+              <span class="pc-tag pc-tag-group">{{ c.label }}</span>
+              <a-tooltip v-if="c.leaders.length" v-bind="STD_TIP_PROPS" :title="c.leaders.join('、')">
+                <span class="pc-leaders">
+                  <span class="pc-leaders-k">班组长</span>
+                  <span class="pc-leaders-names">{{ c.leaders.slice(0, LEADER_SHOW_LIMIT).join('、') }}</span>
+                  <span v-if="c.leaders.length > LEADER_SHOW_LIMIT" class="pc-leaders-more">+{{ c.leaders.length - LEADER_SHOW_LIMIT }}</span>
+                </span>
+              </a-tooltip>
+            </div>
             <span v-if="c.poolMode !== c.effectiveMode" class="pc-tag">本池 {{ c.poolMode }}</span>
           </div>
           <div class="pc-stats">
@@ -120,9 +130,6 @@ const recordCols = [
               <span class="pc-stat-val" :class="c.configRate != null && c.configRate < 100 ? 'is-warn' : ''">{{ c.configRate == null ? '—' : `${c.configRate}%` }}</span>
               <span class="pc-stat-lb">画像配置</span>
             </div>
-          </div>
-          <div v-if="c.leaders.length" class="pc-foot" :title="c.leaders.join('、')">
-            <span class="pc-foot-k">班组长</span>{{ c.leaders.join('、') }}
           </div>
         </div>
       </div>
@@ -185,6 +192,16 @@ const recordCols = [
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 4px;
   background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6;
 }
+/* 处理组始终完整显示，超长时折行；班组长占同一行余下宽度，姓名放不下时省略，「班组长」与 +N 始终可见，余宽不足时整块换行 */
+.pc-tags-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1 1 auto; min-width: 0; max-width: 100%; }
+.pc-tag-group { flex: 0 0 auto; max-width: 100%; overflow-wrap: anywhere; }
+.pc-leaders { display: flex; align-items: center; gap: 4px; flex: 1 1 110px; min-width: 0; font-size: 11px; line-height: 20px; color: #6b7280; }
+.pc-leaders-k { flex: none; color: #9ca3af; }
+.pc-leaders-names { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-leaders-more {
+  flex: none; line-height: 16px; padding: 0 4px; border-radius: 4px;
+  background: #f2f3f5; color: #4e5969; font-variant-numeric: tabular-nums;
+}
 .pc-stats {
   display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr; gap: 0;
   margin: 2px -14px 0; padding: 12px 14px 0; border-top: 1px solid #f2f3f5;
@@ -199,10 +216,5 @@ const recordCols = [
 .pc-stat-val.is-calm { color: #1a6fff; }
 .pc-stat-val.is-warn { color: #ff7d00; }
 .pc-stat-lb { font-size: 11px; color: #9ca3af; line-height: 1.3; white-space: nowrap; }
-.pc-foot {
-  font-size: 11px; color: #6b7280; line-height: 1.4;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.pc-foot-k { color: #9ca3af; margin-right: 6px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

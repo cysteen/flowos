@@ -99,11 +99,16 @@ function poolLabelOf(label: string): string {
 /** 不进入派单的组：一线客服组（含一线刷机池，1.2） */
 const NON_DISPATCH_GROUP_IDS = new Set(['line1']);
 const LEADER = '王组长';
+/** 配多名班组长的组，其余组只有王组长 */
+const EXTRA_LEADERS: Record<string, string[]> = {
+  line2: ['李组长', '张组长', '林组长'],
+  hardware: ['李组长'],
+};
 
 function seedGroups(): DispatchGroup[] {
   return POOL_GROUPS
     .filter((g) => !NON_DISPATCH_GROUP_IDS.has(g.id))
-    .map((g) => ({ id: g.id, label: g.label, leaders: [LEADER] }));
+    .map((g) => ({ id: g.id, label: g.label, leaders: [LEADER, ...(EXTRA_LEADERS[g.id] ?? [])] }));
 }
 
 /**
