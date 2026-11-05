@@ -143,13 +143,10 @@ const detailRows = computed(() => {
   void store.ticketStates;
   const id = detailId.value;
   if (!id) return [];
-  const now = Date.now();
   return TICKETS
     .filter((t) => t.tab === 'pool' && !t.assignee && !t.archived && !t.isDraft && store.poolIdOf(t) === id)
     .map((t) => {
       const st = store.ticketStateOf(t.no);
-      const due = st?.firstRespTotalMin != null ? st.firstRespDueAt ?? st.enteredAt + st.firstRespTotalMin * 60_000 : null;
-      const remain = due != null && !t.responded ? Math.round((due - now) / 60_000) : null;
       return {
         ticket: t,
         no: t.no,
@@ -157,7 +154,6 @@ const detailRows = computed(() => {
         priority: PRIORITY_LEVEL[t.priority],
         status: st?.status ?? null,
         enteredAt: fmt(st?.enteredAt ?? store.poolEnteredAtOf(t)),
-        slaRemain: remain,
       };
     });
 });
@@ -182,7 +178,6 @@ const detailCols = [
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 64 },
   { title: '派单状态', key: 'status', width: 96 },
   { title: '入池时间', dataIndex: 'enteredAt', key: 'enteredAt', width: 128 },
-  { title: 'SLA', key: 'sla', width: 88 },
   { title: '操作', key: 'op', width: 56, fixed: 'right' as const },
 ];
 
@@ -384,17 +379,13 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             row-key="no"
             size="small"
             :pagination="false"
-            :scroll="{ x: 740 }"
+            :scroll="{ x: 652 }"
             :locale="{ emptyText: '池内暂无待领工单' }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
                 <span v-if="record.status" class="dx-status" :class="`is-${STATUS_TONE[record.status]}`">{{ record.status }}</span>
                 <span v-else class="muted">—</span>
-              </template>
-              <template v-else-if="column.key === 'sla'">
-                <span v-if="record.slaRemain == null" class="muted">—</span>
-                <span v-else :class="{ overdue: record.slaRemain <= 0 }">{{ record.slaRemain <= 0 ? '已超时' : `${record.slaRemain} 分` }}</span>
               </template>
               <a-button v-else-if="column.key === 'op'" type="link" size="small" class="pd-op" @click="openAssign(record.ticket)">指派</a-button>
             </template>
@@ -520,6 +511,5 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 }
 .pd-op { padding: 0 4px; height: auto; font-size: 12px; }
 .pd-table .muted { color: #9ca3af; font-size: 12px; }
-.pd-table .overdue { color: #f53f3f; font-size: 12px; }
 .pd-table .dx-status { font-size: 12px; line-height: 20px; }
 </style>
