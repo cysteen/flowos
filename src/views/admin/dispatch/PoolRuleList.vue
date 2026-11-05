@@ -17,13 +17,11 @@ const rows = computed(() => [...store.rules].sort((a, b) => a.priority - b.prior
 const enabledCount = computed(() => rows.value.filter((r) => r.enabled).length);
 
 /* ---------------- 筛选：点查询生效；统计保持全量 ---------------- */
-const TYPE_ANY = '不限';
 const STATUS_OPTS = [{ value: 'on', label: '启用' }, { value: 'off', label: '停用' }];
 const emptyFilter = () => ({
   name: '',
   poolId: undefined as string | undefined,
   status: undefined as string | undefined,
-  ticketType: undefined as string | undefined,
 });
 const currentPage = ref(1);
 const pageSize = ref(10);
@@ -32,7 +30,6 @@ const applied = ref(emptyFilter());
 function query() { applied.value = { ...draft }; currentPage.value = 1; }
 function reset() { Object.assign(draft, emptyFilter()); query(); }
 const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
-const typeOpts = computed(() => [TYPE_ANY, ...new Set(store.rules.flatMap((r) => r.conditions.ticketTypes))].map((v) => ({ value: v, label: v })));
 const filteredRows = computed(() => {
   const q = applied.value;
   const kw = q.name.trim().toLowerCase();
@@ -40,8 +37,6 @@ const filteredRows = computed(() => {
     if (kw && !r.name.toLowerCase().includes(kw)) return false;
     if (q.poolId && r.poolId !== q.poolId) return false;
     if (q.status && r.enabled !== (q.status === 'on')) return false;
-    if (q.ticketType === TYPE_ANY && r.conditions.ticketTypes.length) return false;
-    if (q.ticketType && q.ticketType !== TYPE_ANY && !r.conditions.ticketTypes.includes(q.ticketType)) return false;
     return true;
   });
 });
@@ -124,10 +119,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
           <span class="pr-label">状态</span>
           <a-select v-model:value="draft.status" size="small" class="pr-ctl" placeholder="全部" allow-clear :options="STATUS_OPTS" :dropdown-match-select-width="false" />
         </div>
-        <div class="pr-cell pr-cell-type">
-          <span class="pr-label">工单类型</span>
-          <a-select v-model:value="draft.ticketType" size="small" class="pr-ctl" placeholder="全部" allow-clear :options="typeOpts" :dropdown-match-select-width="false" />
-        </div>
         <div class="pr-btns">
           <a-button size="small" @click="reset">重置</a-button>
           <a-button type="primary" size="small" @click="query">查询</a-button>
@@ -194,7 +185,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 .pr-cell-name { flex: 1 1 110px; min-width: 101px; max-width: 200px; }
 .pr-cell-pool { flex: 1 1 180px; min-width: 110px; max-width: 240px; }
 .pr-cell-status { flex: 0.5 0 87px; max-width: 120px; }
-.pr-cell-type { flex: 0.5 0 111px; max-width: 144px; }
 .pr-label { flex: none; font-size: 12px; color: #6b7280; line-height: 24px; white-space: nowrap; }
 .pr-btns { display: flex; align-items: center; gap: 4px; flex: none; }
 .pr-ctl { flex: 1; min-width: 0; width: auto; font-size: 12px; }
