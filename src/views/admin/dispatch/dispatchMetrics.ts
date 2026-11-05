@@ -1,9 +1,9 @@
 /**
- * 【1215】分派监控统计（PRD 13.2 引擎层指标 / 13.5 统计卡 / 14.1 派单路径占比）。
+ * 【1215】分派监控统计（PRD 13.2 引擎层指标 / 13.5 统计卡 / 14.1 进出池趋势与出池方式占比）。
  * 只读：取 dispatch store 的派单日志与坐席、工单库的处理履历换算，不写任何数据。
  */
 import { TICKETS } from '@/mock/tickets';
-import type { DispatchAgent, DispatchLogEntry } from '@/views/tickets/types/dispatch';
+import type { DispatchAgent, DispatchLogEntry, DispatchTrigger } from '@/views/tickets/types/dispatch';
 
 const MIN = 60_000;
 
@@ -89,19 +89,7 @@ export interface MonitorStats {
   /** 系统派单成功率的分子 / 分母（工单数） */
   successCount: number;
   successBase: number;
-  pathShare: { name: string; count: number; pct: number; color: string }[];
-  pathTotal: number;
 }
-
-const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
-  { name: '按规则直派', color: '#8b5cf6', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
-  { name: '派回原处理人', color: '#0ea5e9', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
-  { name: '综合打分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
-  { name: '二线领取', color: '#10b981', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
-  { name: '班组长指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || l.manual?.action === '改派') },
-  { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },
-  { name: '升级三线指定', color: '#6366f1', hit: (l) => l.kind === '人工' && l.manual?.action === '升级三线指定人' },
-];
 
 /** 派单均衡度只计当日在岗满该时长的坐席（13.2） */
 export const BALANCE_MIN_ON_DUTY_HOURS = 2;
@@ -167,9 +155,6 @@ export function computeStats(
     perHour: todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length / hours,
   })));
 
-  const pathCounts = PATH_ITEMS.map((p) => ({ name: p.name, color: p.color, count: inRange.filter(p.hit).length }));
-  const pathTotal = pathCounts.reduce((s, x) => s + x.count, 0);
-
   return {
     waitMedian: seg.wait,
     respMedian: seg.resp,
@@ -180,52 +165,95 @@ export function computeStats(
     successRate: entered.size ? Math.round((success.size / entered.size) * 1000) / 10 : null,
     successCount: success.size,
     successBase: entered.size,
-    pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),
-    pathTotal,
   };
 }
 
-/* ---------------- 派单趋势（按日派出量） ---------------- */
+/* ---------------- 进出池（进出池趋势、出池方式占比） ---------------- */
 
-/** 历史基线：各组池日均派出量（今日之前的日期叠加派单日志实计） */
-const TREND_BASE: Record<string, { out: number }> = {
-  line2: { out: 46 },
-  hardware: { out: 22 },
-  'edu-flash': { out: 0 },
-  xiaozhi: { out: 14 },
-  edu: { out: 20 },
-  general: { out: 24 },
-};
-const DAY = 24 * 60 * MIN;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
 
-/** 按日期取确定的波动系数（同一天每次打开一致） */
-function dayWave(dayStart: number, salt: number): number {
-  const d = Math.floor(dayStart / DAY) + salt * 7919;
-  const x = Math.sin(d * 12.9898 + salt * 78.233) * 43758.5453;
-  return x - Math.floor(x);
+/**
+ * 进池事件：工单每进入一次工单池算一次。
+ * 切为自动派单、补单扫描、跨班次回收是同一次在池内的重新判定，不算。
+ */
+const POOL_IN_TRIGGERS: ReadonlySet<DispatchTrigger> = new Set<DispatchTrigger>([
+  '新单', '调剂到池', '升级三线', '售后转回', '回访打回', '池停用', '重新进池',
+]);
+
+function isPoolIn(l: DispatchLogEntry): boolean {
+  return l.kind === '判定' && !!l.trigger && POOL_IN_TRIGGERS.has(l.trigger);
 }
 
-export interface TrendPoint { label: string; dayStart: number; out: number }
+/** 工单离开工单池的五种方式。改派、调剂到人、调剂到池、升级三线指定人、升级投诉直派不计入 */
+const OUT_GROUPS: { name: string; items: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] }[] = [
+  {
+    name: '系统派出',
+    items: [
+      { name: '按规则直派', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
+      { name: '派回原处理人', color: '#1a6fff', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
+      { name: '综合打分', color: '#7eb0ff', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
+    ],
+  },
+  {
+    name: '人工接手',
+    items: [
+      { name: '领取', color: '#b45309', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
+      { name: '指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
+    ],
+  },
+];
+const OUT_ITEMS = OUT_GROUPS.flatMap((g) => g.items);
 
-export function buildTrend(logs: DispatchLogEntry[], days: 7 | 30, poolIds: string[] | null, now: number): TrendPoint[] {
-  const today = rangeStart('today', now);
-  const ids = poolIds ?? Object.keys(TREND_BASE);
-  const baseOut = ids.reduce((s, id) => s + (TREND_BASE[id]?.out ?? 0), 0);
-  const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
-  const pts: TrendPoint[] = [];
-  // 只取已结束的整日：近 N 天＝昨日往前 N 天
-  for (let i = days; i >= 1; i -= 1) {
-    const ds = today - i * DAY;
-    const de = ds + DAY;
-    const dayLogs = scoped.filter((l) => { const t = parseAt(l.at); return t >= ds && t < de; });
-    const out = dayLogs.filter(isEngineAssign).length;
-    const wd = new Date(ds).getDay();
-    const weekend = wd === 0 || wd === 6 ? 0.72 : 1;
-    const bOut = Math.round(baseOut * weekend * (0.86 + dayWave(ds, 1) * 0.28));
-    const d = new Date(ds);
-    pts.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, dayStart: ds, out: bOut + out });
+function isPoolOut(l: DispatchLogEntry): boolean {
+  return OUT_ITEMS.some((x) => x.hit(l));
+}
+
+export interface PoolFlowPoint { key: number; label: string; in: number; out: number }
+export interface OutShareItem { name: string; color: string; count: number; pct: number }
+export interface OutShareGroup { name: string; count: number; pct: number; items: OutShareItem[] }
+export interface PoolFlow {
+  /** 今日按小时到当前小时；近 7 日、近 30 日按日，含今天 */
+  points: PoolFlowPoint[];
+  inTotal: number;
+  outTotal: number;
+  outGroups: OutShareGroup[];
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** 进出池统计：趋势与占比取同一批记录 */
+export function buildPoolFlow(logs: DispatchLogEntry[], range: RangeKey, poolIds: string[] | null, now: number): PoolFlow {
+  const from = rangeStart(range, now);
+  const size = range === 'today' ? HOUR : DAY;
+  const n = Math.floor((now - from) / size) + 1;
+  const points: PoolFlowPoint[] = Array.from({ length: n }, (_, i) => {
+    const d = new Date(from + i * size);
+    return {
+      key: from + i * size,
+      label: range === 'today' ? `${pad2(d.getHours())}:00` : `${d.getMonth() + 1}/${d.getDate()}`,
+      in: 0,
+      out: 0,
+    };
+  });
+  const inRange = logs.filter((l) => inWindow(l, { from, to: now + 1, poolIds }));
+  for (const l of inRange) {
+    const p = points[Math.floor((parseAt(l.at) - from) / size)];
+    if (!p) continue;
+    if (isPoolIn(l)) p.in += 1;
+    if (isPoolOut(l)) p.out += 1;
   }
-  return pts;
+  const outTotal = points.reduce((s, p) => s + p.out, 0);
+  const pctOf = (c: number) => (outTotal ? Math.round((c / outTotal) * 1000) / 10 : 0);
+  const outGroups = OUT_GROUPS.map((g) => {
+    const items = g.items.map((x) => {
+      const count = inRange.filter(x.hit).length;
+      return { name: x.name, color: x.color, count, pct: pctOf(count) };
+    });
+    const count = items.reduce((s, x) => s + x.count, 0);
+    return { name: g.name, count, pct: pctOf(count), items };
+  });
+  return { points, inTotal: points.reduce((s, p) => s + p.in, 0), outTotal, outGroups };
 }
 
 export function minText(v: number | null): string {

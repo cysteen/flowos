@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 派单趋势与派单路径占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
+// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
@@ -8,9 +8,9 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
-import { computeStats, minText, type RangeKey } from './dispatchMetrics';
+import { buildPoolFlow, computeStats, minText, type RangeKey } from './dispatchMetrics';
 import MonitorTrendChart from './MonitorTrendChart.vue';
-import MonitorPathDonut from './MonitorPathDonut.vue';
+import MonitorOutflowDonut from './MonitorOutflowDonut.vue';
 import MonitorPoolCards from './MonitorPoolCards.vue';
 import MonitorLoadTop from './MonitorLoadTop.vue';
 import './dispatchTheme.css';
@@ -38,6 +38,11 @@ const stats = computed(() => {
   const now = Date.now();
   return computeStats(store.logs, store.agents, range.value, poolScope.value, now, (name) => store.onDutyHoursOf(name, now),
     (id) => store.poolGroupIdOf(id));
+});
+
+const flow = computed(() => {
+  void clock.value;
+  return buildPoolFlow(store.logs, range.value, poolScope.value, Date.now());
 });
 
 const poolRows = computed(() => {
@@ -158,8 +163,8 @@ const backlogCols = [
     </section>
 
     <div class="chart-row">
-      <MonitorTrendChart :pool-ids="poolScope" />
-      <MonitorPathDonut :items="stats.pathShare" :total="stats.pathTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${stats.pathTotal} 次`" />
+      <MonitorTrendChart :points="flow.points" :sub-text="`${RANGE_TEXT[range]}进池 ${flow.inTotal} 次 · 出池 ${flow.outTotal} 次`" />
+      <MonitorOutflowDonut :groups="flow.outGroups" :total="flow.outTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.outTotal} 次`" />
     </div>
 
     <MonitorPoolCards :pool-ids="poolScope" />

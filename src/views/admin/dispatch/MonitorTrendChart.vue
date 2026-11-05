@@ -1,39 +1,32 @@
 <script setup lang="ts">
-// 分派监控 · 派单趋势：按日派出量（近 7 天 / 30 天），纯 SVG 绘制
+// 分派监控 · 进出池趋势：进池、出池两条折线，跟页头时间范围，纯 SVG 绘制
 import { computed, ref } from 'vue';
-import { useDispatchStore } from '@/stores/dispatch';
 import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
-import { useClock } from './dispatchUi';
-import { buildTrend } from './dispatchMetrics';
+import type { PoolFlowPoint } from './dispatchMetrics';
 import './dispatchTheme.css';
 
-const TREND_RANGE_OPTS = [{ label: '7 天', value: 7 }, { label: '30 天', value: 30 }] as const;
+const props = defineProps<{ points: PoolFlowPoint[]; subText: string }>();
 
-const props = defineProps<{ poolIds: string[] | null }>();
-const store = useDispatchStore();
-const clock = useClock(30_000);
-
-const days = ref<7 | 30>(7);
-const points = computed(() => {
-  void clock.value;
-  return buildTrend(store.logs, days.value, props.poolIds, Date.now());
-});
-
+const IN_COLOR = '#7c3aed';
+const OUT_COLOR = '#0d9488';
 const W = 560;
 const H = 180;
 const PAD_T = 8;
+/** 超过该点数：不常显圆点，横轴隔点标注 */
+const DENSE_AFTER = 7;
+const X_LABEL_MAX = 6;
 
 function niceStep(max: number): number {
   const raw = max / 4 || 1;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const n = raw / mag;
-  // 单量是整数，步长不小于 1
+  // 次数是整数，步长不小于 1
   return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag);
 }
 
 const chart = computed(() => {
-  const pts = points.value;
-  const max = Math.max(1, ...pts.map((p) => p.out));
+  const pts = props.points;
+  const max = Math.max(1, ...pts.map((p) => Math.max(p.in, p.out)));
   const step = niceStep(max);
   const yMax = Math.ceil(max / step) * step;
   const yTicks: number[] = [];
@@ -41,32 +34,29 @@ const chart = computed(() => {
   const innerH = H - PAD_T;
   const x = (i: number) => (pts.length > 1 ? (i / (pts.length - 1)) * W : W / 2);
   const y = (v: number) => PAD_T + innerH - (v / yMax) * innerH;
+  const inPts = pts.map((p, i) => ({ x: x(i), y: y(p.in) }));
   const outPts = pts.map((p, i) => ({ x: x(i), y: y(p.out) }));
   const line = (ps: { x: number; y: number }[]) => ps.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  const area = outPts.length > 1
-    ? `${line(outPts)} L ${outPts[outPts.length - 1].x.toFixed(1)} ${H} L ${outPts[0].x.toFixed(1)} ${H} Z`
-    : '';
-  const long = pts.length > 7;
-  const xIdx = long ? [0, 5, 10, 15, 20, 25, pts.length - 1] : pts.map((_, i) => i);
+  const dense = pts.length > DENSE_AFTER;
+  const every = dense ? Math.ceil(pts.length / X_LABEL_MAX) : 1;
+  const last = pts.length - 1;
+  // 隔点标注并保留最后一点；倒数第二个标注离末点太近时让位
+  const xIdx = pts.map((_, i) => i).filter((i) => i === last || (i % every === 0 && last - i >= every / 2));
   return {
-    yTicks, outPts, area,
+    yTicks, inPts, outPts,
+    inLine: line(inPts),
     outLine: line(outPts),
     xLabels: xIdx.map((i) => ({ i, text: pts[i].label })),
-    showDots: !long,
+    showDots: !dense,
   };
 });
 
-const totals = computed(() => {
-  const pts = points.value;
-  const out = pts.reduce((s, p) => s + p.out, 0);
-  return { out, avg: Math.round(out / pts.length) };
-});
-
 const hover = ref<number | null>(null);
-function leftPct(i: number) { return points.value.length > 1 ? (i / (points.value.length - 1)) * 100 : 50; }
+const hoverX = computed(() => (hover.value == null ? null : chart.value.inPts[hover.value]?.x ?? null));
+function leftPct(i: number) { return props.points.length > 1 ? (i / (props.points.length - 1)) * 100 : 50; }
 /** 悬停热区：以数据点为中心，宽一个间隔，首尾各半个 */
 function hitStyle(i: number) {
-  const n = points.value.length;
+  const n = props.points.length;
   const gap = n > 1 ? 100 / (n - 1) : 100;
   const l = Math.max(0, leftPct(i) - gap / 2);
   const r = Math.min(100, leftPct(i) + gap / 2);
@@ -77,38 +67,33 @@ function hitStyle(i: number) {
 <template>
   <section class="dx-card trend">
     <div class="dx-sec-hd">
-      <span class="dx-sec-title">派单趋势</span>
-      <span class="dx-sec-sub">近 {{ days }} 天派出 {{ totals.out }} 单 · 日均 {{ totals.avg }}</span>
-      <a-segmented v-model:value="days" size="small" class="dispatch-time-seg dx-sec-extra" :options="[...TREND_RANGE_OPTS]" />
+      <span class="dx-sec-title">进出池趋势</span>
+      <span class="dx-sec-sub">{{ subText }}</span>
     </div>
     <div class="legend-line">
-      <span class="lg"><i class="sw" style="background: #1a6fff" />派出量</span>
+      <span class="lg"><i class="sw" :style="{ background: IN_COLOR }" />进池</span>
+      <span class="lg"><i class="sw" :style="{ background: OUT_COLOR }" />出池</span>
     </div>
     <div class="line-chart">
       <div class="y-axis"><span v-for="t in chart.yTicks" :key="t">{{ t }}</span></div>
       <div class="chart-body">
         <div class="plot">
           <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" class="line-svg">
-            <defs>
-              <linearGradient id="dispatchTrendFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#1a6fff" stop-opacity="0.12" />
-                <stop offset="100%" stop-color="#1a6fff" stop-opacity="0.01" />
-              </linearGradient>
-            </defs>
             <line v-for="(t, i) in chart.yTicks" :key="`g${t}`" x1="0" :x2="W" :y1="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" :y2="PAD_T + (i / (chart.yTicks.length - 1)) * (H - PAD_T)" class="grid" />
-            <path v-if="chart.area" :d="chart.area" fill="url(#dispatchTrendFill)" />
-            <path :d="chart.outLine" class="ln" stroke="#1a6fff" />
-            <line v-if="hover != null" :x1="chart.outPts[hover].x" :x2="chart.outPts[hover].x" :y1="PAD_T" :y2="H" class="cursor" />
+            <path :d="chart.outLine" class="ln" :stroke="OUT_COLOR" />
+            <path :d="chart.inLine" class="ln" :stroke="IN_COLOR" />
+            <line v-if="hoverX != null" :x1="hoverX" :x2="hoverX" :y1="PAD_T" :y2="H" class="cursor" />
           </svg>
-          <template v-if="chart.showDots || hover != null">
-            <template v-for="(p, i) in chart.outPts" :key="`o${i}`">
-              <span v-if="chart.showDots || hover === i" class="dot" :style="{ left: `${leftPct(i)}%`, top: `${(p.y / H) * 100}%`, borderColor: '#1a6fff' }" />
-            </template>
+          <template v-for="(p, i) in chart.outPts" :key="`o${i}`">
+            <span v-if="chart.showDots || hover === i" class="dot" :style="{ left: `${leftPct(i)}%`, top: `${(p.y / H) * 100}%`, borderColor: OUT_COLOR }" />
+          </template>
+          <template v-for="(p, i) in chart.inPts" :key="`i${i}`">
+            <span v-if="chart.showDots || hover === i" class="dot" :style="{ left: `${leftPct(i)}%`, top: `${(p.y / H) * 100}%`, borderColor: IN_COLOR }" />
           </template>
           <div class="hit-row">
-            <a-tooltip v-for="(p, i) in points" :key="p.dayStart" v-bind="STD_TIP_PROPS" placement="top" :mouse-enter-delay="0.05">
+            <a-tooltip v-for="(p, i) in points" :key="p.key" v-bind="STD_TIP_PROPS" placement="top" :mouse-enter-delay="0.05">
               <template #title>
-                <div class="tip"><b>{{ p.label }}</b><span>派出 {{ p.out }} 单</span></div>
+                <div class="tip"><b>{{ p.label }}</b><span>进池 {{ p.in }} 次</span><span>出池 {{ p.out }} 次</span></div>
               </template>
               <div class="hit" :style="hitStyle(i)" @mouseenter="hover = i" @mouseleave="hover = null" />
             </a-tooltip>
@@ -117,7 +102,7 @@ function hitStyle(i: number) {
         <div class="x-axis">
           <span
             v-for="d in chart.xLabels" :key="d.i" class="x-label"
-            :style="{ left: `${leftPct(d.i)}%`, transform: d.i === 0 ? 'none' : d.i === points.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)' }"
+            :style="{ left: `${leftPct(d.i)}%`, transform: points.length === 1 ? 'translateX(-50%)' : d.i === 0 ? 'none' : d.i === points.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)' }"
           >{{ d.text }}</span>
         </div>
       </div>
@@ -126,10 +111,11 @@ function hitStyle(i: number) {
 </template>
 
 <style scoped>
+.trend { display: flex; flex-direction: column; }
 .legend-line { display: flex; gap: 16px; font-size: 13px; color: #86909c; margin: 0 0 8px 46px; }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
-.line-chart { display: flex; gap: 10px; height: 220px; }
+.line-chart { display: flex; gap: 10px; flex: 1; min-height: 220px; }
 .y-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: #9ca3af; padding: 0 0 22px; width: 36px; text-align: right; flex: none; line-height: 1; }
 .y-axis span:first-child { margin-top: 2px; }
 .chart-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
