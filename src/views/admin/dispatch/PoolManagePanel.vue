@@ -16,6 +16,10 @@ import { MODE_TONE, useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
+import MonitorTrendChart from './MonitorTrendChart.vue';
+import MonitorInflowDonut from './MonitorInflowDonut.vue';
+import MonitorOutflowDonut from './MonitorOutflowDonut.vue';
+import { buildPoolFlow, type RangeKey } from './dispatchMetrics';
 import { maxPoolWaitMinutes, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import { waitText as poolWaitText } from '@/views/tickets/composables/dispatchUi';
 import './dispatchTheme.css';
@@ -156,6 +160,15 @@ const detailRows = computed(() => {
         slaRemain: remain,
       };
     });
+});
+const RANGE_OPTS = [{ value: 'today', label: '今日' }, { value: '7d', label: '近 7 日' }, { value: '30d', label: '近 30 日' }];
+const RANGE_TEXT: Record<RangeKey, string> = { today: '今日', '7d': '近 7 日', '30d': '近 30 日' };
+const detailRange = ref<RangeKey>('today');
+watch(detailId, () => { detailRange.value = 'today'; });
+/** 本池进出池：与分派监控筛选同一工单池时取同一统计 */
+const detailFlow = computed(() => {
+  void clock.value;
+  return detailId.value ? buildPoolFlow(store.logs, detailRange.value, [detailId.value], Date.now()) : null;
 });
 function fmt(ms: number) {
   const d = new Date(ms);
@@ -346,6 +359,18 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
           </div>
         </div>
 
+        <div v-if="detailFlow" class="pd-flow">
+          <div class="pd-flow-range">
+            <span class="pd-flow-label">时间</span>
+            <a-segmented v-model:value="detailRange" size="small" class="dispatch-time-seg" :options="RANGE_OPTS" />
+          </div>
+          <MonitorTrendChart :points="detailFlow.points" :sub-text="`${RANGE_TEXT[detailRange]}进池 ${detailFlow.inTotal} 次 · 出池 ${detailFlow.outTotal} 次`" />
+          <div class="pd-flow-shares">
+            <MonitorInflowDonut :items="detailFlow.inItems" :total="detailFlow.inTotal" :range-text="`${RANGE_TEXT[detailRange]} · 共 ${detailFlow.inTotal} 次`" />
+            <MonitorOutflowDonut :items="detailFlow.outItems" :total="detailFlow.outTotal" :range-text="`${RANGE_TEXT[detailRange]} · 共 ${detailFlow.outTotal} 次`" />
+          </div>
+        </div>
+
         <div class="pd-table-hd">
           <span>池内待领工单</span>
           <span class="pd-table-sub">{{ detailRows.length }} 单</span>
@@ -462,6 +487,11 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
 .pd-stat b { font-size: 16px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .pd-stat b.warn { color: #ff7d00; }
 .pd-stat span { font-size: 11px; color: #9ca3af; }
+.pd-flow { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pd-flow-range { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.pd-flow-label { font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1; }
+.pd-flow-shares { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.pd-flow .dx-card { padding: 12px 16px; }
 .pd-table-hd {
   display: flex; align-items: baseline; gap: 8px;
   font-size: 12px; font-weight: 600; color: #111827;
