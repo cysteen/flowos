@@ -202,6 +202,14 @@ const TOTAL_TIP = { define: '所选时间内，本组二线专员的在岗时长
 const COUNT_TIP = { define: '本组名单内的二线专员人数，多组成员只计入第一个所属组；不含班组长，不区分当天是否出勤。' };
 const AVG_TIP = { define: '人工在岗时长 ÷ 统计人数。' };
 
+/** 块内悬停提示：与 MetricTipIcon 同一套外观；那边的配置连着问号图标、不能单独取用，这里保持同值 */
+const TIP_PROPS = {
+  color: '#fffbeb',
+  mouseEnterDelay: 0.1,
+  overlayStyle: { maxWidth: '340px' },
+  overlayInnerStyle: { maxWidth: '340px', color: '#713f12', fontSize: '12px', lineHeight: '1.6', padding: '10px 12px' },
+};
+
 /** 长条与图例悬停联动：当前高亮的项；时长为 0 的项不在长条上，不参与联动 */
 const hoverKey = ref<string | null>(null);
 function hoverOn(item: { key: string; ms: number }) {
@@ -266,7 +274,8 @@ function hoverOff() {
 
       <div v-if="dist.totalMs > 0" class="wtp-bar" role="img" :aria-label="`在岗工作时长统计，平均在岗时长 ${perCapita.total} 小时`">
         <!-- 小休在最右、提示最长，放右上方落在指标行右侧空白处；其余放下方，不遮指标行 -->
-        <a-tooltip v-for="i in barItems" :key="i.key" :title="i.tip" :placement="i.key === BREAK_ITEM.key ? 'topRight' : 'bottom'">
+        <a-tooltip v-for="i in barItems" :key="i.key" v-bind="TIP_PROPS" :placement="i.key === BREAK_ITEM.key ? 'topRight' : 'bottom'">
+          <template #title><p class="kt-define">{{ i.tip }}</p></template>
           <i
             class="wtp-seg"
             :class="{ 'is-dim': hoverKey && hoverKey !== i.key }"
@@ -279,7 +288,8 @@ function hoverOff() {
       <div v-else class="wtp-empty">暂无数据</div>
 
       <div class="wtp-legend" role="table" aria-label="各工作类型人均时长">
-        <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined" placement="topRight">
+        <a-tooltip v-for="i in perCapita.items" :key="i.key" v-bind="TIP_PROPS" placement="topRight">
+          <template v-if="i.key === BREAK_ITEM.key" #title><p class="kt-define">{{ i.tip }}</p></template>
           <div
             class="wtp-li"
             :class="{ 'is-dim': hoverKey && hoverKey !== i.key, 'is-on': hoverKey === i.key }"
@@ -309,14 +319,16 @@ function hoverOff() {
             <span class="m-name">{{ r.name }}</span>
           </div>
           <div class="wtp-td num strong" role="cell">{{ r.total }}</div>
-          <a-tooltip v-for="c in r.cells" :key="c.key" :title="c.tip">
+          <a-tooltip v-for="c in r.cells" :key="c.key" v-bind="TIP_PROPS">
+            <template #title><p class="kt-define">{{ c.tip }}</p></template>
             <div class="wtp-td num" role="cell">{{ c.h }}</div>
           </a-tooltip>
         </div>
         <div class="wtp-trow wtp-avg" role="row" :style="{ gridTemplateColumns: gridCols }">
           <div class="wtp-td wtp-td-name" role="cell">人均</div>
           <div class="wtp-td num strong" role="cell">{{ perCapita.total }}</div>
-          <a-tooltip v-for="i in perCapita.items" :key="i.key" :title="i.key === BREAK_ITEM.key ? i.tip : undefined">
+          <a-tooltip v-for="i in perCapita.items" :key="i.key" v-bind="TIP_PROPS">
+            <template v-if="i.key === BREAK_ITEM.key" #title><p class="kt-define">{{ i.tip }}</p></template>
             <div class="wtp-td num" role="cell">{{ i.hText }}</div>
           </a-tooltip>
         </div>
@@ -379,6 +391,7 @@ function hoverOff() {
 .wtp-seg:first-child { border-radius: 4px 0 0 4px; }
 .wtp-seg:last-child { border-radius: 0 4px 4px 0; }
 .wtp-empty { font-size: 12px; color: #9ca3af; padding: 4px 0; }
+.kt-define { margin: 0; font-size: 12px; color: #713f12; line-height: 1.5; }
 
 /* 图例一行：各项按内容宽度排开，余量均分到项间 */
 .wtp-legend { display: flex; justify-content: space-between; gap: 6px; min-width: 0; }
