@@ -589,18 +589,20 @@ const TODAY_ASSIGNS: [string, string, number][] = [
   ['line2', '林坐席', 0.5], ['tech', '陈技支', 0.55], ['general', '林坐席', 0.58], ['general', '徐璐', 0.6],
   ['line2', '林坐席', 0.65], ['general', '刘洋', 0.7], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
   ['line2', '林坐席', 0.8], ['general', '林坐席', 0.92],
+  ['line2', '王坐席', 0.12], ['line2', '张三', 0.26], ['line2', '王坐席', 0.36], ['line2', '林坐席', 0.44], ['line2', '王坐席', 0.55],
+  ['line2', '王坐席', 0.62], ['line2', '张三', 0.68], ['line2', '王坐席', 0.72], ['line2', '张三', 0.85], ['line2', '王坐席', 0.9],
+  ['general', '徐璐', 0.06], ['general', '刘洋', 0.1], ['general', '徐璐', 0.2], ['general', '刘洋', 0.28], ['general', '徐璐', 0.38],
+  ['general', '刘洋', 0.44], ['general', '徐璐', 0.52], ['general', '林坐席', 0.66], ['general', '刘洋', 0.74], ['general', '刘洋', 0.83],
+  ['hardware', '李四', 0.05], ['hardware', '陈坐席', 0.25], ['tech', '陈技支', 0.12], ['tech', '陈技支', 0.4],
 ];
 /** 派出方式：d 加权评分直派、o 原处理人、q 排队后由扫描派出、r 投诉单派回已签入的原处理人 */
-const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdqrdoq';
-const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12];
+const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdqrdoq' + 'qqqoqqdqqq' + 'qdqqqdqqqq' + 'qqdq';
+const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12, 6, 4, 9, 3, 7, 5, 8, 4, 6, 10, 3, 5, 7, 4, 9, 6, 3, 8, 5, 4, 7];
 /** 今日组内领取：[池, 坐席, 比例] */
 const TODAY_CLAIMS: [string, string, number][] = [
-  ['xiaozhi', '谭小智', 0.07], ['edu', '何教支', 0.1], ['edu-flash', '许文静', 0.14], ['line2', '王组长', 0.28],
-  ['xiaozhi', '谭小智', 0.29], ['tech', '周技支', 0.3], ['edu', '何教支', 0.32], ['edu-flash', '许文静', 0.38],
-  ['xiaozhi', '谭小智', 0.5], ['tech', '周技支', 0.5], ['general', '王组长', 0.52], ['edu', '何教支', 0.55],
-  ['edu-flash', '许文静', 0.6], ['tech', '周技支', 0.68], ['xiaozhi', '谭小智', 0.71], ['line2', '王组长', 0.73],
-  ['edu', '何教支', 0.77], ['edu-flash', '许文静', 0.84], ['hardware', '李四', 0.16], ['tech', '周技支', 0.82],
-  ['line2', '王组长', 0.88],
+  ['edu-flash', '许文静', 0.14], ['edu-flash', '许文静', 0.2], ['edu-flash', '许文静', 0.38], ['edu-flash', '王坐席', 0.44],
+  ['edu-flash', '许文静', 0.6], ['edu-flash', '张三', 0.66], ['edu-flash', '许文静', 0.84], ['edu-flash', '许文静', 0.9],
+  ['tech', '周技支', 0.5],
 ];
 
 interface TodayCtx {
@@ -664,11 +666,9 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     }
   });
 
-  // 硬件缺陷组池切为混合派单后：没人可接的留池，组内领取、指派、调剂到人
+  // 硬件缺陷组池切为混合派单后：没人可接的留池，调剂到人
   const hw: [number, ManualAction, string, string | undefined][] = [
     [0.35, '调剂到人', '李四', '李四熟悉学习机返修流程'],
-    [0.45, '二线领取', '陈坐席', undefined],
-    [0.6, '班组长指派', '陈坐席', undefined],
   ];
   for (const [f, action, target, reason] of hw) {
     const enter = Math.max(at(f), hwMixedAt + MIN);
@@ -686,6 +686,15 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     const t = newTk('line2', take - 5 * MIN);
     b.manual(t, take, '班组长指派', LEADER, FORMAL, { target: '王坐席', reason: '客户点名要求王坐席跟进', overCap: '超额指派', firstRespAt: respAt(take) });
     noteTake('王坐席', take);
+  }
+
+  // 教育刷机处理组池人工派单：班组长指派
+  {
+    const enter = at(0.48);
+    const t = newTk('edu-flash', enter);
+    b.judge(t, enter, { trigger: '新单', path: '留池', mode: FLASH_MANUAL, status: null });
+    b.manual(t, enter + 9 * MIN, '班组长指派', LEADER, FLASH_MANUAL, { target: '许文静' });
+    noteTake('许文静', enter + 9 * MIN);
   }
 
   // 组内领取
@@ -731,7 +740,7 @@ const POOL_SEEDS: PoolSeed[] = [
   { key: 'L-Q2', pool: 'line2', type: '咨询', priority: 'P2', title: '耳机升级固件后无法播放本地音乐', customer: '江珊',
     snap: SNAPS.line2[1], enteredAgo: 19, remain0: 440, status: '排队中' },
   { key: 'L-Q3', pool: 'line2', type: '咨询', priority: 'P1', title: '录音笔转写结果出现乱码', customer: '冯涛',
-    snap: SNAPS.line2[2], enteredAgo: 48, remain0: -5, status: '排队中' },
+    snap: SNAPS.line2[2], enteredAgo: 48, remain0: 380, status: null, backTo: { who: '林坐席', candidates: 1 } },
   { key: 'L-R1', pool: 'line2', type: '投诉', priority: 'P1', title: '翻译机识别不准，二次来电投诉', customer: '顾婷',
     snap: { ...SNAPS.line2[4], ticketType: '投诉' }, enteredAgo: 2, remain0: 300, status: null,
     backTo: { who: '王坐席', candidates: 1, overCap: true } },
@@ -741,7 +750,7 @@ const POOL_SEEDS: PoolSeed[] = [
     snap: { businessType: '智能硬件', ticketType: '投诉', productCategory: '智能硬件', product: '智能门锁 L1', ticketSource: '电话', customerType: '个人用户' },
     enteredAgo: 1, remain0: 320, status: null, backTo: { who: '刘洋', candidates: 1 } },
   { key: 'G-Q2', pool: 'general', type: '咨询', priority: 'P2', title: '会员续费后权益未到账', customer: '房宇',
-    snap: SNAPS.general[1], enteredAgo: 50, remain0: 150, status: '排队中' },
+    snap: SNAPS.general[1], enteredAgo: 50, remain0: 390, status: null, backTo: { who: '林坐席', candidates: 1 } },
   { key: 'T-Q1', pool: 'tech', type: '咨询', priority: 'P2', title: 'API 回调签名校验失败，需三线排查', customer: '欧阳青',
     snap: SNAPS.tech[0], enteredAgo: 28, remain0: 400, status: '排队中' },
   { key: 'T-R1', pool: 'tech', type: '投诉', priority: 'P1', title: '质检系统单点登录反复失败，投诉响应慢', customer: '程立',
@@ -754,10 +763,12 @@ const POOL_SEEDS: PoolSeed[] = [
 ];
 
 /**
- * 硬件缺陷组池里的客服⇄售后种子单：未经派单进池，进池时间距今（分钟）。
- * 售后业务时间线（建单、转出、回流时间）不动，池内等待时长从进池时间起算。
+ * 未经派单进池的种子单（硬件缺陷组池的客服⇄售后单、二线技术支持组池的两张老单）：进池时间距今（分钟）。
+ * 业务时间线（建单、转出、回流时间）不动，池内等待时长从进池时间起算；不给时按建单时间算，老单的等待会到 8 小时以上。
  */
 export const POOL_ENTERED_AGO_MIN: Record<string, number> = {
+  'IFLYZX-20260610-00012': 35,
+  'IFLYZX-20260610-00015': 22,
   'IFLYZX-20260924-00012': 26,
   'IFLYZX-20260930-00041': 55,
   'IFLYZX-20261003-00047': 38,
@@ -802,11 +813,8 @@ function buildPool(b: Builder, agents: DispatchAgent[], now: number, rules: Pool
       firstRespTotalMin: Math.max(FIRST_RESP_LIMIT[s.priority], s.remain0), firstRespDueAt: enteredAt + s.remain0 * MIN, seq: 0,
     };
     const mode = s.pool === 'hardware' ? HW_MIXED : FORMAL;
-    if (s.key === 'L-Q1' || s.key === 'L-Q2' || s.key === 'G-Q1' || s.key === 'G-Q2') {
+    if (s.key === 'L-Q1' || s.key === 'L-Q2' || s.key === 'G-Q1') {
       b.judge(t, enteredAt, { trigger: '新单', path: '排队', mode, status: '排队中', failReason: '均达个人上限' });
-      sys('排队等待', `${pl}排队：相符成员均已满额`, enteredAt);
-    } else if (s.key === 'L-Q3') {
-      b.judge(t, enteredAt, { trigger: '售后转回', path: '排队', mode, status: '排队中', failReason: '均达个人上限' });
       sys('排队等待', `${pl}排队：相符成员均已满额`, enteredAt);
     } else if (s.key === 'T-Q1') {
       const movedAt = enteredAt;
@@ -836,7 +844,7 @@ function buildPool(b: Builder, agents: DispatchAgent[], now: number, rules: Pool
     if (s.pool === 'tech') st.designatedPool = true;
     states[no] = st;
     const remainNow = Math.round(s.remain0 - s.enteredAgo);
-    const created = enteredAt - (s.key === 'L-Q3' ? 26 * 60 : 1) * MIN;
+    const created = enteredAt - MIN;
     rows.push({
       id: `dispatch-seed-${80001 + i}`, no, type: s.type, channel: s.snap.ticketSource === 'IM' ? '在线客服' : '电话',
       title: s.title, smartMarks: s.type === '投诉' ? ['情绪'] : [], customer: s.customer, vip: false,
@@ -864,6 +872,8 @@ function seedPhoneOf(i: number): string {
 
 /** 派回原处理人种子单的上一张工单标题：同一客户 2 天前由原处理人结案（关系「同客户近期」的依据，4.3） */
 const ORIGINAL_HISTORY_TITLE: Record<string, string> = {
+  'L-Q3': '录音笔转写结果错字较多',
+  'G-Q2': '会员续费入口咨询',
   'L-R1': '翻译机识别不准，首次来电反馈',
   'G-R1': '门锁安装预约改期',
   'T-R1': '质检系统单点登录失败排查',
@@ -946,9 +956,20 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
   };
   dispatched('hardware', '陈坐席', 0.5, HW_MIXED);
   dispatched('hardware', '陈坐席', 0.68, HW_MIXED, 1);
+  dispatched('hardware', '陈坐席', 0.82, HW_MIXED);
+  dispatched('xiaozhi', '谭小智', 0.12, OFF_GROUP);
+  dispatched('xiaozhi', '谭小智', 0.25, OFF_GROUP, 1);
   dispatched('xiaozhi', '谭小智', 0.4, OFF_GROUP);
+  dispatched('xiaozhi', '谭小智', 0.6, OFF_GROUP, 1);
+  dispatched('xiaozhi', '谭小智', 0.5, OFF_GROUP);
+  dispatched('xiaozhi', '谭小智', 0.72, OFF_GROUP, 1);
   waiting('xiaozhi', 0.76, OFF_GROUP, '组内暂无已就绪成员', 1);
+  dispatched('edu', '何教支', 0.18, OFF_GROUP, 1);
+  dispatched('edu', '何教支', 0.3, OFF_GROUP);
   dispatched('edu', '何教支', 0.45, OFF_GROUP);
+  dispatched('edu', '何教支', 0.66, OFF_GROUP, 1);
+  dispatched('edu', '何教支', 0.55, OFF_GROUP);
+  dispatched('edu', '何教支', 0.72, OFF_GROUP, 1);
   waiting('edu', 0.79, OFF_GROUP, '均达个人上限', 1);
   waiting('edu-flash', 0.42, FLASH_MANUAL);
   waiting('edu-flash', 0.83, FLASH_MANUAL, undefined, 1);
@@ -1146,6 +1167,8 @@ const AWAY: Record<string, { signIn: '小休' | '签出'; agoMin: number }> = {
 const OFF_TODAY = ['吴投诉'];
 /** 刚签入、尚未点就绪（不被派单、不可领取） */
 const NOT_READY = ['秦督导'];
+/** 刚就绪不足 2 小时（派单均衡度不计入） */
+const JUST_READY = ['王组长', '周技支'];
 
 export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: DispatchGroup[], rules: PoolRule[]): DispatchDemo {
   const tl = timelineOf(now);
@@ -1179,6 +1202,8 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
       Object.assign(p, { signIn: '未就绪', signInSince: null, onDutyMs: 0 });
     } else if (away) {
       Object.assign(p, { signIn: away.signIn, signInSince: null, onDutyMs: Math.max(0, now - away.agoMin * MIN - t0) });
+    } else if (JUST_READY.includes(a.name)) {
+      Object.assign(p, { signIn: '就绪', signInSince: now - 90 * MIN, onDutyMs: 0 });
     } else {
       Object.assign(p, { signIn: '就绪', signInSince: t0, onDutyMs: 0 });
     }
