@@ -194,8 +194,8 @@ const OUT_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => bo
   { name: '指定人派单', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
   { name: '历史处理人派单', color: '#14b8a6', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
   { name: '综合打分', color: '#60a5fa', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
-  { name: '领取', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
-  { name: '指派', color: '#84cc16', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
+  { name: '主动领取', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
+  { name: '人工指派', color: '#84cc16', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
 ];
 
 function isPoolOut(l: DispatchLogEntry): boolean {
