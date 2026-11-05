@@ -2,7 +2,7 @@
 // 派单策略 · 入池规则（PRD 3.3）：按优先级升序；表尾固定默认池行（综合处理组池，不可删除、不可停用）
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { InboxOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons-vue';
+import { InboxOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, type PoolRule } from '@/views/tickets/types/dispatch';
 import { condItems } from './dispatchUi';
@@ -90,7 +90,7 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 
 <template>
   <section class="inpool-panel">
-    <div class="meta-strip">
+    <div class="meta-strip pr-strip">
       <div class="meta-chip">
         <span class="meta-chip-val">{{ rows.length }}</span>
         <span class="meta-chip-lb">条规则</span>
@@ -99,36 +99,35 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
         <span class="meta-chip-val">{{ enabledCount }}</span>
         <span class="meta-chip-lb">条启用</span>
       </div>
-      <div v-if="filtering" class="meta-chip">
+      <div v-if="filtering" class="meta-chip pr-chip-result">
         <span class="meta-chip-lb">筛选结果</span>
-        <span class="meta-chip-val">{{ filteredRows.length }}</span>
-        <span class="meta-chip-lb">条</span>
+        <span class="meta-chip-lb"><b>{{ filteredRows.length }}</b> 条</span>
       </div>
       <span class="meta-hint">按优先级匹配入池</span>
+      <div class="pr-filter">
+        <label class="pr-cell pr-cell-name">
+          <span class="pr-label">规则名称</span>
+          <a-input v-model:value="draft.name" size="small" class="pr-ctl" placeholder="关键词" allow-clear @press-enter="query" />
+        </label>
+        <div class="pr-cell pr-cell-pool">
+          <span class="pr-label">归属池</span>
+          <a-select v-model:value="draft.poolId" size="small" class="pr-ctl" placeholder="全部" allow-clear :options="poolOpts" :dropdown-match-select-width="false" />
+        </div>
+        <div class="pr-cell pr-cell-status">
+          <span class="pr-label">状态</span>
+          <a-select v-model:value="draft.status" size="small" class="pr-ctl" placeholder="全部" allow-clear :options="STATUS_OPTS" :dropdown-match-select-width="false" />
+        </div>
+        <div class="pr-cell pr-cell-type">
+          <span class="pr-label">工单类型</span>
+          <a-select v-model:value="draft.ticketType" size="small" class="pr-ctl" placeholder="全部" allow-clear :options="typeOpts" :dropdown-match-select-width="false" />
+        </div>
+        <div class="pr-btns">
+          <a-button size="small" @click="reset">重置</a-button>
+          <a-button type="primary" size="small" @click="query">查询</a-button>
+        </div>
+      </div>
       <div class="meta-actions">
-        <a-button type="primary" size="small" @click="openNew"><template #icon><PlusOutlined /></template>新增入池规则</a-button>
-      </div>
-    </div>
-    <div class="pr-filter">
-      <label class="pr-cell">
-        <span class="pr-label">规则名称</span>
-        <a-input v-model:value="draft.name" class="pr-ctl" placeholder="请输入关键词" allow-clear @press-enter="query" />
-      </label>
-      <div class="pr-cell">
-        <span class="pr-label">归属池</span>
-        <a-select v-model:value="draft.poolId" class="pr-ctl" placeholder="全部" allow-clear :options="poolOpts" />
-      </div>
-      <div class="pr-cell">
-        <span class="pr-label">状态</span>
-        <a-select v-model:value="draft.status" class="pr-ctl" placeholder="全部" allow-clear :options="STATUS_OPTS" />
-      </div>
-      <div class="pr-cell">
-        <span class="pr-label">工单类型</span>
-        <a-select v-model:value="draft.ticketType" class="pr-ctl" placeholder="全部" allow-clear :options="typeOpts" />
-      </div>
-      <div class="pr-btns">
-        <a-button @click="reset">重置</a-button>
-        <a-button type="primary" @click="query"><template #icon><SearchOutlined /></template>查询</a-button>
+        <a-button type="primary" size="small" @click="openNew"><template #icon><PlusOutlined /></template>规则</a-button>
       </div>
     </div>
     <div class="table-shell">
@@ -177,22 +176,34 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 
 <style scoped>
 .inpool-panel { padding: 0; min-width: 0; }
-/* 筛选：与派单日志同一套样式 */
-.pr-filter {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px 16px; align-items: center;
-  margin-bottom: 14px; padding: 14px 16px 12px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px;
+/* 统计、筛选、新增同一行：宽度不够时只压缩筛选控件；窗口过窄才让筛选整块换行 */
+.pr-strip { flex-wrap: nowrap; gap: 4px; }
+.pr-strip > .meta-chip, .pr-strip > .meta-hint, .pr-strip > .meta-actions { flex: none; }
+.pr-strip > .meta-actions { margin-left: 0; }
+.pr-strip > .meta-chip { padding: 2px 6px; white-space: nowrap; }
+.pr-strip > .meta-chip .meta-chip-val { font-size: 16px; }
+.pr-strip > .pr-chip-result { flex-direction: column; align-items: center; gap: 0; padding: 1px 6px; }
+.pr-chip-result .meta-chip-lb { font-size: 11px; line-height: 13px; }
+.pr-chip-result b { color: #111827; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-filter { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.pr-cell { display: flex; align-items: center; gap: 3px; min-width: 0; margin: 0; }
+.pr-cell-name { flex: 1 1 110px; min-width: 101px; max-width: 200px; }
+.pr-cell-pool { flex: 1 1 180px; min-width: 110px; max-width: 240px; }
+.pr-cell-status { flex: 0.5 0 87px; max-width: 120px; }
+.pr-cell-type { flex: 0.5 0 111px; max-width: 144px; }
+.pr-label { flex: none; font-size: 12px; color: #6b7280; line-height: 24px; white-space: nowrap; }
+.pr-btns { display: flex; align-items: center; gap: 4px; flex: none; }
+.pr-ctl { flex: 1; min-width: 0; width: auto; font-size: 12px; }
+.pr-ctl :deep(.ant-select-selector) { font-size: 12px !important; }
+.pr-ctl :deep(.ant-select-selection-item), .pr-ctl :deep(.ant-select-selection-placeholder) { font-size: 12px !important; }
+.pr-ctl.ant-input-affix-wrapper { height: 24px; }
+.pr-ctl :deep(input.ant-input) { font-size: 12px; }
+@media (max-width: 1500px) {
+  .pr-strip > .meta-hint { width: 48px; line-height: 14px; }
 }
-.pr-cell { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; }
-.pr-label { flex: none; font-size: 13px; font-weight: 500; color: #6b7280; line-height: 20px; white-space: nowrap; }
-.pr-btns { display: flex; align-items: center; gap: 8px; flex: none; }
-.pr-ctl { flex: 1; min-width: 0; width: auto; }
-.pr-ctl :deep(.ant-select-selector), .pr-ctl.ant-input-affix-wrapper {
-  border-radius: 8px !important; border-color: #e5e7eb !important; background: #fff !important; font-size: 13px !important;
-}
-.pr-ctl :deep(.ant-select-selection-item), .pr-ctl :deep(.ant-select-selection-placeholder) { font-size: 13px !important; }
-@media (max-width: 1180px) {
-  .pr-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pr-btns { grid-column: 1 / -1; justify-content: flex-end; }
+@media (max-width: 1100px) {
+  .pr-strip { flex-wrap: wrap; }
+  .pr-filter { order: 1; flex-basis: 100%; }
 }
 .pr-cond { display: flex; flex-wrap: wrap; gap: 2px 16px; line-height: 20px; }
 .pr-chip { font-size: 12px; color: #111827; }
