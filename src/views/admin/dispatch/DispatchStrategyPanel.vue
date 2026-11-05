@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 派单策略（PRD 14.2）：入池规则 / 出池规则 / 个人上限 / 变更记录；出池规则、个人上限页签底部 [重置][保存]，保存即生效、记审计
+// 派单策略（PRD 14.2）：入池规则 / 出池规则 / 个人上限 / 指定人规则 / 变更记录；出池规则、个人上限页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { CheckCircleFilled } from '@ant-design/icons-vue';
@@ -14,6 +14,7 @@ import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
 import { GATE_LABEL, SCORE_DIMENSION_ROWS, SCORE_TIE_RULE } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
+import DesignatedRuleList from './DesignatedRuleList.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
 
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'inpool', label: '入池规则' },
   { key: 'outpool', label: '出池规则' },
   { key: 'cap', label: '个人上限' },
+  { key: 'designated', label: '指定人规则' },
   { key: 'audit', label: '变更记录' },
 ];
 const active = ref(TABS.some((t) => t.key === props.tab) ? props.tab! : 'inpool');
@@ -91,7 +93,7 @@ function saveCap() {
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
-const auditKinds = ['派单方式', '个人开关', '入池规则', '工单池', '组成员', '人员画像', '熟练度', '个人上限', '派单策略'];
+const auditKinds = ['派单方式', '个人开关', '入池规则', '指定人规则', '工单池', '组成员', '人员画像', '熟练度', '个人上限', '派单策略'];
 const operatorOpts = computed(() => opts([...new Set(store.audits.map((a) => a.operator))]));
 const auditRows = computed(() => [...store.audits].reverse().filter((a) => {
   if (af.kind && a.kind !== af.kind) return false;
@@ -277,6 +279,11 @@ watch(() => store.config, (c) => {
           <a-button type="primary" @click="saveCap">保存</a-button>
         </div>
         </section>
+      </div>
+
+      <!-- 指定人规则 -->
+      <div v-else-if="active === 'designated'" class="st-tab-pane">
+        <DesignatedRuleList />
       </div>
 
       <!-- 变更记录 -->

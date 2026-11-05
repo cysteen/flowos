@@ -33,6 +33,10 @@ export function rangeStart(r: RangeKey, now: number): number {
 export function isEngineAssign(l: DispatchLogEntry): boolean {
   return l.kind === '判定' && !!l.chosen && !l.status;
 }
+/** 指定人规则命中、直接到人：不进工单池，不计入进出池、今日接单量、派单均衡度、系统派单成功率 */
+export function isDirectAssign(l: DispatchLogEntry): boolean {
+  return l.kind === '判定' && l.path === '直派规则';
+}
 /** 人工拿单（领取 / 指派 / 调剂到人 / 升级三线指定人），带目标坐席 */
 function isManualTake(l: DispatchLogEntry): boolean {
   return l.kind === '人工' && !!l.manual?.target && l.manual.action !== '调剂到池';
@@ -49,6 +53,8 @@ function inWindow(l: DispatchLogEntry, w: Window): boolean {
 function firstRespSegments(logs: DispatchLogEntry[], w: Window) {
   const byTicket = new Map<string, DispatchLogEntry[]>();
   for (const l of logs) {
+    // 指定人规则命中的单不进工单池，没有池等待，派单后首响也不计入
+    if (isDirectAssign(l)) continue;
     if (!byTicket.has(l.ticketNo)) byTicket.set(l.ticketNo, []);
     byTicket.get(l.ticketNo)!.push(l);
   }
@@ -126,10 +132,10 @@ export function computeStats(
   const inRange = scoped.filter((l) => inWindow(l, w));
 
   // 进入系统派单：判定时生效方式为自动派单或混合派单的工单（人工派单不走系统派单）
-  const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode !== '人工派单');
+  // 系统派单成功率（A.3）：进入系统派单的工单中，已由系统派出的占比；分子分母都不含指定人规则命中的单
+  const formal = inRange.filter((l) => l.kind === '判定' && l.effectiveMode !== '人工派单' && !isDirectAssign(l));
   const entered = new Set(formal.map((l) => l.ticketNo));
-  // 系统派单成功率（A.3）：进入系统派单的工单中，已由系统派出的占比；不含直派规则单
-  const success = new Set(formal.filter((l) => isEngineAssign(l) && l.path !== '直派规则').map((l) => l.ticketNo));
+  const success = new Set(formal.filter(isEngineAssign).map((l) => l.ticketNo));
 
   const seg = firstRespSegments(scoped, w);
   let firstRespDelta: number | null = null;
@@ -142,9 +148,9 @@ export function computeStats(
     if (seg.resp != null && y.resp != null) respDelta = seg.resp - y.resp;
   }
 
-  // 派单均衡度（13.2）：仅计当日在岗 2 小时及以上的坐席，不含直派规则单；接单量含系统派单与人工拿单
+  // 派单均衡度（13.2）：仅计当日在岗 2 小时及以上的坐席，不含指定人规则命中的单；接单量含系统派单与人工拿单
   const dayFrom = rangeStart('today', now);
-  const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && l.path !== '直派规则');
+  const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && !isDirectAssign(l));
   const scopeGroupIds = poolIds?.map((id) => poolGroupIdOf(id) ?? id) ?? null;
   const pool = agents
     .filter((a) => !a.disabled && (!scopeGroupIds || a.groupIds.some((g) => scopeGroupIds.includes(g))))
@@ -186,7 +192,7 @@ const IN_ITEMS: { name: string; color: string; triggers: DispatchTrigger[] }[] =
 const POOL_IN_TRIGGERS: ReadonlySet<DispatchTrigger> = new Set(IN_ITEMS.flatMap((x) => x.triggers));
 
 function isPoolIn(l: DispatchLogEntry): boolean {
-  return l.kind === '判定' && !!l.trigger && POOL_IN_TRIGGERS.has(l.trigger);
+  return l.kind === '判定' && !!l.trigger && POOL_IN_TRIGGERS.has(l.trigger) && !isDirectAssign(l);
 }
 
 /**
@@ -213,6 +219,8 @@ export interface PoolFlow {
   outTotal: number;
   inItems: ShareItem[];
   outItems: ShareItem[];
+  /** 指定人直达次数：不进工单池，单个工单池筛选下为 0 */
+  directTotal: number;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -245,7 +253,7 @@ export function buildPoolFlow(logs: DispatchLogEntry[], range: RangeKey, poolIds
   });
   const inItems = IN_ITEMS.map((x) => shareOf(x.name, x.color, inRange.filter((l) => isPoolIn(l) && x.triggers.includes(l.trigger!)).length, inTotal));
   const outItems = OUT_ITEMS.map((x) => shareOf(x.name, x.color, inRange.filter(x.hit).length, outTotal));
-  return { points, inTotal, outTotal, inItems, outItems };
+  return { points, inTotal, outTotal, inItems, outItems, directTotal: inRange.filter(isDirectAssign).length };
 }
 
 export function minText(v: number | null): string {

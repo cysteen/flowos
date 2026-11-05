@@ -246,10 +246,11 @@ export const useRefundStore = defineStore('refund', () => {
     r.refund!.state.manager = undefined;
     // 【1215】进教育支持组池即进入派单（12.4）；调用方落完履历与快照后再判定。
     // 到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发（自动派单池不发），见下方登记。
-    // 只有首次进池记「新单」；驳回、下送后再次进池记「重新进池」，不再发到组通知
+    // 只有首次进池记「新单」；驳回、下送后再次进池记「重新进池」，不再发到组通知。
+    // 指定人规则只在建单时判断（`createRefundTicket`），进池不再判断
     queueMicrotask(() => {
       const dispatch = useDispatchStore();
-      dispatch.dispatchTicket(r, dispatch.ticketStates[r.no] ? '重新进池' : '新单', { poolId: REFUND_POOL_GROUP_ID });
+      dispatch.dispatchTicket(r, dispatch.ticketStates[r.no] ? '重新进池' : '新单', { poolId: REFUND_POOL_GROUP_ID, skipDesignated: true });
     });
   }
 
@@ -268,7 +269,8 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /**
-   * 建个册退费单并按建单所填校代对接人派单；校代对接人为空进教育支持组工单池。SLA 自建单下送起算。
+   * 建个册退费单，由指定人规则判断去向（内置「个册退费 · 按学校派校园经理」：以建单所填校代对接人为准）；
+   * 没有对应人员、规则已停用或全局、教育支持组池为人工派单时进教育支持组工单池。SLA 自建单下送起算。
    * `manager` 不传时按学校取校园经理，传 `null` 表示建单时清空了校代对接人。
    */
   function createRefundTicket(
@@ -318,16 +320,25 @@ export const useRefundStore = defineStore('refund', () => {
     log(r, now, { category: 'node', action: 'create', who: actor.name, role: actor.role, how: '建单', what: REFUND_TL.create(base.ticketSource) });
     startSla(r, now);
     const bySchool = resolveSchoolManager(info.schoolId);
-    const m = manager === undefined ? bySchool : manager ?? undefined;
+    const dispatch = useDispatchStore();
+    const hit = dispatch.matchDesignated(r, { poolId: REFUND_POOL_GROUP_ID, picked: manager });
+    const m = hit?.manager;
     let message: string;
     if (m) {
       toManager(r, m, now);
       const what = bySchool?.account === m.account ? REFUND_TL.dispatchManager(m) : REFUND_TL.dispatchPicked(m);
       log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what });
+      dispatch.logDesignated(r, hit, REFUND_POOL_GROUP_ID);
       message = REFUND_TOAST.createdToManager(no, m.name);
+    } else if (hit?.agent) {
+      // 优先级更高的固定人员规则命中：同内部坐席接单，履历与派单日志由引擎写
+      dispatch.dispatchTicket(r, '新单', { poolId: REFUND_POOL_GROUP_ID });
+      message = REFUND_TOAST.createdToManager(no, hit.agent.name);
     } else {
       toPool(r, now);
-      const what = bySchool ? REFUND_TL.dispatchPoolCleared : REFUND_TL.dispatchPool;
+      let what: string = REFUND_TL.dispatchPoolByRule;
+      if (manager === null && bySchool) what = REFUND_TL.dispatchPoolCleared;
+      else if (manager == null && !bySchool) what = REFUND_TL.dispatchPool;
       log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what });
       message = REFUND_TOAST.createdToPool(no);
     }

@@ -1,23 +1,18 @@
 <script setup lang="ts">
 // 新增 / 编辑入池规则弹窗（PRD 3.3）：七个维度多选，不选为不限；校验文案取 store
 import { computed, reactive, watch } from 'vue';
-import { message, TreeSelect } from 'ant-design-vue';
+import { message } from 'ant-design-vue';
 import { BranchesOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import type { PoolRule } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
-import {
-  BUSINESS_TYPE_OPTS, CUSTOMER_TYPE_OPTS, PRIORITY_OPTS, PRODUCT_TREE_OPTS, TICKET_SOURCE_OPTS, TICKET_TYPE_OPTS,
-  maxTagPlaceholder, problemTreeOpts, productToValue, valueToProduct,
-} from './dispatchUi';
+import { productToValue, valueToProduct } from './dispatchUi';
+import RuleConditionFields from './RuleConditionFields.vue';
 
 const props = defineProps<{ open: boolean; rule: PoolRule | null }>();
 const emit = defineEmits<{ 'update:open': [v: boolean]; saved: [id: string] }>();
 const store = useDispatchStore();
-const SHOW_PARENT = TreeSelect.SHOW_PARENT;
-/** 问题分类条件树：只读引用问题分类管理 */
-const problemTree = computed(problemTreeOpts);
 
 const f = reactive({
   name: '',
@@ -116,61 +111,7 @@ function submit() {
         <span class="op-label req">优先级</span>
         <a-input-number v-model:value="f.priority" :min="1" :max="999" :precision="0" style="width: 160px" />
       </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">业务类型</span>
-        <a-select v-model:value="f.businessTypes" mode="multiple" :options="BUSINESS_TYPE_OPTS" placeholder="不限" allow-clear />
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">工单类型</span>
-        <a-select v-model:value="f.ticketTypes" mode="multiple" :options="TICKET_TYPE_OPTS" placeholder="不限" allow-clear />
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">问题分类</span>
-        <a-tree-select
-          v-model:value="f.problems"
-          class="rm-grow"
-          :tree-data="problemTree"
-          tree-checkable
-          :show-checked-strategy="SHOW_PARENT"
-          :field-names="{ label: 'title', value: 'value', children: 'children' }"
-          tree-node-label-prop="tagLabel"
-          placeholder="不限"
-          allow-clear
-          max-tag-count="responsive"
-          :max-tag-placeholder="maxTagPlaceholder"
-        >
-          <template #title="{ title, level }">
-            <span class="rm-lv">{{ level }}</span>{{ title }}
-          </template>
-        </a-tree-select>
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">产品</span>
-        <a-tree-select
-          v-model:value="f.products"
-          class="rm-grow"
-          :tree-data="PRODUCT_TREE_OPTS"
-          tree-checkable
-          :show-checked-strategy="SHOW_PARENT"
-          :field-names="{ label: 'title', value: 'value', children: 'children' }"
-          placeholder="不限"
-          allow-clear
-          max-tag-count="responsive"
-          :max-tag-placeholder="maxTagPlaceholder"
-        />
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">工单来源</span>
-        <a-select v-model:value="f.ticketSources" mode="multiple" :options="TICKET_SOURCE_OPTS" placeholder="不限" allow-clear />
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">客户类型</span>
-        <a-select v-model:value="f.customerTypes" mode="multiple" :options="CUSTOMER_TYPE_OPTS" placeholder="不限" allow-clear />
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">优先级（工单）</span>
-        <a-select v-model:value="f.priorities" mode="multiple" :options="PRIORITY_OPTS" placeholder="不限" allow-clear />
-      </div>
+      <RuleConditionFields :form="f" />
       <div class="op-field op-field-h">
         <span class="op-label req">归属池</span>
         <a-select v-model:value="f.poolId" :options="poolOpts" placeholder="请选择归属池" />
@@ -184,10 +125,5 @@ function submit() {
 </template>
 
 <style scoped>
-.rm-grow { flex: 1; min-width: 0; }
-.rm-lv {
-  display: inline-block; margin-right: 6px; padding: 0 4px; font-size: 11px; line-height: 16px;
-  color: #6b7280; background: #f3f4f6; border-radius: 3px; vertical-align: 1px;
-}
 .op-field-h > .op-label { width: 98px; }
 </style>

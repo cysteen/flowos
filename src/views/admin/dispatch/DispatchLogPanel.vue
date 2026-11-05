@@ -19,7 +19,7 @@ const route = useRoute();
 const router = useRouter();
 const store = useDispatchStore();
 
-const PATHS: DispatchPath[] = ['原处理人', '加权评分', '排队', '留池'];
+const PATHS: DispatchPath[] = ['原处理人', '加权评分', '直派规则', '排队', '留池'];
 const FAILS: DispatchFailReason[] = ['组内暂无已就绪成员', '无画像匹配成员', '无可接单成员', '均达个人上限', '系统异常'];
 const pathOpts = PATHS.map((p) => ({ value: p, label: pathLabel(p) }));
 const failOpts = FAILS.map((r) => ({ value: r, label: failLabel(r) }));
@@ -195,7 +195,7 @@ defineExpose({ exportCsv });
           </template>
           <template v-else-if="column.key === 'pool'">
             <div class="lp-main" :title="record.poolLabel">{{ record.poolLabel }}</div>
-            <div class="lp-sub">{{ record.effectiveMode }}</div>
+            <div v-if="record.poolId" class="lp-sub">{{ record.effectiveMode }}</div>
           </template>
           <a-tag v-else-if="column.key === 'result'" :color="LOG_RESULT_TONE[logResult(record as DispatchLogEntry)]" class="lp-tag">{{ logResult(record as DispatchLogEntry) }}</a-tag>
           <template v-else-if="column.key === 'handler'">

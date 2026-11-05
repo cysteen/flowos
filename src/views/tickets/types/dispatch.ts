@@ -154,6 +154,35 @@ export interface PoolRule {
   updatedAt: string;
 }
 
+/* ------------------------------------------------------------------ */
+/* 指定人规则（进池前判断，命中直接到人）                                  */
+/* ------------------------------------------------------------------ */
+
+/** 指定人来源：固定一名人员，或按对应关系取人 */
+export type DesignatedSource = '固定人员' | '对应关系';
+/** 对应关系当前取值 */
+export const DESIGNATED_MAPPINGS = ['学校 → 校园经理'] as const;
+export type DesignatedMapping = (typeof DESIGNATED_MAPPINGS)[number];
+
+export interface DesignatedRule {
+  id: string;
+  /** 最多 30 字；不重复 */
+  name: string;
+  /** 正整数 1–999，数值小者优先，不可重复 */
+  priority: number;
+  conditions: PoolRuleConditions;
+  source: DesignatedSource;
+  /** 指定人姓名（来源为固定人员） */
+  assignee?: string;
+  /** 对应关系（来源为对应关系） */
+  mapping?: DesignatedMapping;
+  enabled: boolean;
+  /** 内置规则：不可删除，来源不可改 */
+  builtin?: boolean;
+  updatedBy: string;
+  updatedAt: string;
+}
+
 /** 默认池：综合处理组池（3.1 未命中落默认池，也是兜底池） */
 export const DEFAULT_POOL_ID = 'general';
 export const DEFAULT_POOL_LABEL = '综合处理组';
@@ -428,7 +457,7 @@ export type DispatchTrigger =
   | '回访打回'
   | '重新进池';
 
-/** 判定路径（13.1）。直派规则为 P1 */
+/** 判定路径（13.1）。直派规则＝指定人规则命中直接到人，界面名称「指定人派单」 */
 export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '排队' | '留池';
 
 /** 未派出原因（13.1）：排队原因与系统异常 */
@@ -464,9 +493,10 @@ export interface DispatchLogEntry {
   at: string;
   kind: '判定' | '人工';
   trigger?: DispatchTrigger;
+  /** 归属池；指定人规则命中的单不进工单池，为空、`poolLabel` 记「—」 */
   poolId: string;
   poolLabel: string;
-  /** 命中的入池规则名；未命中记「默认池」 */
+  /** 命中的入池规则名；未命中记「默认池」；指定人派单记指定人规则名 */
   ruleName: string;
   globalMode: PoolMode;
   /** 归属池派单方式（字段名沿用） */
@@ -541,7 +571,7 @@ export interface TicketDispatchState {
 /* 审计（3.1 / 5.4 / 6.5 / 7.5 / 8.3）                                   */
 /* ------------------------------------------------------------------ */
 
-export type DispatchAuditKind = '个人开关' | '派单方式' | '入池规则' | '工单池' | '组成员' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
+export type DispatchAuditKind = '个人开关' | '派单方式' | '入池规则' | '指定人规则' | '工单池' | '组成员' | '人员画像' | '熟练度' | '个人上限' | '派单策略';
 export interface DispatchAuditEntry {
   id: string;
   at: string;
