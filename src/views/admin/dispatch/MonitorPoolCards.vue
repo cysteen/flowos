@@ -50,7 +50,6 @@ const cards = computed(() => {
     .map((p) => ({
       ...p,
       configRate: p.memberCount ? Math.round((p.configuredCount / p.memberCount) * 100) : null,
-      backlog: p.queued,
       /** 池内待派：池内全部未领取（无处理人）的工单数，不区分派单方式与派单状态 */
       pending: poolTicketsOfPool(p.id, reactiveTickets).length,
     }));
@@ -91,7 +90,7 @@ const recordCols = [
         v-for="c in cards"
         :key="c.id"
         class="pc"
-        :class="[`pc--${MODE_TONE[c.effectiveMode]}`, { 'pc--hot': c.backlog > 0 }]"
+        :class="[`pc--${MODE_TONE[c.effectiveMode]}`, { 'pc--hot': c.pending > 0 }]"
       >
         <div class="pc-accent" aria-hidden="true" />
         <div class="pc-inner">
@@ -119,7 +118,7 @@ const recordCols = [
           </div>
           <div class="pc-stats">
             <div class="pc-stat pc-stat-lead">
-              <span class="pc-stat-val" :class="c.backlog ? 'is-warn' : 'is-calm'">{{ c.pending }}</span>
+              <span class="pc-stat-val" :class="c.pending ? 'is-warn' : 'is-calm'">{{ c.pending }}</span>
               <span class="pc-stat-lb">池内待派</span>
             </div>
             <div class="pc-stat">
