@@ -9,6 +9,7 @@ import {
   BUSINESS_TYPES,
   CUSTOMER_SEARCH_LIMIT,
   PRODUCT_NAMES,
+  CUSTOM_PLATFORM_OPTION,
   buildAutoTitle,
   findCustomerById,
   upsertCustomer,
@@ -115,6 +116,7 @@ function defaultForm(): CreateTicketFormState {
     complaintType: '投诉',
     complaintPlatforms: [{ platform: '', complaintNo: '' }],
     businessLine: '学习机业务线',
+    productLine: '',
     priorFeedback: '是-400',
     serviceReview: '',
     complaintL1: '产品质量投诉',
@@ -176,6 +178,10 @@ export function useCreateTicketForm(
     complaintL1: false,
     complaintL2: false,
     serviceComplaintCategory: false,
+    complaintPlatform: false,
+    businessLine: false,
+    productLine: false,
+    priorFeedback: false,
   });
 
   const flashConfig = useFlashConfigStore();
@@ -224,6 +230,8 @@ export function useCreateTicketForm(
    * 空值（预填显式清空、由坐席补选）不回落。
    */
   function fallbackProblem() {
+    // 升级带入的是原单的问题分类：预填期间不回落
+    if (applyingPrefill && prefill()?.mode === 'escalate') return;
     const tree = productProblemTree.value;
     // 只回落「问题分类里有、但本产品下没有」的选中值；落不到问题分类上的预填值原样保留
     const full = problemTags.unionTree[form.problemL1];
@@ -851,6 +859,19 @@ export function useCreateTicketForm(
       form.businessType = p.businessType as CreateTicketFormState['businessType'];
     }
     if (p.businessLine) form.businessLine = p.businessLine;
+    // 升级：归属业务线、投诉类型、前期是否反馈、投诉分类由坐席选（原单是投诉单时投诉分类下面预填）
+    if (p.mode === 'escalate') {
+      form.businessLine = '';
+      form.productLine = '';
+      form.complaintType = '';
+      form.priorFeedback = '';
+      form.complaintL1 = '';
+      form.complaintL2 = '';
+    }
+    if (p.title) {
+      form.title = p.title;
+      form.titleManual = true;
+    }
     // 传空串＝清空三级分类（原单问题落不到问题树上时由坐席显式选，三项仍必填）
     if (p.problemL1 !== undefined) {
       form.problemL1 = p.problemL1;
@@ -990,6 +1011,14 @@ export function useCreateTicketForm(
     errors.complaintL1 = form.ticketType === '投诉' && !form.complaintL1;
     errors.complaintL2 = form.ticketType === '投诉' && !form.complaintL2;
     errors.serviceComplaintCategory = showServiceComplaintCategory.value && !form.serviceComplaintCategory;
+    // 升级外投（来源＝内投 / 外投渠道）：平台、业务线、产品线、前期是否反馈必填
+    if (prefill()?.mode === 'escalate' && showChannelComplaintFields.value) {
+      errors.complaintPlatform = !form.complaintPlatforms.some((r) => r.platform
+        && (r.platform !== CUSTOM_PLATFORM_OPTION || !!(r.customPlatform ?? '').trim()));
+      errors.businessLine = !form.businessLine;
+      errors.productLine = !form.productLine;
+      errors.priorFeedback = !form.priorFeedback;
+    }
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
@@ -1064,6 +1093,19 @@ export function useCreateTicketForm(
       // 归属业务线 / 投诉类型只在投诉渠道字段区（showChannelComplaintFields）采集；
       // 门控关着时表单里那份是缺省值、坐席没见过，不落库
       businessLine: showChannelComplaintFields.value ? (form.businessLine || undefined) : undefined,
+      productLine: showChannelComplaintFields.value ? (form.productLine || undefined) : undefined,
+      // 升级：新单指回原单；投诉渠道字段随单落工单行，处理页按它带出
+      ...(prefill()?.mode === 'escalate' ? {
+        escalatedFromNo: prefill()?.parentNo,
+        ...(showChannelComplaintFields.value ? {
+          complaintPlatforms: form.complaintPlatforms
+            .filter((r) => r.platform)
+            .map((r) => ({ platform: r.platform, customPlatform: r.customPlatform, complaintNo: r.complaintNo.trim() })),
+          priorFeedback: form.priorFeedback,
+          serviceReview: form.serviceReview.trim() || undefined,
+          complaintReceiveTime: form.complaintReceiveTime || undefined,
+        } : {}),
+      } : {}),
       productCategory: form.productCategory || undefined,
       // 建议 / 商机单不采集 SN 与问题描述（含附件），不落库
       sn: hidesSnAndDesc.value ? undefined : (form.deviceSn.trim() || undefined),

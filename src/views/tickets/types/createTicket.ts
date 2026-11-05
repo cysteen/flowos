@@ -228,6 +228,8 @@ export interface CreateTicketFormState {
    */
   complaintPlatforms: { platform: string; customPlatform?: string; complaintNo: string }[];
   businessLine: string;
+  /** 归属产品线（升级外投采集） */
+  productLine: string;
   priorFeedback: string;
   serviceReview: string;
   complaintL1: string;
@@ -444,8 +446,8 @@ export const EXTERNAL_COMPLAINT_PLATFORMS = COMPLAINT_PLATFORM_OPTIONS;
 
 /** 内投渠道的投诉平台（业务方 0801 给定） */
 export const INTERNAL_COMPLAINT_PLATFORMS = [
-  '公司/分公司「前台」',
-  '公司官网「监督举报」',
+  '公司/分公司“前台”',
+  '公司官网“监督举报”',
   '其他',
 ];
 
@@ -514,6 +516,12 @@ export function shouldShowComplaintChannelSupplement(
   return !!isExternalAppeal;
 }
 export const BUSINESS_LINE_OPTIONS = ['学习机业务线', '翻录业务线', '智学网业务线'];
+/** 归属产品线（随归属业务线联动，未选业务线时无选项） */
+export const PRODUCT_LINES_BY_BUSINESS_LINE: Record<string, string[]> = {
+  学习机业务线: ['学习机产品线', '课堂产品线'],
+  翻录业务线: ['录音笔产品线', '翻译机产品线'],
+  智学网业务线: ['课堂产品线', '精准教学产品线'],
+};
 export const YES_NO_OPTIONS = ['是', '否'];
 /** 投诉专属 · 前期反馈 */
 export const PRIOR_FEEDBACK_OPTIONS = [

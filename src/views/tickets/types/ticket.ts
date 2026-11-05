@@ -726,6 +726,15 @@ export interface Ticket {
    * 处理页据此判定「被接管」：整页只读 + 接管横幅（PRD §5.6.3）。
    */
   escalatedToNo?: string;
+  /** 投诉渠道字段（升级外投随单落库，处理页带出） */
+  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  priorFeedback?: string;
+  serviceReview?: string;
+  complaintReceiveTime?: string;
+  /** 本单经「升级外投」升级（内投、外投两个来源都算）：原单落「已升级外投」 */
+  escalatedToExternal?: boolean;
+  /** 终态原单升级：状态不变，只留指向新单的关联 */
+  escalatedLinkNo?: string;
   /**
    * 「刷机单」标识（1013 A1）：刷机单的工单类型是咨询，靠本标识区分。
    * 建单时由刷机服务写入（产品支持刷机 ∧ 问题分类专属类型＝刷机），此后不可修改。
@@ -759,8 +768,12 @@ export interface Ticket {
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
 export interface CreateTicketPrefill {
-  /** escalate = 升级投诉·非投诉→投诉（走建单页，已知字段预填；提交即关原单 + 双向关联） */
+  /** escalate = 升级投诉 / 升级外投（走建单页，已知字段预填；提交即建新单 + 原单改状态 + 双向关联） */
   mode?: 'normal' | 'child' | 'reopen' | 'escalate';
+  /** 升级目标（mode=escalate）：complaint＝升级投诉 / external＝升级外投 */
+  escalateTarget?: 'complaint' | 'external';
+  /** 工单标题（升级：取原单标题，不再按产品与问题分类拼） */
+  title?: string;
   parentNo?: string;
   parentTitle?: string;
   customerName?: string;
@@ -1337,7 +1350,7 @@ export function isTicketClosed(status: TicketStatus): boolean {
 export function resolveStoppedClockStatus(t: Ticket): TicketStatus {
   // 因升级投诉而关闭：原单落升阶终态。**哪一跳看原单自己是不是外投**（基线 §1）——
   // 内投单再升一级只能升外投（第二跳），非投诉单升上来的是第一跳。
-  if (t.escalatedToNo) return t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
+  if (t.escalatedToNo) return t.escalatedToExternal || t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
   if (t.myForceCloseAction) return '已强结';
   // 「关闭工单」审批通过 → 「已关闭」（基线 §1 该行）
   if (t.myCloseAction) return '已关闭';

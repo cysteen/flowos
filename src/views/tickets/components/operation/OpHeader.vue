@@ -16,7 +16,7 @@ import OpSlaBar from './OpSlaBar.vue';
 import { readSla } from '@/views/tickets/utils/slaClock';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { aftersaleCardFoot, resolveAftersaleButtonForm } from '../../composables/aftersaleButtonForm';
-import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
+import { resolveEscalateButtons, isTicketTerminated } from '../../composables/complaintEscalation';
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
 import OpSupersededBanner from './OpSupersededBanner.vue';
@@ -106,27 +106,23 @@ const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理'
 const isTerminal = computed(() => isTicketTerminated(props.detail.status));
 
 /** 委派中：升级投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
-const delegateLocked = computed(() => !!props.detail.delegateInfo);
+const delegateLocked = computed(() => !!props.detail.delegateInfo || props.detail.status === '已委派');
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 
-/**
- * 升级投诉入口：全类型展示，可用性按投诉阶层判定（《【815】关联投诉 PRD》§3.2/§4.2）——
- * 非投诉、低阶投诉（人员/业务）可升级；外投为终态，入口置灰并引导走「新建补充」。
- */
-// 同上：升级判定认发起人角色
 const user = useUserStore();
-const escalateVerdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
-// 升级投诉的可用性：整页锁死 / 委派中 / 阶层判定（一线在非投诉单上可升，见 815 §3.3）
-const escalateDisabled = computed(() => {
-  if (props.linkComplaint) return props.readonly || !!props.escalateGate?.forbidden;
-  return props.readonly || !!props.escalateGate?.forbidden || delegateLocked.value || !escalateVerdict.value.entryEnabled;
+/**
+ * 升级投诉 / 升级外投两枚：不满足即不展示。整页锁死、委派中都不出，其余按阶层 × 发起人角色判。
+ * 刷机 / 个册退费 / 小智单不走这两枚，页头那一枚是「关联投诉」，见下。
+ */
+const escalateButtons = computed(() => {
+  if (props.readonly || delegateLocked.value) return { complaint: false, external: false };
+  return resolveEscalateButtons(props.detail, user.roleKey);
 });
-const escalateTip = computed(() => {
+// 「关联投诉」的可用性：整页锁死 / 终态门控
+const linkComplaintDisabled = computed(() => props.readonly || !!props.escalateGate?.forbidden);
+const linkComplaintTip = computed(() => {
   if (props.readonly) return READONLY_TIP;
-  if (props.escalateGate?.forbidden) return props.escalateGate.tip;
-  if (props.linkComplaint) return undefined;
-  if (delegateLocked.value) return DELEGATE_LOCK_TIP;
-  return escalateVerdict.value.entryTip;
+  return props.escalateGate?.forbidden ? props.escalateGate.tip : undefined;
 });
 
 /**
@@ -367,18 +363,30 @@ function priorityHex(p: string): string {
         @open="emit('openSuperseded')"
       />
       <div v-else class="oh-actions">
-        <!--
-          升级投诉：原单升级为更高阶投诉（关原单 + 同步信息建新单 + 双向关联）。
-          外投为投诉终态，入口置灰并提示改走「新建补充」
-        -->
+        <!-- 刷机 / 个册退费 / 小智单：「关联投诉」，弱关联、本单状态不变，只在终态置灰 -->
         <button
-          v-if="canEscalateComplaint"
+          v-if="canEscalateComplaint && linkComplaint"
           type="button"
           class="action-btn"
-          :disabled="escalateDisabled"
-          :title="escalateTip"
-          @click="emit('action', linkComplaint ? '关联投诉' : '升级投诉')"
-        >{{ linkComplaint ? '关联投诉' : '升级投诉' }}</button>
+          :disabled="linkComplaintDisabled"
+          :title="linkComplaintTip"
+          @click="emit('action', '关联投诉')"
+        >关联投诉</button>
+        <!-- 升级投诉 / 升级外投：建新单 + 原单改状态 + 双向关联 -->
+        <template v-else-if="canEscalateComplaint">
+          <button
+            v-if="escalateButtons.complaint"
+            type="button"
+            class="action-btn"
+            @click="emit('action', '升级投诉')"
+          >升级投诉</button>
+          <button
+            v-if="escalateButtons.external"
+            type="button"
+            class="action-btn"
+            @click="emit('action', '升级外投')"
+          >升级外投</button>
+        </template>
         <!--
           「关联售后」位（§5.1）：建单形态「关联售后」/ 回传形态「回传处理结果」/ 置灰；
           有活跃关联时 hover 出售后单卡片：状态可见、工单号可点跳售后系统操作

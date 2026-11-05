@@ -691,6 +691,30 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-16 09:40:09', updatedAt: '2026-08-17 08:20:49',
     responded: true, hasDelegateHistory: true,
   },
+  // 投诉单 · 来源内投渠道 · 处理中：已是外投阶层，页头无升级按钮
+  {
+    id: 'es-nt1', no: 'IFLYTS-20260923-00061', type: '投诉', channel: '电话', ticketSource: '内投渠道',
+    title: '公司前台转来的录音笔售后投诉', smartMarks: [],
+    customer: '严蕾', vip: false, product: '智能音箱 X1',
+    nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P2',
+    slaText: '06:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 370,
+    assignee: '王坐席', tab: 'mine', groupId: 'line2',
+    customerPhone: '13733335551', productCategory: '智能硬件',
+    createdAt: '2026-09-23 10:12:06', updatedAt: '2026-09-23 11:02:18',
+    responded: true,
+  },
+  // 投诉单 · 已挂起：冻结态，页头无升级按钮
+  {
+    id: 'es-gq1', no: 'IFLYTS-20260923-00062', type: '投诉', channel: '电话', ticketSource: '电话',
+    title: '耳机维修等待客户寄回，投诉已挂起', smartMarks: [],
+    customer: '钟宁', vip: false, product: '蓝牙耳机 Air',
+    nodeStatus: '已挂起', nodeStep: 3, nodeTotal: 5, priority: 'P2',
+    slaText: '已暂停', slaSub: '挂起中', slaState: 'paused', slaMinutes: 300,
+    assignee: '王坐席', tab: 'mine', groupId: 'line2',
+    customerPhone: '13733335552', productCategory: '智能硬件',
+    createdAt: '2026-09-23 09:30:44', updatedAt: '2026-09-23 10:40:09',
+    responded: true,
+  },
   // D8 已结案·无子单：点补充 → **新建一张承接子单**；再补一次仍落这张，不建第二张
   {
     id: 'fd-d8', no: 'IFLYZX-20260817-00007', type: '咨询', channel: '电话',

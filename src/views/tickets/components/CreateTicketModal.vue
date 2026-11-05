@@ -27,6 +27,7 @@ import {
   ticketSourceOptionsForRole,
   COMPLAINT_TYPE_OPTIONS,
   BUSINESS_LINE_OPTIONS,
+  PRODUCT_LINES_BY_BUSINESS_LINE,
   complaintPlatformsBySource,
   PRIOR_FEEDBACK_OPTIONS,
   SERVICE_REVIEW_OPTIONS,
@@ -40,6 +41,7 @@ import {
   SERVICE_COMPLAINT_CATEGORY_OPTIONS,
 } from '@/views/tickets/types/complaintCreateCategory';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
+import { ESCALATE_COMPLAINT_SOURCES, ESCALATE_EXTERNAL_SOURCES } from '@/views/tickets/composables/complaintEscalation';
 import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
 import { TICKETS } from '@/mock/tickets';
 import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
@@ -163,12 +165,17 @@ const newCustomerPrefill = computed(() => {
 
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
-/** 升级投诉 · 非投诉→投诉：本页即"新建投诉单"，已知字段预填，提交即关原单 + 双向关联 */
+/** 升级投诉 / 升级外投：本弹窗即新建投诉单 / 外投单，已知字段预填，提交即建新单 + 原单改状态 + 双向关联 */
 const isEscalateMode = computed(() => props.prefill?.mode === 'escalate');
+const isEscalateExternal = computed(() => isEscalateMode.value && props.prefill?.escalateTarget === 'external');
+/** 字段标签：升级弹窗按升级口径取名并带冒号，其余入口原样 */
+function lb(normal: string, escalate?: string): string {
+  return isEscalateMode.value ? `${escalate ?? normal}:` : normal;
+}
 const modalTitle = computed(() => {
   if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
-  if (isEscalateMode.value) return '升级投诉 · 新建投诉单';
+  if (isEscalateMode.value) return isEscalateExternal.value ? '升级外投 · 新建外投单' : '升级投诉 · 新建投诉单';
   // 小智入口（1130 D3）：标题带标识，与通用「新建工单」区分
   if (isXiaozhiType.value) return `新建工单 · ${XIAOZHI_MARK_LABEL}`;
   return '新建工单';
@@ -200,8 +207,23 @@ const complaintL2Options = computed(
  * 本弹窗同时承载「转单」「重新建单」「升级投诉·新建投诉单」，这些入口一并按同一判据收窄；
  * 原单来源被预填为内投 / 外投时按当前值回显（置灰不可再选）。
  */
-const ticketSourceOptions = computed(
-  () => ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource),
+const ticketSourceOptions = computed(() => {
+  if (isEscalateMode.value) {
+    return (isEscalateExternal.value ? ESCALATE_EXTERNAL_SOURCES : ESCALATE_COMPLAINT_SOURCES)
+      .map((v) => ({ value: v, label: v }));
+  }
+  return ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource);
+});
+
+/** 归属产品线：随归属业务线联动，未选业务线时无选项 */
+const productLineOptions = computed(
+  () => (PRODUCT_LINES_BY_BUSINESS_LINE[form.businessLine] ?? []).map((v) => ({ value: v, label: v })),
+);
+watch(
+  () => form.businessLine,
+  () => {
+    if (form.productLine && !productLineOptions.value.some((o) => o.value === form.productLine)) form.productLine = '';
+  },
 );
 
 /** 投诉平台字典随来源切换：外投渠道=外部平台，内投渠道=公司前台/官网监督举报/其他 */
@@ -349,7 +371,7 @@ function onCreate(processAfter = false) {
   let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
-  else if (isEscalateMode.value) msg = `投诉单 ${ticket.no} 已创建，原单转为「已升级投诉」并双向关联`;
+  else if (isEscalateMode.value) msg = `${isEscalateExternal.value ? '外投单' : '投诉单'} ${ticket.no} 已创建，已与原单双向关联`;
   message.success(msg);
   // 由草稿提交 → 从草稿箱移除
   if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
@@ -494,8 +516,17 @@ watch(
     destroy-on-close
     @cancel="onCancel"
   >
-    <div class="modal-header">
-      <div class="modal-title-row">
+    <div class="modal-header" :class="{ 'is-escalate': isEscalateMode }">
+      <div v-if="isEscalateMode" class="cw-header">
+        <span class="cw-header__title">{{ modalTitle }}</span>
+        <span class="cw-header__source">升级自原单<a
+          class="cw-header__no"
+          :href="ticketHref(prefill?.parentNo ?? '')"
+          target="_blank"
+          rel="noopener"
+        >{{ prefill?.parentNo }}</a><span class="cw-header__subject">{{ prefill?.parentTitle }}</span></span>
+      </div>
+      <div v-else class="modal-title-row">
         <span class="modal-icon" :class="`tone-${headTone}`"><component :is="headIcon" /></span>
         <span class="modal-title">{{ modalTitle }}</span>
         <template v-if="showParentInTitle">
@@ -510,23 +541,23 @@ watch(
       <CloseOutlined class="modal-close" @click="onCancel" />
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body" :class="{ 'is-escalate': isEscalateMode }">
       <!-- ① 工单基础（对齐 .pen yTou1 / m8cXVW）
            优先级排在工单类型之前：P0/P1 选定后类型只出「投诉」，先后顺序即联动顺序 -->
       <CreateTicketPartCard title="工单基础">
-        <div class="row-3 basic-row">
+        <div class="row-3" :class="{ 'basic-row': !isEscalateMode }">
           <div class="inline-field basic-field">
-            <label class="inline-label xl"><span class="req">*</span>业务类型</label>
+            <label class="inline-label xl"><span class="req">*</span>{{ lb('业务类型') }}</label>
             <FormSelect
               v-model:value="form.businessType"
               class="inline-control field-control"
               size="middle"
-              :disabled="isFlashType || isXiaozhiType || isRefundType"
+              :disabled="isFlashType || isXiaozhiType || isRefundType || isEscalateMode"
               :status="errors.businessType ? 'error' : ''"
               :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />
           </div>
-          <div class="inline-field basic-field">
+          <div v-if="!isEscalateMode" class="inline-field basic-field">
             <label class="inline-label xl"><span class="req">*</span>优先级</label>
             <FormSelect
               v-model:value="form.priority"
@@ -538,19 +569,19 @@ watch(
             />
           </div>
           <div class="inline-field basic-field">
-            <label class="inline-label xl"><span class="req">*</span>工单类型</label>
+            <label class="inline-label xl"><span class="req">*</span>{{ lb('工单类型') }}</label>
             <FormSelect
               v-model:value="form.ticketType"
               class="inline-control field-control"
               size="middle"
               allow-clear
-              :disabled="isFlashType || isXiaozhiType || isRefundType"
+              :disabled="isFlashType || isXiaozhiType || isRefundType || isEscalateMode"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />
           </div>
           <div class="inline-field basic-field">
-            <label class="inline-label xl"><span class="req">*</span>工单来源</label>
+            <label class="inline-label xl"><span class="req">*</span>{{ lb('工单来源') }}</label>
             <FormSelect
               v-model:value="form.ticketSource"
               class="inline-control field-control"
@@ -565,10 +596,11 @@ watch(
       <!-- ② 客户信息（对齐 .pen tvmVK / i67UL） -->
       <CreateTicketPartCard title="客户信息">
         <div class="customer-body">
+          <label v-if="isEscalateMode" class="inline-label xl"><span class="req">*</span>客户:</label>
           <div class="customer-toolbar">
             <div class="search-wrap">
               <div class="search-box" @keyup.enter="searchCustomer">
-                <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '15px' }" />
+                <SearchOutlined v-if="!isEscalateMode" :style="{ color: '#9CA3AF', fontSize: '15px' }" />
                 <input
                   v-model="form.customerQuery"
                   class="search-input"
@@ -631,7 +663,7 @@ watch(
                 <span class="cust-phone">{{ form.customer.phone }}</span>
               </div>
               <div class="cust-line2">
-                {{ formatCustomerSubline(form.customer, form.businessType) }}
+                {{ isEscalateMode ? form.customer.customerType : formatCustomerSubline(form.customer, form.businessType) }}
               </div>
             </div>
             <div class="cust-actions">
@@ -660,7 +692,7 @@ watch(
         <div class="product-body">
           <div class="row-3">
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>产品分类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('产品分类') }}</label>
               <FormSelect
                 v-model:value="form.productCategory"
                 class="inline-control field-control"
@@ -672,7 +704,7 @@ watch(
             </div>
             <!-- 刷机单不出设备SN（改在「刷机信息」卡填）、建议 / 商机单不采集设备SN：产品名称占满剩下两列，长产品名整段可见 -->
             <div class="inline-field" :class="{ 'span-2': isFlashType || hidesSnAndDesc }">
-              <label class="inline-label xl"><span class="req">*</span>产品名称</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('产品名称') }}</label>
               <FormSelect
                 :key="form.productCategory"
                 v-model:value="form.productName"
@@ -686,7 +718,7 @@ watch(
               />
             </div>
             <div v-if="!isFlashType && !hidesSnAndDesc" class="inline-field">
-              <label class="inline-label xl">设备SN</label>
+              <label class="inline-label xl">{{ lb('设备SN') }}</label>
               <a-input
                 v-model:value="form.deviceSn"
                 class="inline-control field-control"
@@ -698,7 +730,7 @@ watch(
 
           <div class="row-3">
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>问题一类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('问题一类', '问题分类一级') }}</label>
               <FormSelect
                 v-model:value="form.problemL1"
                 class="inline-control field-control"
@@ -709,7 +741,7 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>问题二类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('问题二类', '问题分类二级') }}</label>
               <FormSelect
                 v-model:value="form.problemL2"
                 class="inline-control field-control"
@@ -720,7 +752,7 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>问题三类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('问题三类', '问题分类三级') }}</label>
               <FormSelect
                 v-model:value="form.problemL3"
                 class="inline-control field-control"
@@ -729,19 +761,32 @@ watch(
                 :options="problemL3Options.map((v) => ({ value: v, label: v }))"
               />
             </div>
+            <!-- 升级弹窗：优先级落在产品问题卡（问题分类之后、问题描述之前） -->
+            <div v-if="isEscalateMode" class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('优先级') }}</label>
+              <FormSelect
+                v-model:value="form.priority"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.priority ? 'error' : ''"
+                :options="priorityOptions"
+              />
+            </div>
           </div>
 
           <!-- 问题描述篇幅长，整行收尾；建议 / 商机单不采集问题描述（含附件） -->
           <div v-if="!hidesSnAndDesc" class="inline-field desc-field">
-            <label class="inline-label xl"><span class="req">*</span>问题描述</label>
+            <label class="inline-label xl"><span class="req">*</span>{{ lb('问题描述') }}</label>
             <!-- 带附件文本框：与处理页问题原因、处理结果同一组件；小智单附件亦在此上传，不放在「小智工单信息」卡 -->
             <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
               <OpTextareaAttach
                 v-model="form.description"
                 v-model:attachments="form.descriptionAttachments"
                 :min-input-height="60"
+                :maxlength="isEscalateMode ? 2000 : undefined"
                 :placeholder="isXiaozhiType ? '请描述问题与诉求，可上传截图或文档' : '请描述客户反馈的问题与诉求'"
               />
+              <div v-if="isEscalateMode" class="desc-count">{{ form.description.length }}/2000</div>
             </div>
           </div>
         </div>
@@ -750,7 +795,8 @@ watch(
       <!-- ④ 类型专属 -->
       <CreateTicketPartCard
         v-if="showTypePart"
-        :subtitle="typePartSubtitle"
+        :title="isEscalateMode ? typePartSubtitle : undefined"
+        :subtitle="isEscalateMode ? undefined : typePartSubtitle"
         :body-gap="10"
       >
         <template v-if="form.ticketType === '投诉'">
@@ -761,18 +807,22 @@ watch(
           <template v-if="showChannelComplaintFields">
             <!-- 投诉平台 + 投诉编号：成对多组，标签与控件同一行 -->
             <div class="cp-group">
+              <label v-if="isEscalateMode" class="inline-label xl"><span class="req">*</span>投诉平台/编号:</label>
               <div
                 v-for="(row, i) in form.complaintPlatforms"
                 :key="`cp-${i}`"
                 class="cp-row"
               >
-                <label v-if="i === 0" class="inline-label xl">投诉平台/编号</label>
-                <span v-else class="inline-label xl cp-label-spacer" aria-hidden="true" />
+                <template v-if="!isEscalateMode">
+                  <label v-if="i === 0" class="inline-label xl">投诉平台/编号</label>
+                  <span v-else class="inline-label xl cp-label-spacer" aria-hidden="true" />
+                </template>
                 <FormSelect
                   v-model:value="row.platform"
                   class="field-control cp-cell"
                   :options="complaintPlatformOptions"
-                  placeholder="投诉平台"
+                  :status="isEscalateMode && errors.complaintPlatform && !row.platform ? 'error' : ''"
+                  :placeholder="isEscalateMode ? '请选择投诉平台' : '投诉平台'"
                 />
                 <a-input
                   v-if="row.platform === CUSTOM_PLATFORM_OPTION"
@@ -786,6 +836,7 @@ watch(
                   placeholder="投诉编号，可留空"
                 />
                 <button
+                  v-if="!isEscalateMode || form.complaintPlatforms.length > 1"
                   type="button"
                   class="cp-del"
                   title="移除该组"
@@ -809,7 +860,7 @@ watch(
 
             <div class="row-3">
               <div class="inline-field">
-                <label class="inline-label xl"><span class="req">*</span>投诉类型</label>
+                <label class="inline-label xl"><span class="req">*</span>{{ lb('投诉类型') }}</label>
                 <FormSelect
                   v-model:value="form.complaintType"
                   class="inline-control field-control"
@@ -818,14 +869,24 @@ watch(
                 />
               </div>
               <div class="inline-field">
-                <label class="inline-label xl"><span class="req">*</span>归属业务线</label>
+                <label class="inline-label xl"><span class="req">*</span>{{ lb('归属业务线') }}</label>
                 <FormSelect
                   v-model:value="form.businessLine"
                   class="inline-control field-control"
+                  :status="errors.businessLine ? 'error' : ''"
                   :options="BUSINESS_LINE_OPTIONS.map((v) => ({ value: v, label: v }))"
                 />
               </div>
-              <div class="inline-field">
+              <div v-if="isEscalateMode" class="inline-field">
+                <label class="inline-label xl"><span class="req">*</span>{{ lb('归属产品线') }}</label>
+                <FormSelect
+                  v-model:value="form.productLine"
+                  class="inline-control field-control"
+                  :status="errors.productLine ? 'error' : ''"
+                  :options="productLineOptions"
+                />
+              </div>
+              <div v-else class="inline-field">
                 <label class="inline-label xl"><span class="req">*</span>前期是否反馈</label>
                 <FormSelect
                   v-model:value="form.priorFeedback"
@@ -839,7 +900,7 @@ watch(
           <!-- 投诉一类/二类：所有投诉单必填；投诉接收时间仅内投/外投渠道展示（非必填） -->
           <div class="row-3">
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>投诉一类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('投诉一类', '投诉分类一级') }}</label>
               <FormSelect
                 v-model:value="form.complaintL1"
                 class="inline-control field-control"
@@ -848,7 +909,7 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>投诉二类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('投诉二类', '投诉分类二级') }}</label>
               <FormSelect
                 v-model:value="form.complaintL2"
                 class="inline-control field-control"
@@ -857,7 +918,7 @@ watch(
               />
             </div>
             <div v-if="showServiceComplaintCategory" class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>服务投诉分类</label>
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('服务投诉分类') }}</label>
               <FormSelect
                 v-model:value="form.serviceComplaintCategory"
                 class="inline-control field-control"
@@ -866,7 +927,7 @@ watch(
               />
             </div>
             <div v-if="showChannelComplaintFields" class="inline-field">
-              <label class="inline-label xl">投诉接收时间</label>
+              <label class="inline-label xl">{{ lb('投诉接收时间') }}</label>
               <a-date-picker
                 v-model:value="form.complaintReceiveTime"
                 class="inline-control field-control"
@@ -878,14 +939,27 @@ watch(
             </div>
           </div>
 
+          <!-- 升级外投：前期是否反馈单列一行 -->
+          <div v-if="isEscalateMode && showChannelComplaintFields" class="row-3">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>{{ lb('前期是否反馈') }}</label>
+              <FormSelect
+                v-model:value="form.priorFeedback"
+                class="inline-control field-control"
+                :status="errors.priorFeedback ? 'error' : ''"
+                :options="PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+          </div>
+
           <!-- 服务回溯是自由文本、篇幅长，独占整行收尾 -->
           <div v-if="showChannelComplaintFields" class="inline-field review-field">
-            <label class="inline-label xl">服务回溯</label>
+            <label class="inline-label xl">{{ lb('服务回溯') }}</label>
             <a-textarea
               v-model:value="form.serviceReview"
               placeholder="手动填写回溯说明"
               class="inline-control field-control"
-              :auto-size="{ minRows: 2, maxRows: 6 }"
+              :auto-size="{ minRows: isEscalateMode ? 3 : 2, maxRows: 6 }"
             />
           </div>
         </template>
@@ -901,9 +975,9 @@ watch(
       <RefundInfoPart v-if="isRefundType" v-model:info="form.refund" :errors="refundErrors" :customer-region="form.customer?.region" />
 
       <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单隐藏本卡，标题由系统生成（PRD §2.4） -->
-      <CreateTicketPartCard v-if="!isFlashType" compact>
+      <CreateTicketPartCard v-if="!isFlashType" :compact="!isEscalateMode" :title="isEscalateMode ? '工单标题' : undefined">
         <div class="inline-field">
-          <label class="inline-label title-label">工单标题</label>
+          <label class="inline-label title-label"><span v-if="isEscalateMode" class="req">*</span>{{ lb('工单标题') }}</label>
           <a-input
             v-model:value="form.title"
             class="inline-control field-control"
@@ -913,6 +987,13 @@ watch(
           />
         </div>
       </CreateTicketPartCard>
+
+      <!-- 升级弹窗：SLA 预览 -->
+      <div v-if="isEscalateMode" class="cw-sla">
+        <span class="cw-sla-label">SLA 预览</span>
+        <span class="cw-sla-tag">响应 ≤4h · 解决 ≤24h</span>
+        <span class="cw-sla-note">按优先级预估，最终以 SLA 策略为准</span>
+      </div>
     </div>
 
     <!-- 刷机单拦截提示：弹窗底栏上方，行内红字（机型不支持 / 同 SN 在途 / 系统繁忙） -->
@@ -929,9 +1010,9 @@ watch(
       <template v-else>{{ flashBlock.message }}</template>
     </div>
 
-    <div class="modal-footer">
+    <div class="modal-footer" :class="{ 'is-escalate': isEscalateMode }">
       <div
-        v-if="!isChildMode && !isFlashType && !isXiaozhiType && (isReopenMode || duplicateTickets.length)"
+        v-if="!isEscalateMode && !isChildMode && !isFlashType && !isXiaozhiType && (isReopenMode || duplicateTickets.length)"
         class="footer-hint"
       >
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
@@ -948,10 +1029,10 @@ watch(
       </div>
       <div class="footer-btns">
         <button type="button" class="btn-ghost" @click="onCancel">取消</button>
-        <button type="button" class="btn-ghost" @click="onDraft">存草稿</button>
+        <button v-if="!isEscalateMode" type="button" class="btn-ghost" @click="onDraft">存草稿</button>
         <!-- 主操作是「创建」：建完回列表是常态，建完立刻处理是少数场景 -->
         <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
-          {{ createPrimaryLabel }}
+          {{ isEscalateMode ? '升级' : createPrimaryLabel }}
         </button>
         <!--
           小智单底栏**只留「取消 / 存草稿 / 创建」三枚**（一·补 B27，**推翻 B11** 的两枚建单按钮）：
@@ -960,7 +1041,7 @@ watch(
           非小智单照旧三枚，行为未变。
           个册退费单同样不出「创建并处理」，只留「创建」（用户 10-27 拍板）。
         -->
-        <button v-if="!isXiaozhiType && !isRefundType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
+        <button v-if="!isXiaozhiType && !isRefundType && !isEscalateMode" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
         </button>
       </div>
@@ -1482,6 +1563,106 @@ watch(
   cursor: pointer;
 }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* —— 升级投诉 / 升级外投弹窗：取值照真实系统 —— */
+.modal-header.is-escalate {
+  align-items: flex-start;
+  padding: 16px 16px 16px 16px;
+  border-bottom: none;
+}
+.cw-header { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; padding-right: 32px; }
+.cw-header__title { font-size: 16px; font-weight: 600; line-height: 24px; color: #303133; }
+.cw-header__source { font-size: 13px; line-height: 1.5; color: #909399; word-break: break-all; }
+.cw-header__no { margin: 0 4px; font-weight: 500; color: #5d87ff; }
+.cw-header__no:hover { color: #5d87ff; text-decoration: underline; }
+.cw-header__subject { color: #909399; }
+.modal-body.is-escalate { gap: 12px; padding: 0 16px 16px; }
+.modal-body.is-escalate :deep(.part-card) {
+  padding: 0;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+}
+.modal-body.is-escalate :deep(.part-head) {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+.modal-body.is-escalate :deep(.part-bar) { width: 2px; height: 14px; background: #5d87ff; }
+.modal-body.is-escalate :deep(.part-title) { font-size: 14px; font-weight: 600; color: #303133; }
+.modal-body.is-escalate :deep(.part-body) { padding: 12px; gap: 10px; }
+.modal-body.is-escalate .row-3 { gap: 10px 8px; align-items: start; }
+.modal-body.is-escalate .inline-field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+.modal-body.is-escalate .inline-label,
+.modal-body.is-escalate .inline-label.xl,
+.modal-body.is-escalate .inline-label.title-label {
+  width: auto;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #606266;
+}
+.modal-body.is-escalate .inline-control { flex: none; width: 100%; }
+.modal-body.is-escalate :deep(.ant-select-single),
+.modal-body.is-escalate :deep(.ant-select-selector) { height: 36px !important; }
+.modal-body.is-escalate :deep(.ant-select-selector) { border-radius: 6px !important; font-size: 14px; }
+.modal-body.is-escalate :deep(.ant-select-selection-item),
+.modal-body.is-escalate :deep(.ant-select-selection-placeholder) { line-height: 34px !important; font-size: 14px; }
+.modal-body.is-escalate :deep(input.ant-input),
+.modal-body.is-escalate :deep(.ant-picker) { height: 36px; border-radius: 6px; font-size: 14px; }
+.modal-body.is-escalate .search-box,
+.modal-body.is-escalate .btn-outline { height: 36px; }
+.modal-body.is-escalate .search-input { font-size: 14px; color: #606266; }
+.modal-body.is-escalate .btn-outline { color: #606266; font-size: 14px; border-color: #dcdfe6; }
+.modal-body.is-escalate .customer-card { background: #eef3ff; border-color: #c9d7ff; padding: 12px 14px; }
+.modal-body.is-escalate .cust-avatar { background: #dfe7ff; color: #5d87ff; }
+.modal-body.is-escalate .link { color: #5d87ff; }
+.modal-body.is-escalate .cp-add {
+  width: auto;
+  height: 36px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: #5d87ff;
+  font-size: 14px;
+}
+.modal-body.is-escalate .cp-add:hover { background: transparent; opacity: 0.85; }
+.modal-body.is-escalate .cp-add-spacer { width: 90px; }
+.desc-count { margin-top: 4px; font-size: 12px; line-height: 18px; color: #909399; text-align: right; }
+.cw-sla { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.cw-sla-label { font-size: 13px; font-weight: 600; line-height: 20px; color: #303133; }
+.cw-sla-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #e6a23c;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.cw-sla-note { font-size: 12px; line-height: 18px; color: #909399; }
+.modal-footer.is-escalate { padding: 16px; border-top: none; }
+.modal-footer.is-escalate .footer-btns { gap: 12px; }
+.modal-footer.is-escalate .btn-ghost,
+.modal-footer.is-escalate .btn-primary {
+  height: 36px;
+  padding: 8px 15px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  border-radius: 6px;
+}
+.modal-footer.is-escalate .btn-ghost { color: #606266; border-color: #dcdfe6; }
+.modal-footer.is-escalate .btn-primary { background: #5d87ff; border-color: #5d87ff; }
 
 @media (max-width: 768px) {
   .row-3,

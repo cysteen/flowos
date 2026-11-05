@@ -13,7 +13,6 @@ import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
 // 页头「风险管控」：评估结论（非投诉单）与协同处理（投诉单）两支合成的一枚弹窗
 import OpRiskControlModal from './components/operation/OpRiskControlModal.vue';
-import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
@@ -80,8 +79,7 @@ import type { TlAction, TlRole } from './types/ticketDetail';
 import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, isCurrentHandler, STATUS_GROUP, WORKBENCH_HANDLER, statusStyle, ticketStatusDisplayName, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
-  buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
-  isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
+  buildEscalatePrefill, isTicketTerminated, type EscalateTarget,
   buildFlashLinkComplaintPrefill, flashLinkComplaintBlockTip,
 } from './composables/complaintEscalation';
 import {
@@ -100,7 +98,6 @@ import { buildTicketRelations, resolveSupersededBy, WEAK_RELATION_KINDS, type Ti
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
-import { COMPLAINT_SUPPLEMENT_TYPE } from './types/operationTabs';
 import type { OperationTabData } from './types/operationTabs';
 import type { TicketLiveEventType, TicketLiveToast } from './types/ticketLiveNotify';
 
@@ -1547,64 +1544,22 @@ function openRelation(rel: TicketRelation) {
   router.push(`/tickets/${rel.no}`);
 }
 
-// —— 升级投诉：判定弹窗 → 建投诉新单 → 关原单 + 双向关联（《【815】关联投诉 PRD》）——
-const escalateModalOpen = ref(false);
-const escalateInput = ref<EscalateInput | null>(null);
+// —— 升级投诉 / 升级外投：建单弹窗（预填原单）→ 建新单 → 原单改状态 + 双向关联 ——
 /** 建单弹窗正在为刷机单「关联投诉」建单：提交后走弱关联，不走升级投诉 */
 const flashLinkPending = ref(false);
 watch(createOpen, (v) => { if (!v) flashLinkPending.value = false; });
 
-/**
- * 升级投诉入口分流（PRD §4.2，判据＝**是否跨工单类型**）：
- * - 非投诉 → 投诉：跨类型，实质是建一张投诉单 → **打开新建投诉单页面**，已知字段预填；
- * - 原单已是投诉：不跨类型 → **小弹窗**补录，落法由【工单来源】决定。
- */
-function openEscalate() {
-  if (buildEscalateVerdict(d.value, user.roleKey).kind === 'toComplaint') {
-    createPrefill.value = buildEscalatePrefill(d.value);
-    createOpen.value = true;
-    return;
-  }
-  escalateModalOpen.value = true;
-}
-
-/** 分支 B 提交：外投渠道→建外投关联单并关原单；其余来源→落为补充写在原单上 */
-function onEscalateSubmit(payload: EscalateInput) {
-  escalateInput.value = payload;
-  if (resolveEscalateOutcome(payload) === 'supplement') {
-    finishEscalateAsSupplement(payload);
-    return;
-  }
-  const src = TICKETS.find((t) => t.no === d.value.no);
-  const ticket = buildEscalatedTicket(d.value, payload, {
-    operator: user.name,
-    channel: src?.channel,
-    priority: src?.priority,
-  });
-  finishEscalate(ticket, escalateTargetLabel(payload));
-}
-
-/**
- * 落补充：原单加一条补充记录 + 写履历，**不建新单、不关单**。
- *
- * ⚠️ 2026-08-17 起「升级投诉」**不再兼做补充**——投诉信息补录统一走
- * 「新建补充 → 补充投诉信息」（PRD-915 补充与催单 §5.2），分类名「投诉补充」已作废。
- * 本函数仅为兼容尚未清理的旧调用保留；新链路不应再走到这里。
- */
-function finishEscalateAsSupplement(payload: EscalateInput) {
-  const content = summarizeEscalateInput(payload).join('\n');
-  onIncomingTicketEvent('supplement', content, formatTicketRecordWho(user.name, user.roleKey), {
-    supplementType: COMPLAINT_SUPPLEMENT_TYPE,
-    notify: false,
-  });
-  escalateInput.value = null;
-  processTabsRef.value?.switchTab('related');
-  message.success('已作为补充信息写入原单，未产生新单');
+/** 升级投诉 / 升级外投：两枚按钮同一套壳，提交后走 `onTicketCreated` 的升级分支 */
+function openEscalate(target: EscalateTarget) {
+  createPrefill.value = buildEscalatePrefill(d.value, target);
+  createOpen.value = true;
 }
 
 /** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
 function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
-  const note = escalateInput.value?.note ?? ticket.problemDesc ?? '';
+  const note = ticket.problemDesc ?? '';
+  const wasEnded = isTicketTerminated(d.value.status);
+  const seenIds = new Set(timeline.value.map((e) => e.id));
   // 基线 ※26：客服来源位关联随升级迁到新投诉单，新单写「关联接入」（原单侧「关联降级」在 applyOpAction）
   // ④ 的售后转入咨询单升级时迁的是客服派生位（口径定稿 6b），新单接同一位
   const la = d.value.linkedAftersale;
@@ -1639,7 +1594,26 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
   addEscalatedComplaint(ticket, targetLabel, note);
   syncEscalatedRelatedCard(ticket, targetLabel);
   dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
-  escalateInput.value = null;
+  // 落工单行：离开本页再打开、列表状态都按新状态走；本次新增的履历随行带上。终态原单状态不变，只留关联
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (row) {
+    if (wasEnded) row.escalatedLinkNo = ticket.no;
+    else {
+      row.escalatedToNo = ticket.no;
+      row.escalatedToExternal = targetLabel === '外投';
+      row.tab = 'done';
+      row.handledByMe = true;
+      row.myUpgradeAction = true;
+      row.slaText = '—';
+      row.slaSub = targetLabel === '外投' ? '已升级外投·停表' : '已升级投诉·停表';
+      row.slaState = 'ok';
+      row.updatedAt = nowFullText();
+    }
+    row.eventTimeline = [
+      ...(row.eventTimeline ?? []),
+      ...timeline.value.filter((e) => !seenIds.has(e.id)).map((e) => ({ ...e })),
+    ];
+  }
   if (!processAfter) processTabsRef.value?.switchTab('related');
 }
 
@@ -1659,8 +1633,10 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   }
   else if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
   else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
-  // 分支 A：建单页提交即完成升级——关原单 + 双向关联 + 写履历
-  else if (createPrefill.value?.mode === 'escalate') finishEscalate(ticket, '投诉', processAfter);
+  // 升级：建单弹窗提交即完成——原单改状态 + 双向关联 + 写履历。升级外投无论选内投还是外投，原单都落「已升级外投」
+  else if (createPrefill.value?.mode === 'escalate') {
+    finishEscalate(ticket, createPrefill.value.escalateTarget === 'external' ? '外投' : '投诉', processAfter);
+  }
   if (processAfter) router.push(`/tickets/${ticket.no}`);
 }
 
@@ -2884,7 +2860,8 @@ function openLinkAftersale() {
 
 function onHeaderAction(name: string) {
   switch (name) {
-    case '升级投诉': // 非投诉→建单页；投诉单→小弹窗（《【815】关联投诉 PRD》§4.2）
+    case '升级投诉':
+    case '升级外投':
       // 基线 ※8a：二线第一跳的自主发起权已收回，改走风险报备。
       // 拦在这里而不是把按钮藏掉——藏掉只会让坐席以为入口没了，不知道该改走哪条路。
       if (escalateReportFirstTip.value) {
@@ -2893,7 +2870,7 @@ function onHeaderAction(name: string) {
         if (isFlash.value ? riskReportButtonShown.value : showRiskReport.value) processTabsRef.value?.switchTab('risk');
         return;
       }
-      openEscalate();
+      openEscalate(name === '升级外投' ? 'external' : 'complaint');
       break;
     case '关联投诉': // 刷机单（1013 A21 / B5）：打开新建投诉单，预填客户与产品，提交后与本单弱关联
       if (flashLinkGate.value?.forbidden) {
@@ -3266,12 +3243,6 @@ watch(
     <OpCancelModal
       v-model:open="cancelModalOpen"
       @submit="onCancelSubmit"
-    />
-
-    <OpEscalateComplaintModal
-      v-model:open="escalateModalOpen"
-      :detail="d"
-      @submit="onEscalateSubmit"
     />
 
     <OpFlashInfoEditModal

@@ -273,6 +273,12 @@ export function useTicketOperation() {
         if (inferredSource === '外投渠道') base.isExternalAppeal = true;
       }
       if (t.complaintType) base.complaint.complaintType = normalizeComplaintType(t.complaintType);
+      if (t.complaintPlatforms?.length) {
+        base.complaint.platforms = t.complaintPlatforms.map((r) => ({ ...r, complaintContent: '' }));
+      }
+      if (t.priorFeedback) base.complaint.priorFeedback = t.priorFeedback;
+      if (t.serviceReview) base.complaint.serviceReview = t.serviceReview;
+      if (t.complaintReceiveTime) base.complaint.receivedAt = t.complaintReceiveTime;
       /*
        * 建单投诉一类 / 二类（含风险评估判「升级」时评估弹窗里补的那两项，
        * 见 `composables/useEscalateComplaintFields.ts`）是建单分类，与处理页投诉分类三级树不是一套：
@@ -350,8 +356,18 @@ export function useTicketOperation() {
           }).from.eventTimeline;
         }
         // 依据基线 §1「一跳一态」：原单是外投单则是第二跳（已升级外投），否则是第一跳
-        base.status = t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
+        base.status = t.escalatedToExternal || t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
         opState.value = 'closed';
+      }
+      // 终态原单升级过：状态不变，只留指向新单的关联
+      if (t.escalatedLinkNo && !t.escalatedToNo) {
+        const linked = TICKETS.find((x) => x.no === t.escalatedLinkNo);
+        base.linkedRecords = [{
+          no: t.escalatedLinkNo,
+          title: linked?.title ?? t.escalatedLinkNo,
+          tag: '升级投诉',
+          meta: `${(linked?.createdAt ?? '').slice(5, 10)} 升级`,
+        }];
       }
       base.feishuSync = 'none';
       base.feishuRecords = [];
