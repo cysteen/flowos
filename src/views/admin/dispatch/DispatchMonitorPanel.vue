@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与进池、出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
+// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与进池、出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池内工单与处理人负载；均按工单池展示，统计口径不变
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
@@ -91,7 +91,7 @@ const CARD_ACCENT: Record<string, { accent: string; iconBg: string }> = {
   bk: { accent: '#6366f1', iconBg: '#eef2ff' },
 };
 
-/** 统计卡：数字默认中性，只有真正异常（有积压）的数字标橙；派单均衡度目标值待定，只显示数值 */
+/** 统计卡：数字默认中性，只有真正异常（池内有工单）的数字标橙；派单均衡度目标值待定，只显示数值 */
 const cards = computed(() => {
   const s = stats.value;
   // 筛选单个工单池且本池派单方式为人工派单时，均衡度不展示
@@ -116,14 +116,14 @@ const cards = computed(() => {
       delta: { text: '当日', tone: 'muted' } as Delta,
     },
     {
-      key: 'bk', label: '池积压', value: String(backlog.value.count), icon: InboxOutlined, warn: backlog.value.count > 0,
+      key: 'bk', label: '池内工单', value: String(backlog.value.count), icon: InboxOutlined, warn: backlog.value.count > 0,
       delta: { text: `最长等待 ${waitText(backlog.value.maxWait)}`, tone: 'muted' } as Delta,
     },
   ];
   return items.map((c) => ({ ...c, ...CARD_ACCENT[c.key] }));
 });
 
-/* ---------------- 池积压 ---------------- */
+/* ---------------- 池内工单 ---------------- */
 const backlogCols = [
   { title: '池名称', dataIndex: 'poolLabel', key: 'poolLabel', width: 150 },
   { title: '派单方式', key: 'mode', width: 90 },
@@ -180,7 +180,7 @@ const backlogCols = [
     <div class="monitor-table-row">
       <section class="block monitor-block">
         <div class="b-title inline">
-          池积压
+          池内工单
           <span class="b-tip">当前 {{ backlog.count }} 单 · 最长等待 {{ waitText(backlog.maxWait) }}</span>
           <a-button type="link" size="small" class="hd-btn" @click="goPoolManage">查看全部工单池 →</a-button>
         </div>

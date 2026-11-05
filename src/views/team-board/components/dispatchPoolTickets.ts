@@ -1,5 +1,5 @@
 /**
- * 【1215】班组看板 · 本组派单的池内待领工单（PRD 9.3）。
+ * 【1215】班组看板 · 本组派单的池内工单（PRD 9.3）。
  *
  * 池待领口径：所在池的处理组为该组（一个处理组可有多个池）、在工单池（tab=pool）、无处理人、非归档、非草稿；
  * 排序：派单状态（DISPATCH_STATUS_ORDER）→ 首响 SLA 紧急度。
@@ -20,14 +20,14 @@ function sortPool(list: Ticket[]): Ticket[] {
   return list.sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
 }
 
-/** 本组各池待领工单合并（池所属处理组＝该组，已排序）；groupId 为空返回空数组 */
+/** 本组各池池内工单合并（池所属处理组＝该组，已排序）；groupId 为空返回空数组 */
 export function poolTicketsOf(groupId: string | null | undefined, tickets: Ticket[]): Ticket[] {
   if (!groupId) return [];
   const dispatch = useDispatchStore();
   return sortPool(tickets.filter((t) => isPending(t) && dispatch.poolGroupIdOf(dispatch.poolIdOf(t)) === groupId));
 }
 
-/** 某个池的待领工单（已排序）；poolId 为空返回空数组 */
+/** 某个池的池内工单（已排序）；poolId 为空返回空数组 */
 export function poolTicketsOfPool(poolId: string | null | undefined, tickets: Ticket[]): Ticket[] {
   if (!poolId) return [];
   const dispatch = useDispatchStore();

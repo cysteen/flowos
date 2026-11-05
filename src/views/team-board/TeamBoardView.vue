@@ -450,7 +450,7 @@ const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a8', no: 'IFLYJY-20260803-00008', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
 ];
 
-/** 指派弹窗列表：派单组＝该组池内待派单；非派单组从上表按组取。条数＝未分派卡 */
+/** 指派弹窗列表：派单组＝该组池内工单；非派单组从上表按组取。条数＝未分派卡 */
 const assignTickets = computed<AssignTicket[]>(() => {
   const pool = realPool.value;
   if (pool) {

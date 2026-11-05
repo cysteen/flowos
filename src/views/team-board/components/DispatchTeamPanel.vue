@@ -2,9 +2,9 @@
 /**
  * 【1215】班组看板 · 本组派单（PRD 5.4 / 6.5 / 7.5 / 8 / 9.3）。
  *
- * 班组长视角：处理组为本组的各工单池（每池一行：池名、派单方式及切换、池内待派、最长等待）、
+ * 班组长视角：处理组为本组的各工单池（每池一行：池名、派单方式及切换、池内工单、最长等待）、
  * 本组成员（坐席状态、在途 / 上限、超限 / 超额指派 / 满载、熟练度、画像配置、个人开关）及其维护，
- * 各池待领工单合并显示（带「所在池」）与组内指派。组跟随班组看板顶部「班组」筛选；
+ * 各池池内工单合并显示（带「所在池」）与组内指派。组跟随班组看板顶部「班组」筛选；
  * 所选组非派单组、本组名下没有启用中的池、或当前登录人非该组班组长时整块不渲染。
  */
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
@@ -51,7 +51,7 @@ const group = computed(() => {
 });
 const groupId = computed(() => group.value?.id ?? null);
 
-/** 每池一行：池名、派单方式（较严者）、池内待派、最长等待 */
+/** 每池一行：池名、派单方式（较严者）、池内工单、最长等待 */
 const poolRows = computed(() => {
   void nowMs.value;
   void dispatch.ticketStates;
@@ -191,7 +191,7 @@ function saveCap(force = false) {
   message.success(res.message);
 }
 
-/* ---------------- 本组各池待领工单（合并显示）· 指派（9.3） ---------------- */
+/* ---------------- 本组各池池内工单（合并显示）· 指派（9.3） ---------------- */
 
 const poolTickets = computed(() => {
   void dispatch.ticketStates;
@@ -257,7 +257,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
       <div class="thead grid" :style="{ gridTemplateColumns: poolRowCols }">
         <div class="th">工单池</div>
         <div class="th">派单方式</div>
-        <div class="th">池内待派</div>
+        <div class="th">池内工单</div>
         <div class="th">最长等待</div>
       </div>
       <div v-for="r in poolRows" :key="r.id" class="trow grid" :style="{ gridTemplateColumns: poolRowCols }">
@@ -384,7 +384,7 @@ const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 12
         <div class="td" :class="{ danger: t.slaMinutes < 0 && !t.responded }">{{ slaText(t) }}</div>
         <div class="td"><span class="link" @click="openAssign(t)">指派</span></div>
       </div>
-      <div v-if="!poolTickets.length" class="empty">本组工单池暂无待领工单</div>
+      <div v-if="!poolTickets.length" class="empty">本组工单池暂无工单</div>
     </div>
     </div>
 

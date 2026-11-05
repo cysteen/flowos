@@ -379,7 +379,7 @@ export interface DispatchPoolView {
   /** 本池派单方式 */
   poolMode: PoolMode;
   leaders: string[];
-  /** 池内待派（未领取）张数 */
+  /** 池内工单（未领取）张数 */
   pending: number;
   queued: number;
   memberCount: number;
@@ -426,7 +426,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
   let stallNoticed: Record<string, boolean> = cached?.stallNoticed ?? {};
   const errorNoticed = new Set<string>();
 
-  /** 无缓存时铺运行中种子：近 30 日派单日志、上线以来审计、池内待派、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
+  /** 无缓存时铺运行中种子：近 30 日派单日志、上线以来审计、池内工单、坐席当日在岗与接单时刻（`mock/dispatchDemo.ts`） */
   const demo = cached ? null : buildDispatchDemo(now0, agents.value, groups.value, rules.value);
   if (demo) {
     for (const a of agents.value) Object.assign(a, demo.agentPatch[a.name] ?? {});
@@ -509,7 +509,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     }
   }
   replayRows();
-  // 种子池内待派单注入工单库，并随派单快照落库（刷新后由回放补回）
+  // 种子池内工单注入工单库，并随派单快照落库（刷新后由回放补回）
   if (demo) {
     for (const row of demo.rows) {
       if (!TICKETS.some((x) => x.no === row.no)) TICKETS.unshift(row);

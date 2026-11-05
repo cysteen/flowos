@@ -526,7 +526,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '沈建', phone: '13505536419',
       createdAt: at, updatedAt: esc,
       // 一线不计 SLA：进教育刷机处理组池才起算，首响钟从进池时刻开始（1013 A26）
-      // 池内待派演示单：按加载时刻倒推只计时 5 分钟，首响剩余 25 分钟，进入派单可正常派出（【1215】）
+      // 池内工单演示单：按加载时刻倒推只计时 5 分钟，首响剩余 25 分钟，进入派单可正常派出（【1215】）
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, nodeStep: 2,
       slaText: '07:55:00', slaSub: '充足', slaState: 'ok', slaMinutes: 475,
       upgradeCount: 1,
