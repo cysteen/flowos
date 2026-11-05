@@ -310,7 +310,8 @@ defineExpose({ switchTab });
 
       <OpFlowHistoryTab
         v-else-if="activeTab === 'history'"
-        :current-node="detail.status"
+        :detail="detail"
+        :ticket-no="ticketNo"
         :entries="timeline"
       />
 
