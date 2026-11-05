@@ -10,7 +10,6 @@ import { condItems } from './dispatchUi';
 import PoolRuleModal from './PoolRuleModal.vue';
 import './dispatchTheme.css';
 
-const props = defineProps<{ focusId?: string }>();
 const store = useDispatchStore();
 
 const rows = computed(() => [...store.rules].sort((a, b) => a.priority - b.priority));
@@ -91,7 +90,6 @@ function focus(id?: string) {
   nextTick(() => document.querySelector(`[data-row-key="${id}"]`)?.scrollIntoView({ block: 'center', inline: 'start' }));
   window.setTimeout(() => { if (highlight.value === id) highlight.value = undefined; }, 2400);
 }
-watch(() => props.focusId, (id) => focus(id), { immediate: true });
 </script>
 
 <template>

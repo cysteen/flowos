@@ -18,7 +18,7 @@ import DesignatedRuleList from './DesignatedRuleList.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
 
-const props = defineProps<{ tab?: string; focusRuleId?: string }>();
+const props = defineProps<{ tab?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
 const store = useDispatchStore();
 
@@ -140,7 +140,7 @@ watch(() => store.config, (c) => {
 
       <!-- 入池规则 -->
       <div v-if="active === 'inpool'" class="st-tab-pane">
-        <PoolRuleList :focus-id="focusRuleId" />
+        <PoolRuleList />
       </div>
 
       <!-- 出池规则 -->

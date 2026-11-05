@@ -29,10 +29,9 @@ const strategyTab = computed({
   get: () => (typeof route.query.tab === 'string' ? route.query.tab : 'inpool'),
   set: (v: string) => {
     if (route.query.tab === v) return;
-    router.replace({ path: route.path, query: { ...route.query, tab: v, rule: undefined } });
+    router.replace({ path: route.path, query: { ...route.query, tab: v } });
   },
 });
-const focusRuleId = computed(() => (typeof route.query.rule === 'string' ? route.query.rule : undefined));
 
 /** 工单池管理页头「新建工单池」 */
 const poolPanel = ref<InstanceType<typeof PoolManagePanel> | null>(null);
@@ -47,7 +46,7 @@ const poolPanel = ref<InstanceType<typeof PoolManagePanel> | null>(null);
       </template>
     </AdminPageHeader>
     <DispatchMonitorPanel v-if="pageKey === 'dispatch-monitor'" :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
-    <DispatchStrategyPanel v-else-if="pageKey === 'dispatch-strategy'" v-model:tab="strategyTab" :focus-rule-id="focusRuleId" />
+    <DispatchStrategyPanel v-else-if="pageKey === 'dispatch-strategy'" v-model:tab="strategyTab" />
     <PoolManagePanel v-else-if="pageKey === 'dispatch-pool'" ref="poolPanel" />
     <DispatchLogPanel v-else-if="pageKey === 'dispatch-log'" />
     <AgentProfilePanel v-else />
