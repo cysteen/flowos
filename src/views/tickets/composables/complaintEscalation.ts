@@ -322,7 +322,6 @@ export function buildEscalatePrefill(detail: TicketDetailMeta, target: EscalateT
     escalateTarget: target,
     parentNo: detail.no,
     parentTitle: detail.title,
-    title: detail.title,
     customerName: detail.customer.name,
     customerPhone: phone,
     customerRegion: realValue(detail.customer.region),

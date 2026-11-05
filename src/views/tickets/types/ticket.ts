@@ -776,8 +776,6 @@ export interface CreateTicketPrefill {
   mode?: 'normal' | 'child' | 'reopen' | 'escalate';
   /** 升级目标（mode=escalate）：complaint＝升级投诉 / external＝升级外投 */
   escalateTarget?: 'complaint' | 'external';
-  /** 工单标题（升级：取原单标题，不再按产品与问题分类拼） */
-  title?: string;
   parentNo?: string;
   parentTitle?: string;
   customerName?: string;

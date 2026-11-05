@@ -731,6 +731,11 @@ export function useCreateTicketForm(
 
   function syncTitle() {
     if (form.titleManual) return;
+    // 升级：产品名称·问题分类三级·工单来源，缺项跳过该段
+    if (prefill()?.mode === 'escalate') {
+      form.title = [form.productName, form.problemL3, form.ticketSource].filter(Boolean).join('·');
+      return;
+    }
     // 产品与问题三类都没选时不拼标题（只剩工单来源一段没有意义），留空待坐席补全
     if (!form.productName && !form.problemL3) {
       form.title = '';
@@ -868,10 +873,6 @@ export function useCreateTicketForm(
       form.complaintL1 = '';
       form.complaintL2 = '';
     }
-    if (p.title) {
-      form.title = p.title;
-      form.titleManual = true;
-    }
     // 传空串＝清空三级分类（原单问题落不到问题树上时由坐席显式选，三项仍必填）
     if (p.problemL1 !== undefined) {
       form.problemL1 = p.problemL1;
@@ -901,6 +902,7 @@ export function useCreateTicketForm(
       }];
     }
     if (p.xiaozhiScene) applyXiaozhiFrontlineDefault(true);
+    if (p.mode === 'escalate') syncTitle();
   }
 
   function onTitleInput() {
