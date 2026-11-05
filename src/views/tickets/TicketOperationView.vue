@@ -92,6 +92,10 @@ import {
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
 import { useHandleLogStore } from '@/stores/handleLog';
+import { delegateTargetLabel, useDelegateTaskStore } from '@/stores/delegateTasks';
+import { useNotifyLogStore } from '@/stores/notifyLog';
+import OpDelegatePanel from './components/operation/OpDelegatePanel.vue';
+import type { DelegatePayload } from './composables/opActions';
 import type { TimelineEntry } from './types/ticketDetail';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { buildTicketRelations, resolveSupersededBy, WEAK_RELATION_KINDS, type TicketRelation } from './composables/ticketRelations';
@@ -2142,7 +2146,85 @@ function onWithdraw() {
   });
 }
 
+/* ---------------- 委派：子任务、面板、协办人视角 ---------------- */
+
+const delegateTasks = useDelegateTaskStore();
+const notifyLog = useNotifyLogStore();
+const delegateAllTasks = computed(() => delegateTasks.tasksOf(d.value.no));
+const delegateCurrentBatch = computed(() => delegateTasks.currentBatchOf(d.value.no));
+const delegateMyTasks = computed(() => delegateTasks.myTasksOf(d.value.no, user.name));
+const delegatePendingTargets = computed(() => delegateTasks.pendingOf(d.value.no).map(delegateTargetLabel).join('、'));
+/** 协办人视角：有委派给我的子任务、且我不是本单主责 */
+const isDelegateeView = computed(() => delegateMyTasks.value.length > 0 && !isPrimaryHandler.value);
+/** 主责视角面板：委派中才出，且只给看得到底栏的人 */
+const showDelegatePanel = computed(() => isDelegateeView.value || (!!d.value.delegateInfo && !hideActionBar.value));
+
+function notifyDelegate(event: string, title: string, receivers: (string | null)[], content: string) {
+  notifyLog.emit({ ticketNo: d.value.no, event, kind: 'delegate', title, receivers, content, channel: 'IM' });
+}
+
+/** 把本次动作新写的履历也落进委派记录（刷新后仍在） */
+function persistDelegateLogs(seenIds: Set<string>) {
+  delegateTasks.appendLogs(d.value.no, timeline.value.filter((e) => !seenIds.has(e.id)));
+}
+
+/** 委派类动作：子任务先落库，再走原有动作分派 */
+function onDelegateAction(payload: Record<string, unknown>) {
+  const no = d.value.no;
+  const seenIds = new Set(timeline.value.map((e) => e.id));
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  if (payload.type === '委派') {
+    const p = payload.data as DelegatePayload;
+    delegateTasks.createBatch(no, p, user.name);
+    (p.mode === 'person' ? p.assignees ?? [] : p.groups ?? []).forEach((x) => {
+      const who = 'name' in x ? x.name : (x.assignee ?? `${x.groupName}全体成员`);
+      notifyDelegate('ticket.delegate', '【工单委派通知】您有一条委派工单', [who], `工单 ${no} 已委派您协助处理，主责仍为 ${user.name}。任务说明：${x.task}`);
+    });
+  } else if (payload.type === '撤销委派') {
+    delegateTasks.revoke(no);
+  } else if (payload.type === '下送' && data.backToDelegator) {
+    delegateTasks.completeAll(no, user.name);
+  } else if (payload.type === '催办') {
+    delegateTasks.pendingOf(no).forEach((t) => {
+      notifyDelegate('ticket.delegate.urge', '【工单委派催办】您有一条委派任务待处理', [t.assignee ?? `${t.groupName}全体成员`], `工单 ${no} 的委派任务待处理，请尽快处理。任务说明：${t.task}`);
+    });
+  }
+  routeAction(payload);
+  persistDelegateLogs(seenIds);
+}
+
+/** 协办人提交子任务：全部完成后回到主责，工单回处理中 */
+function onDelegateTaskHandle(taskId: string, result: string) {
+  const task = delegateTasks.complete(taskId, result, user.name);
+  if (!task) return;
+  const seenIds = new Set(timeline.value.map((e) => e.id));
+  pushEntry(timeline.value, {
+    category: 'node', action: 'transfer', who: user.name, role: mapUserRole(user.roleKey),
+    how: '协办完成', what: `完成委派任务「${task.task}」。处理结果：${result}`,
+  });
+  const allDone = !delegateTasks.pendingOf(d.value.no).length;
+  if (allDone) {
+    pushEntry(timeline.value, {
+      category: 'node', action: 'transfer', who: '系统', role: '系统', systemActor: true,
+      how: '委派任务全部完成', what: '各委派任务已完成，工单回到主责处理人。',
+    });
+    notifyDelegate('ticket.delegate.done', '【工单委派通知】委派任务已全部完成', [task.operator], `工单 ${d.value.no} 的委派任务已全部完成，请继续处理。`);
+  }
+  persistDelegateLogs(seenIds);
+  message.success(allDone ? '已提交，委派任务已全部完成，工单回到主责处理人' : '已提交委派处理结果');
+}
+
 function onAction(payload: Record<string, unknown>) {
+  const type = payload.type as string;
+  const backToDelegator = type === '下送' && !!(payload.data as { backToDelegator?: boolean } | undefined)?.backToDelegator;
+  if (type === '委派' || type === '撤销委派' || type === '催办' || backToDelegator) {
+    onDelegateAction(payload);
+    return;
+  }
+  routeAction(payload);
+}
+
+function routeAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
     if (log?.changes?.some((c) => c.field.startsWith('结案后备注'))) {
@@ -3058,6 +3140,15 @@ watch(
       </OpOverviewBand>
     </div>
 
+    <div v-if="showDelegatePanel" class="op-delegate-wrap">
+      <OpDelegatePanel
+        :tasks="delegateAllTasks"
+        :current-batch="delegateCurrentBatch"
+        :my-tasks="isDelegateeView ? delegateMyTasks : []"
+        @handle="onDelegateTaskHandle"
+      />
+    </div>
+
     <div class="op-body">
       <div class="op-main">
         <OpProcessTabs
@@ -3132,7 +3223,7 @@ watch(
     <OpActionBar
       ref="actionBarRef"
       :hide-bar="hideActionBar"
-      :save-only="postCloseEditable"
+      :save-only="postCloseEditable || isDelegateeView"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
@@ -3160,6 +3251,7 @@ watch(
       :group-id="d.groupId"
       :last-handler="d.lastHandler"
       :delegate-targets="d.delegateInfo?.targets"
+      :delegate-pending-targets="delegatePendingTargets"
       :at-tech-support="atTechSupport"
       :show-risk-report="showRiskReport"
       :risk-report-pending="riskReportPending"
@@ -3348,6 +3440,7 @@ watch(
   border-radius: 999px;
 }
 .op-overview-wrap.elevated { z-index: 50; }
+.op-delegate-wrap { flex: none; padding: 10px 20px 0; }
 .op-body {
   display: flex;
   gap: var(--op-block-gap);

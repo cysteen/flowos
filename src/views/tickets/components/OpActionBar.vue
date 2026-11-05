@@ -6,7 +6,7 @@ import {
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
   RollbackOutlined, TeamOutlined, WarningOutlined,
-  ReloadOutlined,
+  ReloadOutlined, BellOutlined,
 } from '@ant-design/icons-vue';
 import {
   FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER,
@@ -101,8 +101,10 @@ const props = defineProps<{
   groupNames?: string[];
   groupId?: string;
   lastHandler?: string | null;
-  /** 委派中：协办未完成前锁定流转/终结类动作 */
+  /** 委派中：底栏只留撤销委派、催办（风险报备置灰） */
   delegateTargets?: string;
+  /** 未完成的协办对象（催办用） */
+  delegatePendingTargets?: string;
   /**
    * 工单是否正在**三线技术支持**手上。
    * 「退回」只有三线技术支持 → 工单处理人这一个方向，故仅在三线持单时展示。
@@ -203,7 +205,7 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined, WarningOutlined, ReloadOutlined,
+  RollbackOutlined, TeamOutlined, WarningOutlined, ReloadOutlined, BellOutlined,
 };
 
 /**
@@ -342,6 +344,16 @@ const withdrawBlocked = computed(
 
 const barActions = computed<BarItem[]>(() => {
   const items: BarItem[] = [];
+  // 委派中：只留撤销委派、催办；非投诉单上的风险报备置灰（刷机单走自己的底栏）
+  if (isDelegating.value) {
+    items.push({ key: '撤销委派', label: '撤销委派', icon: 'UndoOutlined' });
+    items.push({ key: '催办', label: '催办', icon: 'BellOutlined' });
+    const risk = actionMap.value.get('风险报备');
+    if (risk && props.showRiskReport && props.ticketType !== '投诉') {
+      items.push({ key: risk.key, label: risk.label, icon: risk.icon, forbidden: true, forbiddenTip: DELEGATE_LOCK_TIP });
+    }
+    return items;
+  }
   for (const key of BAR_ORDER) {
     // 已转出：整条底栏锁定（无逃生口——回来只能等售后转回）
     if (isTransferred.value) {
@@ -581,6 +593,16 @@ function run(action: OpActionType | '转单') {
     });
     return;
   }
+  if (action === '催办') {
+    Modal.confirm({
+      title: '催办',
+      content: `将向未完成的协办对象（${props.delegatePendingTargets}）发送催办通知。确定催办？`,
+      okText: '确认催办',
+      cancelText: '取消',
+      onOk: () => emit('action', { type: '催办', data: { targets: props.delegatePendingTargets ?? '' } }),
+    });
+    return;
+  }
   if (isDelegating.value && DELEGATE_LOCKED.includes(action)) {
     message.warning(DELEGATE_LOCK_TIP);
     return;
@@ -743,7 +765,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     <div class="bottom-actions">
       <!-- 待领取（刷机单 / 小智单未认领）：底栏只出「领取」，不出「保存」（用户 10-19） -->
       <button
-        v-if="!hideFlashSave && !isClaimPending"
+        v-if="!hideFlashSave && !isClaimPending && !(isDelegating && !isFlashBar && !saveOnly)"
         type="button"
         class="ab-item ab-save"
         :disabled="isTerminal && !saveOnly"

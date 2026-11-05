@@ -28,6 +28,7 @@ const CONTACT_KIND_LABEL: Record<CustomerContactRow['kind'], string> = {
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { useHandleLogStore } from '@/stores/handleLog';
+import { delegateTargetLabel, useDelegateTaskStore } from '@/stores/delegateTasks';
 import {
   ticketLatestHandlingItems,
   ticketProductIssue,
@@ -177,6 +178,7 @@ export function useTicketOperation() {
   xiaozhi.hydrate();
   const refund = useRefundStore();
   const handleLog = useHandleLogStore();
+  const delegateTasks = useDelegateTaskStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -480,6 +482,18 @@ export function useTicketOperation() {
       base.demandAttachments = t.problemDescAttachments?.length ? [...t.problemDescAttachments] : [];
       base.latestHandling = ticketLatestHandlingItems(t);
     }
+    // 委派：有待处理子任务即委派中（主责不变）
+    const delegatePending = t ? delegateTasks.pendingOf(t.no) : [];
+    if (delegatePending.length) {
+      const batch = delegateTasks.currentBatchOf(t!.no);
+      base.delegateInfo = {
+        mode: batch[0].mode,
+        targets: batch.map(delegateTargetLabel).join('、'),
+        operator: batch[0].operator,
+        at: batch[0].batchAt,
+      };
+      base.status = '已委派';
+    }
     // 按类型覆盖概要（无工单级文案时回退类型样例）
     const sample = TYPE_SAMPLES[typeSampleKey(base)]?.detail;
     if (!t?.problemDesc?.trim() && sample?.demand) base.demand = sample.demand;
@@ -518,7 +532,7 @@ export function useTicketOperation() {
       // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
       // 处理表单保存落下的「工单处理」履历（刷新后仍在，见 stores/handleLog.ts）
-      const saved = t ? handleLog.entriesOf(t.no) : [];
+      const saved = t ? [...handleLog.entriesOf(t.no), ...delegateTasks.logsOf(t.no)] : [];
       // 只有种子里已有处理人的单才并入样例履历（含样例「工单处理」条目）；待领种子单、本会话新建 / 关联建出的单
       // 只取本单事件（D3：「最新处理」不出样例处理内容，与处理表单空白一致）
       const ownOnly = !!t && !SEED_CLAIMED_TICKET_NOS.has(t.no);
@@ -975,6 +989,16 @@ export function useTicketOperation() {
       projectXiaozhiTimeline(t.no);
     },
   );
+  // 子任务全部处理完或被撤销：本单回处理中（协办人提交、其他视角撤销都走这里）
+  watch(
+    () => delegateTasks.pendingOf(detail.value.no).length,
+    (n) => {
+      if (n || !detail.value.delegateInfo) return;
+      detail.value.delegateInfo = null;
+      if (detail.value.status === '已委派') detail.value.status = '处理中';
+    },
+  );
+
   const draftSavedAt = ref<string | null>(null);
 
   function dispatch(raw: Record<string, unknown>) {
