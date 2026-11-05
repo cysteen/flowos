@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
+// 分派监控（PRD 14.1）：页头统一筛选；统计卡（13.2 / 13.5）平铺 → 进出池趋势与进池、出池方式占比 → 池状态（全局状态条 + 工单池卡）→ 池积压与处理人负载；均按工单池展示，统计口径不变
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
@@ -10,6 +10,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import { buildPoolFlow, computeStats, minText, type RangeKey } from './dispatchMetrics';
 import MonitorTrendChart from './MonitorTrendChart.vue';
+import MonitorInflowDonut from './MonitorInflowDonut.vue';
 import MonitorOutflowDonut from './MonitorOutflowDonut.vue';
 import MonitorPoolCards from './MonitorPoolCards.vue';
 import MonitorLoadTop from './MonitorLoadTop.vue';
@@ -162,9 +163,10 @@ const backlogCols = [
       </div>
     </section>
 
-    <div class="chart-row">
+    <div class="chart-row chart-row-flow">
       <MonitorTrendChart :points="flow.points" :sub-text="`${RANGE_TEXT[range]}进池 ${flow.inTotal} 次 · 出池 ${flow.outTotal} 次`" />
-      <MonitorOutflowDonut :groups="flow.outGroups" :total="flow.outTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.outTotal} 次`" />
+      <MonitorInflowDonut :items="flow.inItems" :total="flow.inTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.inTotal} 次`" />
+      <MonitorOutflowDonut :items="flow.outItems" :total="flow.outTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.outTotal} 次`" />
     </div>
 
     <MonitorPoolCards :pool-ids="poolScope" />
@@ -263,6 +265,8 @@ const backlogCols = [
 
 .chart-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; }
 .chart-row :deep(.dx-card) { border-color: #e5e7eb; padding: 16px 20px; }
+/* 进出池三张卡：趋势 → 进池方式 → 出池方式；窄屏趋势独占一行 */
+.chart-row-flow { grid-template-columns: minmax(0, 1.5fr) minmax(356px, 1fr) minmax(356px, 1fr); }
 .mon :deep(.ps) {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -281,6 +285,10 @@ const backlogCols = [
 }
 @container (max-width: 1100px) {
   .monitor-table-row { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 1240px) {
+  .chart-row-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-row-flow > :first-child { grid-column: 1 / -1; }
 }
 @container (max-width: 900px) {
   .chart-row { grid-template-columns: minmax(0, 1fr); }

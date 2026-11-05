@@ -1,5 +1,5 @@
 /**
- * 【1215】分派监控统计（PRD 13.2 引擎层指标 / 13.5 统计卡 / 14.1 进出池趋势与出池方式占比）。
+ * 【1215】分派监控统计（PRD 13.2 引擎层指标 / 13.5 统计卡 / 14.1 进出池趋势与进池、出池方式占比）。
  * 只读：取 dispatch store 的派单日志与坐席、工单库的处理履历换算，不写任何数据。
  */
 import { TICKETS } from '@/mock/tickets';
@@ -174,50 +174,44 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
 /**
- * 进池事件：工单每进入一次工单池算一次。
+ * 进池事件：工单每进入一次工单池算一次，一条进池记录只落一种进池方式。
  * 切为自动派单、补单扫描、跨班次回收是同一次在池内的重新判定，不算。
  */
-const POOL_IN_TRIGGERS: ReadonlySet<DispatchTrigger> = new Set<DispatchTrigger>([
-  '新单', '调剂到池', '升级三线', '售后转回', '回访打回', '池停用', '重新进池',
-]);
+const IN_ITEMS: { name: string; color: string; triggers: DispatchTrigger[] }[] = [
+  { name: '新单', color: '#7c3aed', triggers: ['新单'] },
+  { name: '调剂到池', color: '#0891b2', triggers: ['调剂到池'] },
+  { name: '升级三线', color: '#4ade80', triggers: ['升级三线'] },
+  { name: '退回', color: '#be185d', triggers: ['售后转回', '回访打回', '重新进池'] },
+  { name: '池停用', color: '#64748b', triggers: ['池停用'] },
+];
+const POOL_IN_TRIGGERS: ReadonlySet<DispatchTrigger> = new Set(IN_ITEMS.flatMap((x) => x.triggers));
 
 function isPoolIn(l: DispatchLogEntry): boolean {
   return l.kind === '判定' && !!l.trigger && POOL_IN_TRIGGERS.has(l.trigger);
 }
 
-/** 工单离开工单池的五种方式。改派、调剂到人、调剂到池、升级三线指定人、升级投诉直派不计入 */
-const OUT_GROUPS: { name: string; items: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] }[] = [
-  {
-    name: '系统派出',
-    items: [
-      { name: '按规则直派', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
-      { name: '派回原处理人', color: '#1a6fff', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
-      { name: '综合打分', color: '#7eb0ff', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
-    ],
-  },
-  {
-    name: '人工接手',
-    items: [
-      { name: '领取', color: '#b45309', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
-      { name: '指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
-    ],
-  },
+/** 工单离开工单池的五种方式（前三项由系统派出）。改派、调剂到人、调剂到池、升级三线指定人、升级投诉直派不计入 */
+const OUT_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
+  { name: '按规则直派', color: '#1344b4', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
+  { name: '派回原处理人', color: '#14b8a6', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
+  { name: '综合打分', color: '#60a5fa', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
+  { name: '领取', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
+  { name: '指派', color: '#84cc16', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
 ];
-const OUT_ITEMS = OUT_GROUPS.flatMap((g) => g.items);
 
 function isPoolOut(l: DispatchLogEntry): boolean {
   return OUT_ITEMS.some((x) => x.hit(l));
 }
 
 export interface PoolFlowPoint { key: number; label: string; in: number; out: number }
-export interface OutShareItem { name: string; color: string; count: number; pct: number }
-export interface OutShareGroup { name: string; count: number; pct: number; items: OutShareItem[] }
+export interface ShareItem { name: string; color: string; count: number; pct: number }
 export interface PoolFlow {
   /** 今日按小时到当前小时；近 7 日、近 30 日按日，含今天 */
   points: PoolFlowPoint[];
   inTotal: number;
   outTotal: number;
-  outGroups: OutShareGroup[];
+  inItems: ShareItem[];
+  outItems: ShareItem[];
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -243,17 +237,14 @@ export function buildPoolFlow(logs: DispatchLogEntry[], range: RangeKey, poolIds
     if (isPoolIn(l)) p.in += 1;
     if (isPoolOut(l)) p.out += 1;
   }
+  const inTotal = points.reduce((s, p) => s + p.in, 0);
   const outTotal = points.reduce((s, p) => s + p.out, 0);
-  const pctOf = (c: number) => (outTotal ? Math.round((c / outTotal) * 1000) / 10 : 0);
-  const outGroups = OUT_GROUPS.map((g) => {
-    const items = g.items.map((x) => {
-      const count = inRange.filter(x.hit).length;
-      return { name: x.name, color: x.color, count, pct: pctOf(count) };
-    });
-    const count = items.reduce((s, x) => s + x.count, 0);
-    return { name: g.name, count, pct: pctOf(count), items };
+  const shareOf = (name: string, color: string, count: number, total: number): ShareItem => ({
+    name, color, count, pct: total ? Math.round((count / total) * 1000) / 10 : 0,
   });
-  return { points, inTotal: points.reduce((s, p) => s + p.in, 0), outTotal, outGroups };
+  const inItems = IN_ITEMS.map((x) => shareOf(x.name, x.color, inRange.filter((l) => isPoolIn(l) && x.triggers.includes(l.trigger!)).length, inTotal));
+  const outItems = OUT_ITEMS.map((x) => shareOf(x.name, x.color, inRange.filter(x.hit).length, outTotal));
+  return { points, inTotal, outTotal, inItems, outItems };
 }
 
 export function minText(v: number | null): string {

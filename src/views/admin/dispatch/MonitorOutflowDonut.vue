@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// 分派监控 · 出池方式占比（PRD 14.1 五种方式，系统派出、人工接手两组），环图纯 SVG 绘制
+// 分派监控 · 出池方式占比（PRD 8.1 五种方式平铺），环图纯 SVG 绘制
 import { computed, ref } from 'vue';
 import { Empty } from 'ant-design-vue';
 import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
-import type { OutShareGroup } from './dispatchMetrics';
+import type { ShareItem } from './dispatchMetrics';
 
 const props = defineProps<{
-  groups: OutShareGroup[];
+  items: ShareItem[];
   total: number;
   rangeText: string;
 }>();
@@ -31,7 +31,7 @@ function segPath(a0: number, a1: number): string {
 const segs = computed(() => {
   if (!props.total) return [];
   let acc = 0;
-  return props.groups.flatMap((g) => g.items).map((s) => {
+  return props.items.map((s) => {
     const a0 = (acc / props.total) * 360;
     acc += s.count;
     const a1 = (acc / props.total) * 360;
@@ -76,21 +76,14 @@ const TIP_OVERLAY_STYLE = { ...STD_TIP_PROPS.overlayStyle, pointerEvents: 'none'
         </div>
       </div>
       <div class="legend">
-        <div v-for="g in groups" :key="g.name" class="lg-group">
-          <div class="lg-row lg-head">
-            <span class="lg-nm">{{ g.name }}</span>
-            <span class="lg-n">{{ g.count }}</span>
-            <span class="lg-pc">{{ g.pct }}%</span>
-          </div>
-          <div
-            v-for="a in g.items" :key="a.name" class="lg-row lg-item" :class="{ active: hovered === a.name }"
-            @mouseenter="hovered = a.name" @mouseleave="hovered = null"
-          >
-            <span class="lg-sw" :style="{ background: a.color }" />
-            <span class="lg-nm">{{ a.name }}</span>
-            <span class="lg-n">{{ a.count }}</span>
-            <span class="lg-pc">{{ a.pct }}%</span>
-          </div>
+        <div
+          v-for="a in items" :key="a.name" class="lg-row lg-item" :class="{ active: hovered === a.name }"
+          @mouseenter="hovered = a.name" @mouseleave="hovered = null"
+        >
+          <span class="lg-sw" :style="{ background: a.color }" />
+          <span class="lg-nm">{{ a.name }}</span>
+          <span class="lg-n">{{ a.count }}</span>
+          <span class="lg-pc">{{ a.pct }}%</span>
         </div>
       </div>
     </template>
@@ -110,9 +103,7 @@ const TIP_OVERLAY_STYLE = { ...STD_TIP_PROPS.overlayStyle, pointerEvents: 'none'
 .out-empty { margin: 48px 0; }
 .legend { display: flex; flex-direction: column; gap: 6px; }
 .lg-row { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px; }
-.lg-head .lg-nm { font-weight: 600; color: #1f2329; }
-.lg-head .lg-n { color: #1f2329; font-weight: 600; }
-.lg-item { padding-left: 14px; cursor: default; transition: background 0.15s; }
+.lg-item { cursor: default; transition: background 0.15s; }
 .lg-item:hover, .lg-item.active { background: #f7f8fa; }
 .lg-sw { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .lg-nm { font-size: 13px; color: #4e5969; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
