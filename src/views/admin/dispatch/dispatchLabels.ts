@@ -65,7 +65,7 @@ export function failLabel(r?: DispatchFailReason | null): string {
   return r ? FAIL_LABEL[r] ?? r : '';
 }
 
-/** 派单日志「结果」：只表示引擎判定结果，每条判定记录归入且只归入一类（8.6） */
+/** 派单日志「结果」：只表示引擎判定结果，每条判定记录归入且只归入一类（8.5） */
 export type LogResult = '已派出' | '排队中' | '待领取' | '系统异常';
 export const LOG_RESULTS: LogResult[] = ['已派出', '排队中', '待领取', '系统异常'];
 export const LOG_RESULT_TONE: Record<LogResult, string> = {

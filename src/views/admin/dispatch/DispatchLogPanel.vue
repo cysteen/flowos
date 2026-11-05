@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 派单日志（PRD 8.6 / 附录 A.1）：按工单号、判定时间（最长 31 天）、归属池、结果筛选，更多筛选含坐席、判定路径、未派出原因；点「详情」看判定过程
+// 派单日志（PRD 8.5 / 附录 A.1）：按工单号、判定时间（最长 31 天）、归属池、结果筛选，更多筛选含坐席、判定路径、未派出原因；点「详情」看判定过程
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';

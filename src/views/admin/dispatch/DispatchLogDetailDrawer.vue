@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 派单日志详情（PRD 8.6）：判定结论 → 工单信息 → 判定过程三步（谁可以接单 / 优先派回原处理人 / 综合打分）
+// 派单日志详情（PRD 8.5）：判定结论 → 工单信息 → 判定过程三步（谁可以接单 / 优先派回原处理人 / 综合打分）
 import { computed } from 'vue';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue';
 import { useDispatchStore } from '@/stores/dispatch';

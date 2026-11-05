@@ -60,13 +60,12 @@ export const RULES_NAV_ITEMS: AdminNavItem[] = [
 
 /**
  * 智能分派（PRD-90，工单调度引擎·出池侧）：提为一级分组，页签作二级子项。
- * 分派监控 / 派单策略 / 工单池管理 / 路由规则 / 坐席画像 / 派单日志；旧 `dispatch` → 分派监控。
+ * 分派监控 / 派单策略 / 工单池管理 / 坐席画像 / 派单日志；旧 `dispatch` → 分派监控。
  */
 export const DISPATCH_NAV_ITEMS: AdminNavItem[] = [
   { key: 'dispatch-monitor', label: '分派监控', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
   { key: 'dispatch-strategy', label: '派单策略', prd: 'PRD-90' },
   { key: 'dispatch-pool', label: '工单池管理', prd: 'PRD-90' },
-  { key: 'dispatch-routing', label: '路由规则', prd: 'PRD-90' },
   { key: 'dispatch-profile', label: '坐席画像', prd: 'PRD-90' },
   { key: 'dispatch-log', label: '派单日志', prd: 'PRD-90' },
 ];
@@ -226,6 +225,8 @@ export const ADMIN_LEGACY_REDIRECTS: Record<string, string> = {
   rules: 'rules-list',
   // 智能分派提为一级分组：旧单页 dispatch → 分派监控
   dispatch: 'dispatch-monitor',
+  // 入池规则的只读页已删除：落到派单策略，默认页签即入池规则
+  'dispatch-routing': 'dispatch-strategy',
   // 规则中心:旧子项并入"规则"统一列表+编辑器;路由/升级矩阵进"路由矩阵"
   'rules-editor': 'rules-list',
   'rules-routing': 'rules-matrix',
