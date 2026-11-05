@@ -317,13 +317,6 @@ watch(() => store.config, (c) => {
       <!-- 变更记录 -->
       <div v-else-if="active === 'audit'" class="st-tab-pane">
         <section class="audit-panel">
-      <div class="meta-strip">
-        <div class="meta-chip">
-          <span class="meta-chip-val">{{ auditRows.length }}</span>
-          <span class="meta-chip-lb">条记录</span>
-        </div>
-        <span class="meta-hint">派单方式切换、个人开关等变更审计</span>
-      </div>
       <div class="audit-toolbar">
         <div class="filter-item">
           <span class="filter-label">时间</span>
