@@ -392,7 +392,7 @@ function priorityHex(p: string): string {
           有活跃关联时 hover 出售后单卡片：状态可见、工单号可点跳售后系统操作
         -->
         <a-popover
-          v-if="canLinkAftersale && detail.type === '投诉' && !LINK_HIDDEN_STATUSES.includes(detail.status)"
+          v-if="canLinkAftersale && detail.type === '投诉' && !LINK_HIDDEN_STATUSES.includes(detail.status) && !delegateLocked"
           :trigger="linkForm.card ? 'hover' : []"
           placement="bottomRight"
         >

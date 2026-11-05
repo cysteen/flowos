@@ -621,6 +621,8 @@ function onOk() {
 </script>
 
 <template>
+  <!-- 委派协办弹窗的「取消」不加字间空格；其余动作不传，沿用默认 -->
+  <a-config-provider :auto-insert-space-in-button="action === '委派' ? false : undefined">
   <OpActionModal
     :open="open"
     :title="cfg.title"
@@ -1089,4 +1091,5 @@ function onOk() {
       </div>
     </div>
   </OpActionModal>
+  </a-config-provider>
 </template>
