@@ -9,7 +9,7 @@ import {
 import { joinProblemPath, splitProblemPath, useProblemTagsStore } from '@/stores/problemTags';
 import {
   DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS,
-  type AgentProfile, type DimSel, type PoolMode, type PoolRuleConditions, type ProductPick,
+  type AgentProfile, type DimSel, type PoolRuleConditions, type ProductPick,
 } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
 
@@ -132,9 +132,6 @@ export function profileSummary(p: AgentProfile): string {
   if (unset.length) parts.push(`${unset.map((x) => x.label).join('、')}未设`);
   return parts.length ? parts.join('；') : '不限';
 }
-
-/* ---------------- 派单方式配色 ---------------- */
-export const MODE_TONE: Record<PoolMode, string> = { 自动派单: 'green', 混合派单: 'orange', 人工派单: 'red' };
 
 export function waitText(min: number): string {
   if (!min) return '—';

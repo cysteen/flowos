@@ -21,12 +21,8 @@
 /* ---------------- 圆点状态 ---------------- */
 .dx-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #86909c; white-space: nowrap; flex: none; line-height: 20px; }
 .dx-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #c9cdd4; flex: none; }
-.dx-status.is-green::before { background: #10b981; }
 .dx-status.is-orange { color: #ff7d00; }
 .dx-status.is-orange::before { background: #ff7d00; }
-.dx-status.is-red { color: #f53f3f; }
-.dx-status.is-red::before { background: #f53f3f; }
-.dx-status.is-green { color: #4e5969; }
 
 /* ---------------- 数字 ---------------- */
 .dx-num { font-size: 26px; font-weight: 600; color: #1f2329; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }

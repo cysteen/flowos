@@ -6,7 +6,6 @@ import {
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
-import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
 import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { isProfileConfigured, type DispatchRole } from '@/views/tickets/types/dispatch';
 
@@ -243,7 +242,7 @@ function removeMember(m: Member) {
                 <span class="gd-val">
                   <template v-for="p in groupPools(selGroup.id)" :key="p.id">
                     <span>{{ p.name }}</span>
-                    <a-tag :color="p.status === '启用' ? MODE_TONE[p.mode] : 'default'">{{ p.status === '启用' ? p.mode : '已停用' }}</a-tag>
+                    <a-tag>{{ p.status === '启用' ? p.mode : '已停用' }}</a-tag>
                   </template>
                   <span v-if="!groupPools(selGroup.id).length">—</span>
                 </span>

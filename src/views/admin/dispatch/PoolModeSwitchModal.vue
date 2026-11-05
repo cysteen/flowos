@@ -6,7 +6,6 @@ import { SwapOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { POOL_MODES, type PoolMode } from '@/views/tickets/types/dispatch';
-import { MODE_TONE } from './dispatchUi';
 
 const props = defineProps<{ open: boolean; scope: 'global' | string }>();
 const emit = defineEmits<{ 'update:open': [v: boolean]; done: [] }>();
@@ -61,7 +60,7 @@ function submit() {
       </div>
       <div class="op-field op-field-h">
         <span class="op-label">当前派单方式</span>
-        <a-tag :color="MODE_TONE[currentShown]" class="pm-tag">{{ currentShown }}</a-tag>
+        <a-tag class="pm-tag">{{ currentShown }}</a-tag>
       </div>
       <div class="op-field op-field-h">
         <span class="op-label req">切换为</span>

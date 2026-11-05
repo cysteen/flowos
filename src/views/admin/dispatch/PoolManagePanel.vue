@@ -12,7 +12,7 @@ import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
 import { DEFAULT_POOL_ID, POOL_MODES, POOL_NAME_MAX, PRIORITY_LEVEL, type PoolMode } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
-import { MODE_TONE, useClock, waitText } from './dispatchUi';
+import { useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import DispatchConfirmModal from './DispatchConfirmModal.vue';
@@ -345,7 +345,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             处理组 <b class="pd-group">{{ detailPool.label }}</b>
             <i class="dx-meta-sep">·</i>
             派单方式
-            <span v-if="detailPool.enabled" class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span>
+            <span v-if="detailPool.enabled" class="pd-mode-val">{{ detailPool.effectiveMode }}</span>
             <span v-else class="muted">已停用</span>
           </span>
           <div class="pd-stats">
@@ -470,7 +470,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
   padding: 10px 12px; background: #fafbfc; border: 1px solid #eef0f3; border-radius: 8px;
 }
 .pd-mode { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
-.pd-mode .dx-status { font-size: 12px; line-height: 20px; }
+.pd-mode-val { font-size: 12px; color: #4e5969; line-height: 20px; white-space: nowrap; }
 .pd-group { font-weight: 600; color: #1f2329; }
 .pd-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .pd-stat {

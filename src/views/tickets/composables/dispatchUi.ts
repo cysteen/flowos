@@ -77,7 +77,7 @@ export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, { color: string; bg: 
 };
 
 export const MODE_TAG_STYLE: Record<ModeTag, { color: string; bg: string; border: string }> = {
-  混合派单: { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  混合派单: { color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
   人工派单: { color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
 };
 

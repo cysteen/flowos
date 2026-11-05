@@ -10,7 +10,7 @@ import { stdPagination } from '@/config/adminUi';
 import type { DispatchAuditEntry } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { poolSlaAlertOf, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
-import { MODE_TONE, useClock } from './dispatchUi';
+import { useClock } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 
 const POOL_CARD_LIMIT = 10;
@@ -81,7 +81,7 @@ const recordCols = [
         <span class="ps-global">
           <span class="dx-icon ps-global-ic"><GlobalOutlined /></span>
           <span class="ps-global-name">全局</span>
-          <span class="dx-status" :class="`is-${MODE_TONE[globalMode]}`">{{ globalMode }}</span>
+          <span class="ps-global-mode">{{ globalMode }}</span>
         </span>
         <a-button type="link" size="small" @click="openMode('global')">切换派单方式</a-button>
         <a-button type="link" size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>切换记录</a-button>
@@ -159,6 +159,7 @@ const recordCols = [
 .ps-global { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .ps-global-ic { width: 20px; height: 20px; font-size: 12px; border-radius: 4px; }
 .ps-global-name { font-size: 13px; font-weight: 600; color: #1f2329; }
+.ps-global-mode { font-size: 13px; color: #4e5969; line-height: 20px; white-space: nowrap; }
 
 /* 工单池卡：宽屏最多 4 列（外层分派监控根节点为尺寸容器） */
 .group-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; min-width: 0; }

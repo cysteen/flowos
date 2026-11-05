@@ -10,7 +10,7 @@ import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
 import { maxPoolWaitMinutes, poolTicketsOfPool } from '@/views/team-board/components/dispatchPoolTickets';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { MODE_TONE, useClock, waitText } from './dispatchUi';
+import { useClock, waitText } from './dispatchUi';
 import { buildPoolFlow, computeStats, minText, type RangeKey } from './dispatchMetrics';
 import MonitorTrendChart from './MonitorTrendChart.vue';
 import MonitorInflowDonut from './MonitorInflowDonut.vue';
@@ -187,7 +187,7 @@ const backlogCols = [
         <a-table :columns="backlogCols" :data-source="backlogTableRows" row-key="id" size="middle" :pagination="false" :scroll="{ x: 560 }">
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'poolLabel'" class="pool-name">{{ record.poolLabel }}</span>
-            <span v-else-if="column.key === 'mode'" class="dx-status" :class="`is-${MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]}`">{{ record.effectiveMode }}</span>
+            <span v-else-if="column.key === 'mode'">{{ record.effectiveMode }}</span>
             <span v-else-if="column.key === 'backlogCount'" :class="{ 'n-hot': record.backlogCount > 0, 'n-zero': !record.backlogCount }">{{ record.backlogCount }}</span>
             <span v-else-if="column.key === 'maxWait'">{{ waitText(record.backlogWait) }}</span>
           </template>
