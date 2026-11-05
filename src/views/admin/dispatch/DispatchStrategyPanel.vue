@@ -231,11 +231,6 @@ watch(() => store.config, (c) => {
         </p>
         <div class="cap-layout">
           <div class="cap-card cap-inputs">
-            <header class="cap-sect-hd">
-              <h3 class="cap-sect-title">配置参数</h3>
-              <p class="cap-sect-sub">修改后立即在右侧预览生效，保存后写入策略</p>
-            </header>
-
             <div class="cap-sect">
               <div class="cap-sect-label">
                 <span class="cap-sect-name">角色基准值</span>
