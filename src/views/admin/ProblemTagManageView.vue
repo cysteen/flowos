@@ -309,10 +309,11 @@ const cols = [
 const TABLE_SCROLL_X = 32 + cols.reduce((s, c) => s + c.width, 0);
 
 const currentPage = ref(1);
+const pageSize = ref(20);
 const pagination = computed(() => stdPagination({
   current: currentPage.value,
-  onChange: (page: number) => { currentPage.value = page; },
-  pageSize: 20,
+  pageSize: pageSize.value,
+  onChange: (page: number, size: number) => { currentPage.value = page; pageSize.value = size; },
   total: displayRows.value.length,
   hideOnSinglePage: false,
   showQuickJumper: true,
