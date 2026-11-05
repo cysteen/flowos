@@ -72,6 +72,8 @@ const props = withDefaults(
      * 坐席会去清一个从没设过的筛选。
      */
     emptyKind?: 'none' | 'search' | 'filter';
+    /** 数据域为空时的文案（`none` 那一档）；不传为「暂无工单」 */
+    emptyText?: string;
     /*
      * ==== 以下三个是**可选扩展位**，不传时本组件行为逐字不变 ====
      * 加它们是为了让风险监控页「未标记」段直接复用这张表，而不是另画一张长得像的。
@@ -480,7 +482,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
           <button type="button" class="empty-act" @click="emit('clearFilters')">清空筛选</button>
         </template>
         <template v-else>
-          <div class="empty-title">暂无工单</div>
+          <div class="empty-title">{{ emptyText || '暂无工单' }}</div>
         </template>
       </div>
 

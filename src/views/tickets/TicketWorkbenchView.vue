@@ -10,7 +10,9 @@ import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
 import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
 import { useFlashStore } from '@/stores/flash';
 import {
+  DELEGATE_POOL_TAB,
   FLASH_POOL_TAB,
+  GROUP_DELEGATE_TAB,
   isPoolFamily,
   isTicketTab,
   RISK_REPORT_TAB,
@@ -27,6 +29,8 @@ import {
 import { FLASH_POOL_TAB_ROLES, XIAOZHI_CREATE_ROLES } from '@/config/roles';
 import { flashFailCellText, flashHandoffCellText } from './utils/flashPoolCells';
 import { useRiskReportStore } from '@/stores/riskReports';
+import { delegateTargetLabel, useDelegateTaskStore, type DelegateTask } from '@/stores/delegateTasks';
+import { TICKETS } from '@/mock/tickets';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
 import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
@@ -104,9 +108,66 @@ const flashPoolTabOpen = computed(
 const riskReportTabOpen = computed(
   () => riskReportTabActive.value && !user.hiddenTabs.includes(RISK_REPORT_TAB),
 );
+/* ---- 委派任务池 / 本组委派任务：按委派子任务取数，选中态与报备池、刷机池同形 ---- */
+const delegateTaskStore = useDelegateTaskStore();
+const delegateTab = ref<typeof DELEGATE_POOL_TAB | typeof GROUP_DELEGATE_TAB | null>(null);
+const delegateTabOpen = computed(() => !!delegateTab.value && !workbenchHiddenTabs.value.includes(delegateTab.value));
+const delegateChip = ref<'all' | '待处理' | '已完成'>('all');
+const delegateSearch = ref('');
+const DELEGATE_CHIPS = [
+  { key: 'all', label: '全部' },
+  { key: '待处理', label: '待处理' },
+  { key: '已完成', label: '已完成' },
+];
+const delegatePoolTasks = computed(() => delegateTaskStore.poolOf(user.name));
+const myDelegateGroupIds = computed(() => useDispatchStore().agentOf(user.name)?.groupIds ?? []);
+const groupDelegateTasks = computed(() => delegateTaskStore.groupPoolOf(myDelegateGroupIds.value));
+const delegateChipCounts = computed<Record<string, number>>(() => ({
+  all: delegatePoolTasks.value.length,
+  待处理: delegatePoolTasks.value.filter((x) => x.status === '待处理').length,
+  已完成: delegatePoolTasks.value.filter((x) => x.status === '已完成').length,
+}));
+/** 当前页签的子任务，按委派时间倒序；一张单有多条时列最新一条（待处理优先） */
+const delegateRowTask = computed(() => {
+  const list = delegateTab.value === GROUP_DELEGATE_TAB
+    ? groupDelegateTasks.value
+    : delegatePoolTasks.value.filter((x) => delegateChip.value === 'all' || x.status === delegateChip.value);
+  const map = new Map<string, DelegateTask>();
+  [...list].sort((a, b) => b.batchAt.localeCompare(a.batchAt)).forEach((x) => {
+    const had = map.get(x.ticketNo);
+    if (!had || (had.status !== '待处理' && x.status === '待处理')) map.set(x.ticketNo, x);
+  });
+  return map;
+});
+const delegateRows = computed<Ticket[]>(() => {
+  const kw = delegateSearch.value.trim().toLowerCase();
+  return [...delegateRowTask.value.keys()]
+    .map((no) => wb.all.value.find((x) => x.no === no) ?? TICKETS.find((x) => x.no === no))
+    .filter((x): x is Ticket => !!x)
+    .filter((x) => !kw || x.no.toLowerCase().includes(kw) || (x.customerPhone ?? '').includes(kw));
+});
+const DELEGATE_EXTRA_COLUMNS = [
+  { key: 'delegateTarget', label: '协办对象', width: 150, after: 'node' },
+  { key: 'delegateTask', label: '任务说明', width: 220, after: 'node' },
+  { key: 'delegateStatus', label: '任务状态', width: 90, after: 'node' },
+  { key: 'delegateAt', label: '委派时间', width: 160, after: 'node' },
+];
+function delegateTaskOf(t: Ticket): DelegateTask | undefined {
+  return delegateRowTask.value.get(t.no);
+}
+function delegateRowActions() {
+  return delegateTab.value === GROUP_DELEGATE_TAB ? [{ label: '认领', primary: true }] : [{ label: '详情' }];
+}
+function claimDelegateTask(t: Ticket) {
+  const task = delegateTaskOf(t);
+  if (task && delegateTaskStore.claim(task.id, user.name)) message.success(`已认领 ${t.no} 的委派任务`);
+  else message.warning('该委派任务已被认领');
+}
+
 const activeWorkbenchTab = computed<WorkbenchTabKey>(() => {
   if (riskReportTabOpen.value) return RISK_REPORT_TAB;
   if (flashPoolTabOpen.value) return FLASH_POOL_TAB;
+  if (delegateTabOpen.value) return delegateTab.value!;
   return wb.activeTab.value;
 });
 
@@ -121,6 +182,8 @@ const workbenchTabCounts = computed<Record<string, number>>(() => ({
   ...headerTabCounts.value,
   [RISK_REPORT_TAB]: riskReportOpenCount.value,
   [FLASH_POOL_TAB]: wb.flashPoolRows.value.length,
+  [DELEGATE_POOL_TAB]: delegatePoolTasks.value.length,
+  [GROUP_DELEGATE_TAB]: groupDelegateTasks.value.length,
 }));
 
 function onTabChange(tab: WorkbenchTabKey) {
@@ -129,6 +192,9 @@ function onTabChange(tab: WorkbenchTabKey) {
   if (workbenchHiddenTabs.value.includes(tab)) return;
   riskReportTabActive.value = tab === RISK_REPORT_TAB;
   flashPoolTabActive.value = tab === FLASH_POOL_TAB;
+  delegateTab.value = tab === DELEGATE_POOL_TAB || tab === GROUP_DELEGATE_TAB ? tab : null;
+  delegateChip.value = 'all';
+  delegateSearch.value = '';
   if (isTicketTab(tab)) wb.setTab(tab);
 }
 
@@ -287,18 +353,20 @@ function flashPoolRowActions() {
 }
 
 function onToolbarSearch(v: string) {
-  if (flashPoolTabOpen.value) flashSearch.value = v;
+  if (delegateTabOpen.value) delegateSearch.value = v;
+  else if (flashPoolTabOpen.value) flashSearch.value = v;
   else wb.setSearch(v);
 }
 
-const toolbarSearch = computed(() =>
-  flashPoolTabOpen.value ? flashSearch.value : wb.searchText.value,
-);
+const toolbarSearch = computed(() => {
+  if (delegateTabOpen.value) return delegateSearch.value;
+  return flashPoolTabOpen.value ? flashSearch.value : wb.searchText.value;
+});
 const toolbarSelectedCount = computed(() =>
   flashPoolTabOpen.value ? flashSelectedCount.value : wb.selectedCount.value,
 );
 const toolbarShowBatch = computed(
-  () => flashPoolTabOpen.value || showBatchToolbar.value,
+  () => !delegateTabOpen.value && (flashPoolTabOpen.value || showBatchToolbar.value),
 );
 const toolbarBatchActions = computed(() =>
   flashPoolTabOpen.value ? ['领取'] : batchActions.value,
@@ -619,6 +687,10 @@ function onTakeoverOk() {
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
+  if (label === '认领') {
+    claimDelegateTask(t);
+    return;
+  }
   if (label === '领取' && isPoolPendingTab.value) {
     takeOverPending(t);
     return;
@@ -717,6 +789,7 @@ function onCreated(t: Ticket) {
   // 新单落进了「我的任务」却一眼看不到
   riskReportTabActive.value = false;
   flashPoolTabActive.value = false;
+  delegateTab.value = null;
   wb.setTab('mine');
 }
 
@@ -806,7 +879,16 @@ function onConfirmSaveFilter(name: string) {
 
     <div v-else class="workbench-body">
       <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示；草稿箱视图下照常展示，点其他 chip 回列表） -->
-      <div v-if="!flashPoolTabOpen && wb.activeChips.value.length" class="filter-row-unified">
+      <div v-if="delegateTabOpen && delegateTab === DELEGATE_POOL_TAB" class="filter-row-unified">
+        <TicketFilterBar
+          :active-chip="delegateChip"
+          :chip-counts="delegateChipCounts"
+          :chips="DELEGATE_CHIPS"
+          :show-time-filter="false"
+          @chip="(k: string) => { delegateChip = k as typeof delegateChip; }"
+        />
+      </div>
+      <div v-else-if="!flashPoolTabOpen && !delegateTabOpen && wb.activeChips.value.length" class="filter-row-unified">
         <TicketFilterBar
           :active-chip="wb.activeChip.value"
           :chip-counts="wb.chipCounts.value"
@@ -818,9 +900,9 @@ function onConfirmSaveFilter(name: string) {
       </div>
 
       <!-- ③ 列表控制区：工具行固定在此（各 Tab 搜索栏对齐）；筛选面板向上展开 -->
-      <div v-if="flashPoolTabOpen || !isDraftView" class="list-controls">
+      <div v-if="flashPoolTabOpen || delegateTabOpen || !isDraftView" class="list-controls">
         <TicketMineQueryBar
-          v-if="!flashPoolTabOpen && wb.usesStructuredFilter.value && structuredFilterExpanded"
+          v-if="!flashPoolTabOpen && !delegateTabOpen && wb.usesStructuredFilter.value && structuredFilterExpanded"
           :expanded="true"
           :model-value="wb.structuredQuery.value"
           :variant="structuredFilterVariant"
@@ -836,15 +918,15 @@ function onConfirmSaveFilter(name: string) {
           :selected-count="toolbarSelectedCount"
           :search="toolbarSearch"
           search-placeholder="工单号 / 手机号"
-          :show-create="!flashPoolTabOpen && !wb.isDoneTab.value"
-          :show-xiaozhi-create="!flashPoolTabOpen && !wb.isDoneTab.value && canCreateXiaozhi"
+          :show-create="!flashPoolTabOpen && (delegateTabOpen || !wb.isDoneTab.value)"
+          :show-xiaozhi-create="!flashPoolTabOpen && (delegateTabOpen || !wb.isDoneTab.value) && canCreateXiaozhi"
           :show-batch="toolbarShowBatch"
           :batch-actions="toolbarBatchActions"
           :batch-disabled-tips="flashPoolTabOpen ? {} : batchDisabledTips"
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
-          :show-filter-toggle="!flashPoolTabOpen && wb.usesStructuredFilter.value"
-          :show-sort="!flashPoolTabOpen"
+          :show-filter-toggle="!flashPoolTabOpen && !delegateTabOpen && wb.usesStructuredFilter.value"
+          :show-sort="!flashPoolTabOpen && !delegateTabOpen"
           :filter-expanded="structuredFilterExpanded"
           :show-column-settings="true"
           @batch="onBatch"
@@ -859,7 +941,7 @@ function onConfirmSaveFilter(name: string) {
       </div>
 
       <!-- 【1215】工单池 · 组池分段与派单筛选（10.1） -->
-      <div v-if="!flashPoolTabOpen && wb.isPoolTab.value" class="pool-dispatch-bar">
+      <div v-if="!flashPoolTabOpen && !delegateTabOpen && wb.isPoolTab.value" class="pool-dispatch-bar">
         <div class="pdb-segs" role="list">
           <button
             v-for="p in poolSegments"
@@ -895,7 +977,7 @@ function onConfirmSaveFilter(name: string) {
 
       <!-- ④ AI 建议条（仅我的任务；置于工具行之下，避免顶挤搜索栏） -->
       <AiSuggestionBar
-        v-if="!flashPoolTabOpen && wb.showAiBar.value && !isDraftView"
+        v-if="!flashPoolTabOpen && !delegateTabOpen && wb.showAiBar.value && !isDraftView"
         :summary="wb.aiSummary.value"
         @view="openAiDrawer"
         @close="wb.aiBarVisible.value = false"
@@ -903,8 +985,45 @@ function onConfirmSaveFilter(name: string) {
 
       <!-- ⑤ 列表区：草稿视图 → 草稿列表；否则 → SLA 富列表 + 分页 -->
       <div class="table-card">
+        <template v-if="delegateTabOpen">
+          <TicketRichList
+            :rows="delegateRows"
+            :selectable="false"
+            variant="default"
+            :row-actions-fn="delegateRowActions"
+            :extra-columns="DELEGATE_EXTRA_COLUMNS"
+            :visible-columns="visibleColumns"
+            :column-order="columnOrder"
+            :empty-text="delegateTab === GROUP_DELEGATE_TAB ? '本组暂无待领取的委派任务' : '暂无委派任务'"
+            :empty-kind="delegateSearch.trim() ? 'search' : 'none'"
+            @action="onAction"
+            @open="openOperation"
+            @click-no="onClickNo"
+            @click-customer="onClickCustomer"
+          >
+            <template #cell-delegateTarget="{ ticket }">
+              <span class="dsp-plain" :title="delegateTaskOf(ticket) && delegateTargetLabel(delegateTaskOf(ticket)!)">
+                {{ delegateTaskOf(ticket) ? delegateTargetLabel(delegateTaskOf(ticket)!) : '—' }}
+              </span>
+            </template>
+            <template #cell-delegateTask="{ ticket }">
+              <span class="dsp-plain" :title="delegateTaskOf(ticket)?.task">{{ delegateTaskOf(ticket)?.task ?? '—' }}</span>
+            </template>
+            <template #cell-delegateStatus="{ ticket }">
+              <span class="dt-status" :class="delegateTaskOf(ticket)?.status === '已完成' ? 'is-done' : 'is-pending'">{{ delegateTaskOf(ticket)?.status ?? '—' }}</span>
+            </template>
+            <template #cell-delegateAt="{ ticket }">
+              <span class="suspend-time">{{ delegateTaskOf(ticket)?.batchAt ?? '—' }}</span>
+            </template>
+          </TicketRichList>
+          <div class="pager">
+            <div class="pager-left">
+              <span class="pager-total">共 {{ delegateRows.length }} 条</span>
+            </div>
+          </div>
+        </template>
         <TicketDraftList
-          v-if="isDraftView"
+          v-else-if="isDraftView"
           :drafts="wb.drafts.value"
           @open="editDraft"
           @remove="removeDraft"
@@ -1275,4 +1394,10 @@ function onConfirmSaveFilter(name: string) {
   text-overflow: ellipsis;
 }
 .tko-note { margin-left: 4px; font-size: 12px; color: #9ca3af; }
+.dt-status {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+  font-size: 12px; font-weight: 500; border: 1px solid; border-radius: 4px; white-space: nowrap;
+}
+.dt-status.is-pending { color: #e6a23c; background: #fdf6ec; border-color: #faecd8; }
+.dt-status.is-done { color: #67c23a; background: #f0f9eb; border-color: #e1f3d8; }
 </style>

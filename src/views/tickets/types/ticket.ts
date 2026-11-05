@@ -37,7 +37,7 @@ export const RISK_REPORT_TAB = 'riskReport';
  * （报备单不在工单数组里，那一格数不出任何东西）。
  * 分成两个类型之后，"页签栏有几枚"与"工单能落在哪几枚上"各自回答各自的问题。
  */
-export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB | typeof FLASH_POOL_TAB;
+export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB | typeof FLASH_POOL_TAB | typeof DELEGATE_POOL_TAB | typeof GROUP_DELEGATE_TAB;
 
 /**
  * 一线坐席工作台「刷机池」页签的键（930 教育刷机单 §9.2 / M30）。
@@ -46,12 +46,16 @@ export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB | typeof FLASH_POO
  */
 export const FLASH_POOL_TAB = 'flashPool';
 
+/** 「委派任务池」「本组委派任务」页签的键。同刷机池：`Ticket.tab` 不变，由工作台按委派子任务单独取数 */
+export const DELEGATE_POOL_TAB = 'delegatePool';
+export const GROUP_DELEGATE_TAB = 'groupDelegate';
+
 /**
  * 页签栏的键是不是一枚**工单页签** —— 是的才能喂给按 `TabKey` 取数的那一套。
  * 类型谓词而不是布尔：调用处 `if (isTicketTab(k)) setTab(k)` 直接把 k 收窄成 TabKey。
  */
 export function isTicketTab(key: WorkbenchTabKey): key is TabKey {
-  return key !== RISK_REPORT_TAB && key !== FLASH_POOL_TAB;
+  return key !== RISK_REPORT_TAB && key !== FLASH_POOL_TAB && key !== DELEGATE_POOL_TAB && key !== GROUP_DELEGATE_TAB;
 }
 
 /** 工单列表（全量库）视图 Tab */
@@ -994,6 +998,8 @@ export const TABS: TabMeta[] = [
   { key: FLASH_POOL_TAB, label: '刷机池', badge: '#7C3AED' },
   { key: 'poolPending', label: '催补待回', badge: '#6366F1' },
   { key: RISK_REPORT_TAB, label: '风险报备池', badge: '#F97316' },
+  { key: DELEGATE_POOL_TAB, label: '委派任务池', badge: '#1A6FFF' },
+  { key: GROUP_DELEGATE_TAB, label: '本组委派任务', badge: '#1A6FFF' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
 ];
 
