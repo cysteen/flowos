@@ -136,7 +136,7 @@ function openMode(id: string) { modeScope.value = id; modeOpen.value = true; }
 const detailId = ref<string | null>(null);
 const detailOpen = computed({ get: () => !!detailId.value, set: (v: boolean) => { if (!v) detailId.value = null; } });
 const refresh = ref(0);
-const detailPool = computed(() => rows.value.find((p) => p.id === detailId.value) ?? null);
+const detailPool = computed(() => allRows.value.find((p) => p.id === detailId.value) ?? null);
 const detailRows = computed(() => {
   void clock.value;
   void refresh.value;
@@ -283,6 +283,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             <div class="pm-row">
               <div class="pm-cond"><em>处理组</em>{{ p.label }}</div>
               <span class="pm-ops">
+                <a-button type="link" size="small" class="pm-op" @click="detailId = p.id">池详情</a-button>
                 <a-button type="link" size="small" class="pm-op" @click="openEdit(p.id)">编辑</a-button>
                 <a-button type="link" size="small" class="pm-op" @click="openToggle(p.id, true)">启用</a-button>
               </span>
@@ -347,7 +348,8 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
             处理组 <b class="pd-group">{{ detailPool.label }}</b>
             <i class="dx-meta-sep">·</i>
             派单方式
-            <span class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span>
+            <span v-if="detailPool.enabled" class="dx-status" :class="`is-${MODE_TONE[detailPool.effectiveMode]}`">{{ detailPool.effectiveMode }}</span>
+            <span v-else class="muted">已停用</span>
           </span>
           <div class="pd-stats">
             <div class="pd-stat">
@@ -377,7 +379,7 @@ onBeforeUnmount(() => clearTimeout(focusTimer));
         </div>
         <div class="table-shell pd-table">
           <a-table
-            :columns="detailCols"
+            :columns="detailPool.enabled ? detailCols : detailCols.filter((c) => c.key !== 'op')"
             :data-source="detailRows"
             row-key="no"
             size="small"
