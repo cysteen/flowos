@@ -806,15 +806,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /* ---------------- 指定人规则（进池前判断） ---------------- */
 
-  /** 是否执行指定人规则：全局或归属池为人工派单时不执行，全部进池；尚无归属池时按全局派单方式判断 */
-  function designatedApplies(poolId?: string): boolean {
-    return (poolId ? effectiveModeOf(poolId) : globalEffectiveMode()) !== '人工派单';
-  }
-
   /**
    * 规则对这张单取到的人：固定人员须未停用；学校 → 校园经理以建单所填校代对接人为准（`picked`，传 null 为已清空），
-   * 未填时按学校带出。取不到返回空，工单按入池规则进池走三步。
-   * 签出、请假仍派，不受个人上限约束；工单被投诉人不回避（判断集中在此）。
+   * 未填时按学校带出。取不到返回空，工单按入池规则进池走三步。签出、请假仍派，不受个人上限约束。
    */
   function designatedPersonOf(rule: DesignatedRule, t: Ticket, picked?: RefundManager | null): Pick<DesignatedHit, 'agent' | 'manager'> | null {
     if (rule.source === '固定人员') {
@@ -826,9 +820,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return manager ? { manager } : null;
   }
 
-  /** 按优先级取第一条相符的启用规则，判断此单是否直接到人；规则相符但取不到人的不再看后面的规则 */
-  function matchDesignated(t: Ticket, opts: { poolId?: string; picked?: RefundManager | null } = {}): DesignatedHit | null {
-    if (!designatedApplies(opts.poolId)) return null;
+  /**
+   * 按优先级取第一条相符的启用规则，判断此单是否直接到人；规则相符但取不到人的不再看后面的规则。
+   * 指定人规则不进工单池，与全局、各池的派单方式无关。
+   */
+  function matchDesignated(t: Ticket, opts: { picked?: RefundManager | null } = {}): DesignatedHit | null {
     const rule = [...designatedRules.value]
       .filter((r) => r.enabled)
       .sort((a, b) => a.priority - b.priority)
@@ -1345,7 +1341,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
    * 校园经理由个册退费服务在建单时落库（`matchDesignated` + `logDesignated`），不经此处。
    */
   function runDesignated(t: Ticket, opts: DispatchOptions, write: boolean): DispatchResult | null {
-    const hit = matchDesignated(t, { poolId: opts.poolId });
+    const hit = matchDesignated(t);
     const a = hit?.agent;
     if (!hit || !a) return null;
     const now = Date.now();

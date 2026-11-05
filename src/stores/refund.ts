@@ -270,7 +270,7 @@ export const useRefundStore = defineStore('refund', () => {
 
   /**
    * 建个册退费单，由指定人规则判断去向（内置「个册退费 · 按学校派校园经理」：以建单所填校代对接人为准）；
-   * 没有对应人员、规则已停用或全局、教育支持组池为人工派单时进教育支持组工单池。SLA 自建单下送起算。
+   * 没有对应人员或规则已停用时进教育支持组工单池。SLA 自建单下送起算。
    * `manager` 不传时按学校取校园经理，传 `null` 表示建单时清空了校代对接人。
    */
   function createRefundTicket(
@@ -321,7 +321,7 @@ export const useRefundStore = defineStore('refund', () => {
     startSla(r, now);
     const bySchool = resolveSchoolManager(info.schoolId);
     const dispatch = useDispatchStore();
-    const hit = dispatch.matchDesignated(r, { poolId: REFUND_POOL_GROUP_ID, picked: manager });
+    const hit = dispatch.matchDesignated(r, { picked: manager });
     const m = hit?.manager;
     let message: string;
     if (m) {
