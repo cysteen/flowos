@@ -83,8 +83,20 @@ const cols = [
   { title: '负载', key: 'factor', width: 72, align: 'right' as const },
   { title: '熟练度', key: 'proficiency', width: 72 },
   { title: '坐席状态', key: 'signIn', width: 84 },
-  { title: '标识', key: 'flag', width: 100 },
 ];
+
+const currentPage = ref(1);
+const pageSize = ref(10);
+const pagination = computed(() => stdPagination({
+  current: currentPage.value,
+  pageSize: pageSize.value,
+  onChange: (page: number, size: number) => { currentPage.value = page; pageSize.value = size; },
+}));
+/** 筛选变化回第 1 页；当前页没有数据时退回最后一页 */
+watch(f, () => { currentPage.value = 1; });
+watch([() => rows.value.length, pageSize], ([n, size]) => {
+  currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(n / size)));
+});
 
 const selected = ref<string | null>(null);
 watch(rows, (rs) => {
@@ -173,15 +185,15 @@ function rowClass(name: string) {
             <a-select v-model:value="f.personal" size="small" :options="personalOpts" placeholder="个人开关" allow-clear />
             <a-checkbox v-model:checked="f.unconfigured">画像未配置</a-checkbox>
           </div>
-          <div class="profile-table-wrap">
+          <div class="profile-table-wrap table-shell">
             <a-table
               :columns="cols"
               :data-source="rows"
               row-key="name"
               size="small"
-              :pagination="stdPagination()"
+              :pagination="pagination"
               :row-selection="rowSelection"
-              :scroll="{ x: 652 }"
+              :scroll="{ x: 552 }"
               :row-class-name="(r: Row) => rowClass(r.name)"
               :custom-row="(r: Row) => ({ onClick: () => { selected = r.name; } })"
             >
@@ -200,13 +212,6 @@ function rowClass(name: string) {
                 <span v-else-if="column.key === 'signIn'" class="status-cell compact">
                   <span class="status-dot" :style="{ background: SIGN_COLOR[record.signIn] ?? '#9ca3af' }" />
                   <span :style="{ color: SIGN_COLOR[record.signIn] ?? '#6b7280' }">{{ record.signIn }}</span>
-                </span>
-                <span v-else-if="column.key === 'flag'" class="ap-flags">
-                  <span v-if="!record.configured" class="flag-muted">画像未配置</span>
-                  <span v-if="record.overAssigned" class="dx-bad">超额指派</span>
-                  <span v-else-if="record.overLimit" class="dx-warn">超限</span>
-                  <span v-else-if="record.full" class="dx-bad">满载</span>
-                  <span v-if="record.configured && !record.overAssigned && !record.overLimit && !record.full" class="flag-muted">—</span>
                 </span>
               </template>
             </a-table>
@@ -322,14 +327,14 @@ function rowClass(name: string) {
 .profile-list-panel :deep(.ant-table) { background: #fff; border-radius: 6px; font-size: 12px; }
 .profile-list-panel :deep(.ant-table-thead > tr > th),
 .profile-list-panel :deep(.ant-table-tbody > tr > td) { padding: 7px 8px !important; }
+/* 横向滚动表的测量行只用于定列宽，不占高度 */
+.profile-list-panel :deep(.ant-table-tbody > tr.ant-table-measure-row > td) { padding: 0 !important; border: 0 !important; }
 .profile-list-panel :deep(.ant-table-row) { cursor: pointer; }
 .profile-list-panel :deep(.profile-row-active > td) { background: #eff6ff !important; }
-.profile-list-panel :deep(.ant-pagination) { margin: 8px 0 0 !important; }
 
 .ap-hd-btns { display: inline-flex; gap: 8px; }
 .staff-no { font-size: 11px; margin-left: 4px; }
 .ap-prof { font-size: 12px; color: #374151; }
-.ap-flags { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 .flag-muted { color: #9ca3af; }
 .cap-text { font-size: 12px; }
 .load-full { color: #ff7d00; font-weight: 600; }
@@ -381,7 +386,7 @@ function rowClass(name: string) {
 
 @container (max-width: 1080px) {
   .profile-layout { flex-direction: column; min-height: 0; }
-  .profile-list-panel { flex: none; max-height: 420px; }
+  .profile-list-panel { flex: none; }
   .profile-detail-panel { min-height: 360px; }
 }
 @container (max-width: 560px) {
