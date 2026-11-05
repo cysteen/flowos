@@ -26,6 +26,12 @@ const props = withDefaults(
     /** 主按钮置灰时的悬停提示；仅在 okDisabled 为真时生效 */
     okDisabledTip?: string;
     confirmLoading?: boolean;
+    /** 不要页脚（纯查看的弹窗） */
+    noFooter?: boolean;
+    /** 页脚只留主按钮 */
+    hideCancel?: boolean;
+    /** 弹窗根节点附加类名（个别弹窗的样式取值） */
+    modalClass?: string;
   }>(),
   {
     subtitle: '',
@@ -37,6 +43,9 @@ const props = withDefaults(
     okTone: 'primary',
     okDisabled: false,
     confirmLoading: false,
+    noFooter: false,
+    hideCancel: false,
+    modalClass: undefined,
   },
 );
 
@@ -59,6 +68,8 @@ const okButtonProps = computed<OkButtonProps>(() => {
   return { ...base, type: 'primary' };
 });
 
+const cancelButtonProps = computed<OkButtonProps | undefined>(() => (props.hideCancel ? { style: { display: 'none' } } : undefined));
+
 function onCancel() {
   emit('cancel');
   emit('update:open', false);
@@ -74,6 +85,9 @@ function onCancel() {
     :ok-button-props="okButtonProps"
     :confirm-loading="confirmLoading"
     :mask-closable="false"
+    :wrap-class-name="modalClass"
+    :cancel-button-props="cancelButtonProps"
+    v-bind="noFooter ? { footer: null } : {}"
     destroy-on-close
     @update:open="emit('update:open', $event)"
     @ok="emit('ok')"
@@ -208,32 +222,36 @@ function onCancel() {
 .op-confirm { font-size: 13px; color: #374151; line-height: 1.65; }
 .op-confirm-strong { color: #111827; font-weight: 600; }
 
-.op-delegate-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
+.op-delegate-modal .ant-modal-content { border-radius: 12px; padding: 16px; }
+.op-delegate-modal .ant-modal-footer .ant-btn { height: 36px; padding: 8px 15px; font-size: 14px; line-height: 18px; border-radius: 6px; }
+.op-delegate-modal .ant-modal-footer .ant-btn-default { color: #606266; border-color: #dcdfe6; }
+.op-delegate-modal .ant-modal-footer .ant-btn-primary { background: #5d87ff; border-color: #5d87ff; margin-inline-start: 12px; }
+.op-delegate-modal .opm-title-text { color: #303133; }
+.op-delegate-modal .ant-radio-wrapper-checked { color: #5d87ff; }
+.op-delegate-modal .ant-radio-checked .ant-radio-inner { background: #5d87ff; border-color: #5d87ff; }
+.op-delegate-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .op-delegate-head > .op-label { margin: 0; }
-.op-delegate-list {
-  display: flex; flex-direction: column; gap: 6px;
-}
-/* 单条一行：序号 + 协助办理人 + 任务说明 + 移除 */
-.op-delegate-card {
-  padding: 8px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
-}
+.op-delegate-count { margin-left: 6px; font-size: 12px; font-weight: 400; color: #909399; }
+.op-delegate-list { display: flex; flex-direction: column; gap: 6px; }
+.op-delegate-card { padding: 8px 10px; background: #fafafa; border: 1px solid #ebeef5; border-radius: 6px; }
 .op-delegate-row { display: flex; align-items: center; gap: 8px; }
 .op-delegate-idx {
   flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #e5e7eb; color: #6b7280; font-size: 11px; font-weight: 600;
+  background: #ebeef5; color: #909399; font-size: 11px; font-weight: 600;
 }
-.op-delegate-person { flex: 0 0 140px; width: 140px; min-width: 0; }
-.op-delegate-task {
-  flex: 1;
-  min-width: 0;
-  margin: 0 !important;
+.op-delegate-person { flex: 0 0 175px; width: 175px; min-width: 0; }
+.op-delegate-person .ant-select-selector { height: 36px !important; border-radius: 6px !important; }
+.op-delegate-person .ant-select-selection-item,
+.op-delegate-person .ant-select-selection-placeholder { line-height: 34px !important; font-size: 14px; }
+.op-delegate-task { position: relative; flex: 1; min-width: 0; }
+.op-delegate-task textarea.ant-input {
+  display: block; min-height: 36px; padding: 7px 11px 18px; font-size: 14px; line-height: 20px; border-radius: 6px; resize: none;
+}
+.op-delegate-text-count {
+  position: absolute; right: 8px; bottom: 3px; padding-left: 4px;
+  font-size: 12px; line-height: 14px; color: #909399; background: #fff; pointer-events: none;
 }
 .op-delegate-remove {
   flex: none;
@@ -245,9 +263,15 @@ function onCancel() {
 .op-delegate-add {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   flex: none; height: 26px; padding: 0 10px;
-  border: 1px dashed #d1d5db; border-radius: 6px;
-  background: #fff; color: #1a6fff; font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px dashed #dcdfe6; border-radius: 6px;
+  background: #fff; color: #5d87ff; font-size: 12px; font-weight: 500; cursor: pointer;
 }
-.op-delegate-add:hover { border-color: #1a6fff; background: #eff6ff; }
+.op-delegate-add:hover:not(:disabled) { border-color: #5d87ff; background: #eff6ff; }
+.op-delegate-add:disabled { color: #c0c4cc; background: #f5f7fa; cursor: not-allowed; }
+.op-delegate-group { display: flex; flex-direction: column; gap: 6px; }
+.op-delegate-group-row { display: flex; gap: 8px; align-items: flex-end; }
+.op-delegate-group-row > .op-field { flex: 1; min-width: 0; gap: 4px; }
+.op-delegate-group .op-delegate-person { flex: none; width: 100%; }
+.op-delegate-group .op-field { gap: 4px; }
 
 </style>

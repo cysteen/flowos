@@ -715,6 +715,18 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-09-23 09:30:44', updatedAt: '2026-09-23 10:40:09',
     responded: true,
   },
+  // 投诉单 · 已委派（到人）：子任务见 `mock/delegateTasks.ts`
+  {
+    id: 'es-wp1', no: 'IFLYTS-20260923-00063', type: '投诉', channel: '电话', ticketSource: '电话',
+    title: '扫地机器人上门维修后仍无法回充', smartMarks: [],
+    customer: '曲航', vip: false, product: '扫地机器人 R2',
+    nodeStatus: '已委派', nodeStep: 3, nodeTotal: 5, priority: 'P2',
+    slaText: '04:40:00', slaSub: '充足', slaState: 'ok', slaMinutes: 280,
+    assignee: '张三', tab: 'mine', groupId: 'line2',
+    customerPhone: '13733335553', productCategory: '智能硬件',
+    createdAt: '2026-09-23 14:02:11', updatedAt: '2026-09-23 15:20:36',
+    responded: true, hasDelegateHistory: true,
+  },
   // D8 已结案·无子单：点补充 → **新建一张承接子单**；再补一次仍落这张，不建第二张
   {
     id: 'fd-d8', no: 'IFLYZX-20260817-00007', type: '咨询', channel: '电话',

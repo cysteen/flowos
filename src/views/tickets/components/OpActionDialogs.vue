@@ -3,21 +3,23 @@ import { computed, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
-  SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
+  SwapOutlined, StopOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
   CheckCircleOutlined, CloseCircleOutlined, RollbackOutlined, CloseOutlined, PlusOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { useDispatchStore } from '@/stores/dispatch';
+import { TICKETS } from '@/mock/tickets';
 import OpActionModal from './operation/OpActionModal.vue';
 import AftersaleCreateForm from './operation/AftersaleCreateForm.vue';
 import type { SuspendInfo, OpActionType, AftersaleContext, AftersalePayload } from '../composables/opActions';
 import {
   CROSS_GROUP_TRANSFER_ROLES,
-  DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
+  DELEGATE_TASK_MAX, DELEGATE_TASK_TEXT_MAX, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_CHANNEL_TPD, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, CLOSE_REASONS,
   RESUME_REASONS, RETURN_REASONS, MAX_RETURN_COUNT,
-  DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
+  FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
   APPROVAL_GROUP_OPTIONS,
   resolveDefaultApprovalGroup,
 } from '../composables/opActions';
@@ -77,6 +79,7 @@ const emit = defineEmits<{
 }>();
 
 const user = useUserStore();
+const dispatchStore = useDispatchStore();
 /** 调剂（【1215】PRD 9.4）：到人 / 到池 */
 const transfer = reactive({
   mode: 'person' as 'person' | 'pool',
@@ -107,18 +110,20 @@ watch(() => transfer.target, () => {
     : selectable.some((o) => o.value === cur) ? cur : undefined;
 });
 let delegateTaskSeq = 0;
-function createDelegateTask(name = '', task = '') {
+function createDelegateTask() {
   delegateTaskSeq += 1;
-  return { id: `dt-${delegateTaskSeq}`, name, task };
+  return { id: `dt-${delegateTaskSeq}`, name: undefined as string | undefined, task: '' };
+}
+function createDelegateGroupTask() {
+  delegateTaskSeq += 1;
+  return { id: `dtg-${delegateTaskSeq}`, groupId: undefined as string | undefined, assignee: undefined as string | undefined, task: '' };
 }
 const delegate = reactive({
   mode: 'person' as 'person' | 'group',
   /** 委派到人：逐条添加的任务行 */
-  tasks: [createDelegateTask()] as { id: string; name: string; task: string }[],
-  /** 委派到组：单组 */
-  group: DELEGATE_GROUPS[0],
-  /** 委派到组：整体任务说明 */
-  reason: '',
+  tasks: [createDelegateTask()],
+  /** 委派到组：逐条添加的任务行 */
+  groupTasks: [createDelegateGroupTask()],
 });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '', approvalGroup: '' });
@@ -257,55 +262,71 @@ const showEscalateGroup = computed(
     && escalateGroupOptions.value.length > 0,
 );
 
-const delegateGroupOptions = computed(() =>
-  DELEGATE_GROUPS.map((t) => ({ value: t, label: t })),
-);
+const delegateRowCount = computed(() => (delegate.mode === 'person' ? delegate.tasks.length : delegate.groupTasks.length));
 
-/** 同一人不可被多条任务重复选中 */
+/** 工单当前处理组：工单行的处理组（有成员的），否则取处理人（无处理人取发起人）所在的第一个组 */
+const delegateHomeGroupId = computed(() => {
+  const row = TICKETS.find((x) => x.no === props.ticketNo);
+  if (row?.groupId && dispatchStore.membersOf(row.groupId).length) return row.groupId;
+  return dispatchStore.agentOf(row?.assignee ?? user.name)?.groupIds[0];
+});
+
+/** 到人候选：工单当前处理组的成员，不含自己；已被其他条选中的置灰 */
 function delegatePersonOptionsFor(rowId: string) {
-  const taken = new Set(
-    delegate.tasks.filter((t) => t.id !== rowId && t.name).map((t) => t.name),
-  );
-  return DELEGATE_TARGETS.map((t) => ({
-    value: t,
-    label: t,
-    disabled: taken.has(t),
-  }));
+  const taken = new Set(delegate.tasks.filter((t) => t.id !== rowId && t.name).map((t) => t.name));
+  const gid = delegateHomeGroupId.value;
+  return (gid ? dispatchStore.membersOf(gid) : [])
+    .filter((a) => !a.disabled && a.name !== user.name)
+    .map((a) => ({ value: a.name, label: a.name, disabled: taken.has(a.name) }));
+}
+
+/** 到组候选：工单当前处理组以外的组；已被其他条选中的置灰 */
+function delegateGroupOptionsFor(rowId: string) {
+  const taken = new Set(delegate.groupTasks.filter((t) => t.id !== rowId && t.groupId).map((t) => t.groupId));
+  return dispatchStore.groups
+    .filter((g) => g.id !== delegateHomeGroupId.value)
+    .map((g) => ({ value: g.id, label: g.label, disabled: taken.has(g.id) }));
+}
+
+/** 到组 · 协助办理人候选：所选组的成员，不含自己 */
+function delegateGroupMemberOptions(groupId?: string) {
+  return (groupId ? dispatchStore.membersOf(groupId) : [])
+    .filter((a) => !a.disabled && a.name !== user.name)
+    .map((a) => ({ value: a.name, label: a.name }));
 }
 
 function addDelegateTask() {
-  delegate.tasks.push(createDelegateTask());
+  if (delegateRowCount.value >= DELEGATE_TASK_MAX) return;
+  if (delegate.mode === 'person') delegate.tasks.push(createDelegateTask());
+  else delegate.groupTasks.push(createDelegateGroupTask());
 }
 
 function removeDelegateTask(id: string) {
-  if (delegate.tasks.length <= 1) {
-    delegate.tasks.splice(0, 1, createDelegateTask());
-    return;
-  }
-  const idx = delegate.tasks.findIndex((t) => t.id === id);
-  if (idx >= 0) delegate.tasks.splice(idx, 1);
+  const list: { id: string }[] = delegate.mode === 'person' ? delegate.tasks : delegate.groupTasks;
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx >= 0 && list.length > 1) list.splice(idx, 1);
 }
 
 function resetDelegateTasks() {
   delegate.tasks.splice(0, delegate.tasks.length, createDelegateTask());
+  delegate.groupTasks.splice(0, delegate.groupTasks.length, createDelegateGroupTask());
 }
 
-const delegateOkDisabled = computed(() => {
-  if (props.action !== '委派') return false;
+/** 委派校验：按行号提示，首个不通过的那条返回文案 */
+function delegateInvalidTip(): string | null {
   if (delegate.mode === 'person') {
-    return delegate.tasks.some((t) => !t.name || !t.task.trim());
+    for (const [i, t] of delegate.tasks.entries()) {
+      if (!t.name) return `任务 ${i + 1}：请选择协办人`;
+      if (!t.task.trim()) return `任务 ${i + 1}：请填写任务说明`;
+    }
+    return null;
   }
-  return !delegate.group || !delegate.reason.trim();
-});
-
-watch(() => delegate.mode, (mode) => {
-  if (mode === 'person') {
-    resetDelegateTasks();
-    delegate.reason = '';
-  } else if (!delegate.group) {
-    delegate.group = DELEGATE_GROUPS[0];
+  for (const [i, t] of delegate.groupTasks.entries()) {
+    if (!t.groupId) return `任务 ${i + 1}：请选择协助办理组`;
+    if (!t.task.trim()) return `任务 ${i + 1}：请填写任务说明`;
   }
-});
+  return null;
+}
 
 watch(() => escalate.channel, (ch) => {
   const groups = ESCALATE_CHANNEL_GROUPS[ch];
@@ -327,7 +348,7 @@ interface DlgConfig {
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   // 【1215】PRD 9.4：标题「调剂」，按钮 [ 取消 ] [ 确定 ]
   调剂: { title: '调剂', icon: SwapOutlined, tone: 'primary', width: 520, okTone: 'primary', okText: '确定' },
-  委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 560, okTone: 'primary', okText: '确认委派' },
+  委派: { title: '委派协办', icon: undefined, tone: 'primary', width: 600, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
   强结: { title: '强结', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交挂起申请' },
@@ -379,8 +400,6 @@ function resetForms() {
   escalate.techMember = undefined;
   delegate.mode = 'person';
   resetDelegateTasks();
-  delegate.group = DELEGATE_GROUPS[0];
-  delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
   suspend.approvalGroup = defaultApprovalGroup();
@@ -430,15 +449,9 @@ function validate(): boolean {
       if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
       return true;
     case '委派':
-      if (delegate.mode === 'person') {
-        if (delegate.tasks.some((t) => !t.name)) { message.warning('请为每条委派任务选择协助办理人'); return false; }
-        if (delegate.tasks.some((t) => !t.task.trim())) {
-          message.warning('请为每条委派任务填写任务说明');
-          return false;
-        }
-      } else {
-        if (!delegate.group) { message.warning('请选择协助办理组'); return false; }
-        if (!delegate.reason.trim()) { message.warning('请填写任务说明'); return false; }
+      {
+        const tip = delegateInvalidTip();
+        if (tip) { message.warning(tip); return false; }
       }
       return true;
     case '挂起':
@@ -556,17 +569,21 @@ function onOk() {
   switch (props.action) {
     case '调剂': emit('confirm', { type: '调剂', data: transferPayload() }); break;
     case '委派': {
+      const groupLabel = (id?: string) => dispatchStore.groupOf(id)?.label ?? '';
       const data = delegate.mode === 'person'
         ? {
             mode: 'person' as const,
             target: delegate.tasks.map((t) => t.name).join('、'),
-            reason: '',
-            assignees: delegate.tasks.map((t) => ({ name: t.name, task: t.task.trim() })),
+            assignees: delegate.tasks.map((t) => ({ name: t.name ?? '', task: t.task.trim() })),
           }
         : {
             mode: 'group' as const,
-            target: delegate.group,
-            reason: delegate.reason.trim(),
+            target: delegate.groupTasks
+              .map((t) => (t.assignee ? `${groupLabel(t.groupId)}(${t.assignee})` : groupLabel(t.groupId)))
+              .join('、'),
+            groups: delegate.groupTasks.map((t) => ({
+              groupId: t.groupId ?? '', groupName: groupLabel(t.groupId), assignee: t.assignee, task: t.task.trim(),
+            })),
           };
       emit('confirm', { type: '委派', data });
       break;
@@ -612,7 +629,7 @@ function onOk() {
     :width="cfg.width"
     :ok-text="cfg.okText"
     :ok-tone="cfg.okTone"
-    :ok-disabled="delegateOkDisabled"
+    :modal-class="action === '委派' ? 'op-delegate-modal' : undefined"
     @update:open="emit('update:open', $event)"
     @ok="onOk"
     @cancel="closeModal"
@@ -664,47 +681,53 @@ function onOk() {
     </div>
 
     <!-- 委派 -->
-    <div v-else-if="action === '委派'" class="op-form">
-      <div class="op-field">
-        <div class="op-label req">委派方式</div>
-        <a-radio-group v-model:value="delegate.mode">
-          <a-radio value="person">委派到人</a-radio>
-          <a-radio value="group">委派到组</a-radio>
-        </a-radio-group>
-      </div>
+    <a-config-provider v-else-if="action === '委派'" :component-disabled="false">
+      <div class="op-form">
+        <div class="op-field">
+          <div class="op-label req">委派方式</div>
+          <a-radio-group v-model:value="delegate.mode">
+            <a-radio value="person">委派到人</a-radio>
+            <a-radio value="group">委派到组</a-radio>
+          </a-radio-group>
+        </div>
 
-      <template v-if="delegate.mode === 'person'">
         <div class="op-field">
           <div class="op-delegate-head">
-            <div class="op-label req">委派任务（每人一条，任务说明独立填写）</div>
-            <button type="button" class="op-delegate-add" @click="addDelegateTask">
+            <div class="op-label req">
+              {{ delegate.mode === 'person' ? '委派任务（各人任务说明独立填写）' : '委派任务' }}
+              <span class="op-delegate-count">已添加 {{ delegateRowCount }}/{{ DELEGATE_TASK_MAX }} 条</span>
+            </div>
+            <button
+              type="button"
+              class="op-delegate-add"
+              :disabled="delegateRowCount >= DELEGATE_TASK_MAX"
+              @click="addDelegateTask"
+            >
               <PlusOutlined /> 添加委派任务
             </button>
           </div>
-          <div class="op-delegate-list">
-            <div
-              v-for="(item, idx) in delegate.tasks"
-              :key="item.id"
-              class="op-delegate-card"
-            >
+
+          <div v-if="delegate.mode === 'person'" class="op-delegate-list">
+            <div v-for="(item, idx) in delegate.tasks" :key="item.id" class="op-delegate-card">
               <div class="op-delegate-row">
                 <span class="op-delegate-idx">{{ idx + 1 }}</span>
                 <a-select
                   v-model:value="item.name"
                   :show-search="true"
-                  option-filter-prop="label"
                   :filter-option="filterMemberOption"
                   placeholder="选择协助办理人"
                   class="op-delegate-person"
                   :options="delegatePersonOptionsFor(item.id)"
-                  allow-clear
                 />
-                <a-textarea
-                  v-model:value="item.task"
-                  class="op-delegate-task"
-                  :auto-size="{ minRows: 1, maxRows: 3 }"
-                  placeholder="该人的任务说明…"
-                />
+                <div class="op-delegate-task">
+                  <a-textarea
+                    v-model:value="item.task"
+                    :auto-size="{ minRows: 1, maxRows: 3 }"
+                    :maxlength="DELEGATE_TASK_TEXT_MAX"
+                    placeholder="该人的任务说明…"
+                  />
+                  <span class="op-delegate-text-count">{{ item.task.length }} / {{ DELEGATE_TASK_TEXT_MAX }}</span>
+                </div>
                 <button
                   v-if="delegate.tasks.length > 1"
                   type="button"
@@ -717,27 +740,65 @@ function onOk() {
               </div>
             </div>
           </div>
-        </div>
-      </template>
 
-      <template v-else>
-        <div class="op-field">
-          <div class="op-label req">协助办理组</div>
-          <a-select
-            v-model:value="delegate.group"
-            :show-search="true"
-            option-filter-prop="label"
-            :filter-option="filterMemberOption"
-            style="width:100%"
-            :options="delegateGroupOptions"
-          />
+          <div v-else class="op-delegate-list">
+            <div v-for="item in delegate.groupTasks" :key="item.id" class="op-delegate-card op-delegate-group">
+              <div class="op-delegate-group-row">
+                <div class="op-field">
+                  <div class="op-label req">协助办理组</div>
+                  <a-select
+                    v-model:value="item.groupId"
+                    :show-search="true"
+                    :filter-option="filterMemberOption"
+                    placeholder="选择协助办理组"
+                    class="op-delegate-person"
+                    :options="delegateGroupOptionsFor(item.id)"
+                    @change="item.assignee = undefined"
+                  />
+                </div>
+                <div class="op-field">
+                  <div class="op-label">协助办理人</div>
+                  <a-select
+                    v-model:value="item.assignee"
+                    :show-search="true"
+                    allow-clear
+                    :filter-option="filterMemberOption"
+                    placeholder="不选则由组内认领"
+                    class="op-delegate-person"
+                    :options="delegateGroupMemberOptions(item.groupId)"
+                  />
+                </div>
+                <button
+                  v-if="delegate.groupTasks.length > 1"
+                  type="button"
+                  class="op-delegate-remove"
+                  title="移除该条"
+                  @click="removeDelegateTask(item.id)"
+                >
+                  <CloseOutlined />
+                </button>
+              </div>
+              <div class="op-field">
+                <div class="op-label req">任务说明</div>
+                <div class="op-delegate-task">
+                  <a-textarea
+                    v-model:value="item.task"
+                    :auto-size="{ minRows: 1, maxRows: 3 }"
+                    :maxlength="DELEGATE_TASK_TEXT_MAX"
+                    placeholder="该组的任务说明…"
+                  />
+                  <span class="op-delegate-text-count">{{ item.task.length }} / {{ DELEGATE_TASK_TEXT_MAX }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="op-field">
-          <div class="op-label req">任务说明</div>
-          <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
+
+        <div class="op-tip op-tip-info">
+          委派 ≠ 调剂：<b>工单处理人不变</b>，主责仍在您名下；各条子任务由协办人/组独立处理， 全部完成后您可继续下送。
         </div>
-      </template>
-    </div>
+      </div>
+    </a-config-provider>
 
     <!-- 强结 -->
     <div v-else-if="action === '强结'" class="op-form">

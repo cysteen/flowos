@@ -59,7 +59,7 @@ export interface SuspendInfo {
 export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结' | '转单'
-  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派' | '风险报备'
+  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派' | '催办' | '风险报备'
   // 「关联售后」：投诉单在工单头建关联售后单（①格，本单状态不变）。1025 起与「转售后」（②格，
   // 非诉单进「已转出」）拆成两个独立动作——履历、门控、置灰文案各走各的，不再复用转售后分支
   | '关联售后'
@@ -87,14 +87,16 @@ export interface TransferPayload {
 }
 /** 委派到人：逐人任务说明 */
 export interface DelegateAssigneeTask { name: string; task: string; }
+/** 委派到组：逐组任务说明；协助办理人可不选，由组内认领 */
+export interface DelegateGroupTask { groupId: string; groupName: string; assignee?: string; task: string; }
 export interface DelegatePayload {
   mode: 'person' | 'group';
-  /** 到人：多人姓名用顿号拼接；到组：组名 */
+  /** 协办对象文本：到人＝姓名，到组＝组名（指定了人时「组名(姓名)」），多条顿号拼接 */
   target: string;
-  /** 到组：整体任务说明；到人时可空（以 assignees 为准） */
-  reason: string;
   /** 到人时：多人 + 逐人任务说明 */
   assignees?: DelegateAssigneeTask[];
+  /** 到组时：多组 + 逐组任务说明 */
+  groups?: DelegateGroupTask[];
 }
 /**
  * 下送 = 送到下一个节点，落点取决于当前所在节点：
@@ -295,6 +297,7 @@ export type OpActionPayload =
   | { type: '调剂'; data: TransferPayload }
   | { type: '委派'; data: DelegatePayload }
   | { type: '撤销委派' }
+  | { type: '催办'; data: { targets: string } }
   | { type: '下送'; data: ForwardPayload }
   | { type: '强结'; data: ForceClosePayload }
   | { type: '转单'; data: TransferTicketPayload }
@@ -349,17 +352,10 @@ export const CROSS_GROUP_TRANSFER_ROLES = [
   'system-admin',
   'tenant-admin',
 ];
-export const DELEGATE_TARGETS = [
-  '钱七',
-  '孙十',
-  '李四',
-];
-export const DELEGATE_GROUPS = [
-  '技术售前组',
-  '质检协助组',
-  '产品反馈组',
-  '大客户协同组',
-];
+/** 委派子任务条数上限 */
+export const DELEGATE_TASK_MAX = 5;
+/** 委派任务说明字数上限 */
+export const DELEGATE_TASK_TEXT_MAX = 500;
 export const REVIEWERS = ['班组长 · 王经理', '质检审核 · 李审核', '上级主管 · 张总监'];
 export const FORCE_CLOSE_REASONS = ['客户失联', '客户主动放弃', '诉求超出处理能力', '重复/无效工单'];
 export const APPROVERS = ['班组长 · 王经理', '客服主管 · 张总监'];
@@ -804,34 +800,35 @@ export function applyOpAction(
     }
 
     case '委派': {
-      const { mode, target, reason, assignees } = payload.data;
-      if (mode === 'person' && assignees?.length) {
-        const dest = assignees.map((a) => a.name).join('、');
-        const taskLines = assignees.map((a) => `${a.name}：${a.task}`).join('；');
-        detail.delegateInfo = { mode: 'person', targets: dest, operator, at: nowWhen() };
-        pushEntry(timeline, {
-          category: 'node', action: 'transfer', who: operator, role: operatorRole,
-          how: '委派',
-          what: `委派至 ${dest} 协办办理（主责不变，工单进入委派中，`
-            + `下送/委派/调剂/关闭工单/强结 暂锁定）。任务：${taskLines}`,
-        });
-        return { opState, suspendInfo, message: `已委派至 ${dest} 协办` };
-      }
-      const dest = target;
-      detail.delegateInfo = { mode: 'group', targets: dest, operator, at: nowWhen() };
+      const { mode, target, assignees, groups } = payload.data;
+      const taskLines = mode === 'person'
+        ? (assignees ?? []).map((a) => `${a.name}：${a.task}`)
+        : (groups ?? []).map((g) => `${g.groupName}${g.assignee ? `(${g.assignee})` : ''}：${g.task}`);
+      detail.delegateInfo = { mode, targets: target, operator, at: nowWhen() };
+      detail.status = '已委派';
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '委派',
-        what: `委派至组 ${dest} 协办办理（主责不变，工单进入委派中，`
-          + `下送/委派/调剂/关闭工单/强结 暂锁定）。${reason ? `任务说明：${reason}` : ''}`,
+        what: `委派至${mode === 'group' ? '组 ' : ' '}${target} 协办办理（主责不变）。任务：${taskLines.join('；')}`,
       });
-      return { opState, suspendInfo, message: `已委派至组 ${dest} 协办` };
+      return { opState, suspendInfo, message: `已委派至 ${target} 协办` };
+    }
+
+    case '催办': {
+      const { targets } = payload.data;
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '催办',
+        what: `催办未完成的协办对象：${targets}。`,
+      });
+      return { opState, suspendInfo, message: `已催办 ${targets}` };
     }
 
     case '撤销委派': {
       // 委派锁住了几乎所有流转动作，必须留撤销口：协办未响应时可单方面撤销，立即解锁
       const targets = detail.delegateInfo?.targets ?? '';
       detail.delegateInfo = null;
+      if (detail.status === '已委派') detail.status = '处理中';
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '撤销委派',
