@@ -269,8 +269,11 @@ const backlogCols = [
 .t-muted, .t-good { color: #6b7280; }
 .t-bad { color: #f59e0b; }
 
-.chart-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; }
-.chart-row :deep(.dx-card) { border-color: #e5e7eb; padding: 16px 20px; }
+.chart-row {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 12px;
+  align-items: stretch;
+}
+.chart-row :deep(.dx-card) { border-color: #e5e7eb; padding: 12px 16px; }
 /* 进出池三张卡：趋势 → 进池方式 → 出池方式；窄屏趋势独占一行 */
 .chart-row-flow { grid-template-columns: minmax(0, 1.5fr) minmax(356px, 1fr) minmax(356px, 1fr); }
 .mon :deep(.ps) {

@@ -10,7 +10,7 @@ const props = defineProps<{ points: PoolFlowPoint[]; subText: string }>();
 const IN_COLOR = '#7c3aed';
 const OUT_COLOR = '#0d9488';
 const W = 560;
-const H = 180;
+const H = 132;
 const PAD_T = 8;
 /** 超过该点数：不常显圆点，横轴隔点标注 */
 const DENSE_AFTER = 7;
@@ -66,13 +66,13 @@ function hitStyle(i: number) {
 
 <template>
   <section class="dx-card trend">
-    <div class="dx-sec-hd">
+    <div class="dx-sec-hd trend-hd">
       <span class="dx-sec-title">进出池趋势</span>
       <span class="dx-sec-sub">{{ subText }}</span>
-    </div>
-    <div class="legend-line">
-      <span class="lg"><i class="sw" :style="{ background: IN_COLOR }" />进池</span>
-      <span class="lg"><i class="sw" :style="{ background: OUT_COLOR }" />出池</span>
+      <span class="legend-line">
+        <span class="lg"><i class="sw" :style="{ background: IN_COLOR }" />进池</span>
+        <span class="lg"><i class="sw" :style="{ background: OUT_COLOR }" />出池</span>
+      </span>
     </div>
     <div class="line-chart">
       <div class="y-axis"><span v-for="t in chart.yTicks" :key="t">{{ t }}</span></div>
@@ -112,11 +112,13 @@ function hitStyle(i: number) {
 
 <style scoped>
 .trend { display: flex; flex-direction: column; }
-.legend-line { display: flex; gap: 16px; font-size: 13px; color: #86909c; margin: 0 0 8px 46px; }
-.lg { display: inline-flex; align-items: center; gap: 6px; }
+.trend-hd { margin-bottom: 8px !important; flex-wrap: nowrap; }
+.trend-hd .dx-sec-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend-line { margin-left: auto; display: flex; gap: 12px; font-size: 12px; color: #86909c; flex: none; }
+.lg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .sw { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
-.line-chart { display: flex; gap: 10px; flex: 1; min-height: 220px; }
-.y-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: #9ca3af; padding: 0 0 22px; width: 36px; text-align: right; flex: none; line-height: 1; }
+.line-chart { display: flex; gap: 8px; flex: 1; min-height: 156px; }
+.y-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: #9ca3af; padding: 0 0 18px; width: 32px; text-align: right; flex: none; line-height: 1; }
 .y-axis span:first-child { margin-top: 2px; }
 .chart-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .plot { position: relative; flex: 1; min-height: 0; }
@@ -127,7 +129,7 @@ function hitStyle(i: number) {
 .dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 2px solid; transform: translate(-50%, -50%); pointer-events: none; }
 .hit-row { position: absolute; inset: 0; }
 .hit { position: absolute; top: 0; height: 100%; cursor: crosshair; }
-.x-axis { position: relative; height: 20px; margin-top: 6px; }
+.x-axis { position: relative; height: 18px; margin-top: 4px; }
 .x-label { position: absolute; font-size: 11px; color: #9ca3af; white-space: nowrap; }
 .tip { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.6; }
 </style>
