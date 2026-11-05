@@ -57,7 +57,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 37;
+export const DISPATCH_CACHE_VERSION = 38;
 const LOG_LIMIT = 2000;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -174,33 +174,33 @@ function seedAgents(now: number): DispatchAgent[] {
   };
   return [
     // 王坐席：另一位二线坐席，名下只留少量种子单（原处理人、他人在途演示）；个人上限按默认值
-    a('王坐席', 'E2001', ['二线专员'], ['line2', 'edu-flash'], {
+    a('王坐席', '82001', ['二线专员'], ['line2', 'edu-flash'], {
       proficiency: '专家',
     }),
     // 张三：二线专员演示账号，种子单的演示处理人（我的任务、已办、审核、催补等）；同属教育刷机处理组（刷机池演示）、
     // 教育支持组（个册退费种子单的组员）。名下种子在途 34 张，个人上限设 40：不超限，并留出几张名额接引擎派单
-    a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {
+    a('张三', '82002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {
       capOverride: 40,
       profile: { ...ANY, ticketTypes: ['咨询', '建议'], products: [{ category: '智能硬件' }] },
     }),
-    a('林坐席', 'E2003', ['二线专员'], ['line2', DEFAULT_POOL_ID], {
+    a('林坐席', '82003', ['二线专员'], ['line2', DEFAULT_POOL_ID], {
       profile: { ...ANY, products: [{ category: '学习硬件' }] },
     }),
-    a('徐璐', 'E2004', ['二线专员'], [DEFAULT_POOL_ID], { proficiency: '专家' }),
-    a('刘洋', 'E2005', ['二线专员'], [DEFAULT_POOL_ID], { signIn: '小休', proficiency: '初级' }),
-    a('陈坐席', 'E2006', ['二线专员'], ['hardware']),
-    a('李四', 'E2007', ['二线专员'], ['hardware'], {
+    a('徐璐', '82004', ['二线专员'], [DEFAULT_POOL_ID], { proficiency: '专家' }),
+    a('刘洋', '82005', ['二线专员'], [DEFAULT_POOL_ID], { signIn: '小休', proficiency: '初级' }),
+    a('陈坐席', '82006', ['二线专员'], ['hardware']),
+    a('李四', '82007', ['二线专员'], ['hardware'], {
       signIn: '小休', proficiency: '初级', profile: { ...ANY, products: [{ category: '智能硬件' }, { category: '学习硬件' }] },
     }),
-    a('何教支', 'E2008', ['二线专员'], ['edu'], { profile: { ...ANY, businessTypes: ['教育'] } }),
-    a('许文静', 'E2301', ['二线刷机处理人'], ['edu-flash']),
-    a('谭小智', 'E2401', ['小智工单处理人'], ['xiaozhi']),
+    a('何教支', '82008', ['二线专员'], ['edu'], { profile: { ...ANY, businessTypes: ['教育'] } }),
+    a('许文静', '82301', ['二线刷机处理人'], ['edu-flash']),
+    a('谭小智', '82401', ['小智工单处理人'], ['xiaozhi']),
     // 技术支持：三线技术支持组（技术支持池，12.5）成员。陈技支画像已配置接引擎派单；周技支画像未配置，不接引擎派单、可领取（6.3）
-    a('陈技支', 'E3001', ['技术支持'], ['tech']),
-    a('周技支', 'E3002', ['技术支持'], ['tech'], { profile: emptyProfile() }),
-    a('王组长', 'E2101', ['班组长'], ['line2', DEFAULT_POOL_ID, 'hardware', 'edu'], { proficiency: '专家', personalSwitch: false }),
-    a('秦督导', 'E2201', ['督导'], ['hardware'], { personalSwitch: false }),
-    a('吴投诉', 'E2202', ['客诉专员'], ['edu', DEFAULT_POOL_ID], { personalSwitch: false }),
+    a('陈技支', '83001', ['技术支持'], ['tech']),
+    a('周技支', '83002', ['技术支持'], ['tech'], { profile: emptyProfile() }),
+    a('王组长', '82101', ['班组长'], ['line2', DEFAULT_POOL_ID, 'hardware', 'edu'], { proficiency: '专家', personalSwitch: false }),
+    a('秦督导', '82201', ['督导'], ['hardware'], { personalSwitch: false }),
+    a('吴投诉', '82202', ['客诉专员'], ['edu', DEFAULT_POOL_ID], { personalSwitch: false }),
   ];
 }
 

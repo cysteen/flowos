@@ -84,6 +84,7 @@ export interface AssignSubmitPayload {
 </script>
 
 <script setup lang="ts">
+import { useDispatchStore } from '@/stores/dispatch';
 import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, nextTick, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
@@ -306,6 +307,16 @@ interface CandOption {
 
 const poolMode = computed(() => !!props.poolCandidatesOf);
 
+const dispatchStore = useDispatchStore();
+/** 成员工号：与派单坐席同一人时取派单工号，其余由姓名生成 5 位数字（同一人跨组一致） */
+function memberStaffNo(name: string): string {
+  const agentNo = dispatchStore.agentOf(name)?.staffNo;
+  if (agentNo) return agentNo;
+  let h = 0;
+  for (const c of name) h = (h * 31 + (c.codePointAt(0) ?? 0)) % 1000;
+  return `81${String(h).padStart(3, '0')}`;
+}
+
 /** 候选**按在办数升序** —— 空闲的排最上，引导均衡分派（规格 §3.1 候选排序）；派单组保持本组派单的顺序 */
 const candidateOptions = computed<CandOption[]>(() => props.poolCandidatesOf
   ? props.poolCandidatesOf(selectedIds.value).map((c) => ({
@@ -323,7 +334,7 @@ const candidateOptions = computed<CandOption[]>(() => props.poolCandidatesOf
     .map((m) => {
       // loadLevel 优先取 mock 字段；缺失时用 LOAD_THRESHOLD 兜底，保证与 X4 同口径
       const level: LoadLevel = (m.loadLevel as LoadLevel) ?? loadLevelOf(m.workload);
-      const staffNo = `工号 ${String(m.id).toUpperCase()}`;
+      const staffNo = `工号 ${memberStaffNo(m.name)}`;
       return {
         value: m.id,
         label: `${m.name} ${staffNo}`,
