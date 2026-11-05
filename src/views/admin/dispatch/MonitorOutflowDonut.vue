@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 分派监控 · 出池方式占比（PRD 8.1 五种方式平铺），环图纯 SVG 绘制
+// 分派监控 · 出池方式占比（PRD 8.1 四种方式平铺），环图纯 SVG 绘制
 import { computed, ref } from 'vue';
 import { Empty } from 'ant-design-vue';
 import { STD_TIP_PROPS } from '@/views/tickets/composables/dispatchUi';
