@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 入池规则、指定人规则共用的七个工单条件（PRD 3.1）：不选为不限；问题分类树只读引用问题分类管理
+// 入池规则的七个工单条件（PRD 3.1）：不选为不限；问题分类树只读引用问题分类管理
 import { computed } from 'vue';
 import { TreeSelect } from 'ant-design-vue';
 import type { Priority } from '@/views/tickets/types/ticket';

@@ -170,7 +170,7 @@ const backlogCols = [
     </section>
 
     <div class="chart-row chart-row-flow">
-      <MonitorTrendChart :points="flow.points" :sub-text="`${RANGE_TEXT[range]}进池 ${flow.inTotal} 次 · 出池 ${flow.outTotal} 次 · 指定人直达 ${flow.directTotal} 次`" />
+      <MonitorTrendChart :points="flow.points" :sub-text="`${RANGE_TEXT[range]}进池 ${flow.inTotal} 次 · 出池 ${flow.outTotal} 次`" />
       <MonitorInflowDonut :items="flow.inItems" :total="flow.inTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.inTotal} 次`" />
       <MonitorOutflowDonut :items="flow.outItems" :total="flow.outTotal" :range-text="`${RANGE_TEXT[range]} · 共 ${flow.outTotal} 次`" />
     </div>
