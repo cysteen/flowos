@@ -504,8 +504,8 @@ export interface DispatchLogEntry {
     /** 首响 SLA 剩余（分钟）；无首响 SLA 为空 */
     firstRespRemainMin?: number;
   };
-  /** 人工动作（kind＝人工） */
-  manual?: { action: ManualAction; operator: string; target?: string; reason?: string };
+  /** 人工动作（kind＝人工）；`fromPool`：调剂到人时本单还在工单池里未领取（计入出池方式「人工指派」） */
+  manual?: { action: ManualAction; operator: string; target?: string; reason?: string; fromPool?: boolean };
   /** 超额指派 / 超限标记 */
   overCap?: '超额指派' | '超限';
 }

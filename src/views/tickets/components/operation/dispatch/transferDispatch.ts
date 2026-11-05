@@ -164,6 +164,8 @@ export function applyTransferDispatch(
   const name = input.target ?? '';
   if (!name) return { message: '', handled: false };
   const target = reactive(row) as Ticket;
+  // 工单池里未领取的单被调剂到人，计入出池方式「人工指派」；已被领取的单再调剂不计入
+  const fromPool = !target.assignee && target.tab === 'pool';
   const newPool = store.poolOf(input.poolId);
   const newGroup = newPool && newPool.groupId !== target.groupId ? store.groupOf(newPool.groupId) : undefined;
   Object.assign(target, {
@@ -180,7 +182,7 @@ export function applyTransferDispatch(
     how: '调剂到人', what: `调剂到人 → ${name}${reason ? `；原因：${reason}` : ''}`,
   });
   if (newPool) store.setTicketPool(target.no, newPool.id);
-  store.recordManualTake(target, name, '调剂到人', operator, reason);
+  store.recordManualTake(target, name, '调剂到人', operator, reason, { fromPool });
   writeOverCapEntry(target, timeline, name);
   syncDetail(detail, target, { handler: true });
   return { handled: true, message: `已调剂给${name}` };

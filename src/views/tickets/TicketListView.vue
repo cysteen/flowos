@@ -396,8 +396,9 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   if (data.mode && !(isFlashTicket(t) && t.nodeStatus === '自动刷机中')) {
     const actor = queryActor();
     if (data.mode === 'person' && isRefundTicket(t)) {
+      const fromPool = !t.assignee && t.tab === 'pool';
       const res = refundStore.assignToMember(t.no, name, actor, data.reason);
-      if (res.ok && t.assignee) useDispatchStore().recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason);
+      if (res.ok && t.assignee) useDispatchStore().recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason, { fromPool });
       if (res.ok) message.success(res.message);
       else if (res.message) message.warning(res.message);
       return;

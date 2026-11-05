@@ -1467,7 +1467,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return occ;
   }
 
-  function manualLog(t: Ticket, action: ManualAction, operator: string, target?: string, reason?: string, overCap?: DispatchLogEntry['overCap']) {
+  function manualLog(t: Ticket, action: ManualAction, operator: string, target?: string, reason?: string, overCap?: DispatchLogEntry['overCap'], fromPool?: boolean) {
     const st = ticketStates.value[t.no];
     const poolId = st?.poolId ?? poolIdOf(t) ?? DEFAULT_POOL_ID;
     const now = Date.now();
@@ -1476,7 +1476,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       poolId, poolLabel: poolLabel(poolId), ruleName: st ? ruleNameOf(st) : '—',
       globalMode: globalEffectiveMode(), groupMode: poolModeOf(poolId), effectiveMode: effectiveModeOf(poolId),
       snapshot: st ? snapshotOf(t, st, now) : { ticketType: t.type, priority: t.priority },
-      manual: { action, operator, ...(target ? { target } : {}), ...(reason ? { reason } : {}) },
+      manual: { action, operator, ...(target ? { target } : {}), ...(reason ? { reason } : {}), ...(fromPool ? { fromPool: true } : {}) },
       ...(overCap ? { overCap } : {}),
     });
   }
@@ -1484,8 +1484,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
   /**
    * 人工拿单落库后调用（领取 / 班组长指派 / 改派 / 调剂到人 / 升级三线指定人 / 升级投诉自主发起直派）：结束排队、写人工记录、记接单时刻；
    * 指定人派送超出个人上限时记超额指派（5.3）。领取不记超额指派。人工记录不进派单日志页，分派监控统计与超额指派判断取它。
+   * `opts.fromPool`：调剂到人前本单还在工单池里未领取，计入出池方式「人工指派」（调用方在换处理人前取值）。
    */
-  function recordManualTake(t: Ticket, assignee: string, action: ManualAction, operator?: string, reason?: string) {
+  function recordManualTake(t: Ticket, assignee: string, action: ManualAction, operator?: string, reason?: string, opts: { fromPool?: boolean } = {}) {
     const st = ticketStates.value[t.no];
     if (st) {
       st.status = null;
@@ -1504,7 +1505,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       }
     }
     recordTake(assignee, Date.now());
-    manualLog(t, action, operator ?? operatorName(), assignee, reason, overCap);
+    manualLog(t, action, operator ?? operatorName(), assignee, reason, overCap, opts.fromPool);
     touchRow(t);
     persist();
   }

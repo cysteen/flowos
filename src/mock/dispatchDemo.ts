@@ -343,7 +343,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
   }
 
   function manual(t: Tk, at: number, action: ManualAction, operator: string, mode: Mode, o: {
-    target?: string; reason?: string; overCap?: '超额指派'; firstRespAt?: number; ruleName?: string;
+    target?: string; reason?: string; overCap?: '超额指派'; firstRespAt?: number; ruleName?: string; fromPool?: boolean;
   } = {}): SeedLogEntry {
     t.seq += 1;
     const e: SeedLogEntry = {
@@ -359,7 +359,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       groupMode: mode.groupMode,
       effectiveMode: mode.effectiveMode,
       snapshot: snapshotOf(t, at),
-      manual: { action, operator, ...(o.target ? { target: o.target } : {}), ...(o.reason ? { reason: o.reason } : {}) },
+      manual: { action, operator, ...(o.target ? { target: o.target } : {}), ...(o.reason ? { reason: o.reason } : {}), ...(o.fromPool ? { fromPool: true } : {}) },
       ...(o.overCap ? { overCap: o.overCap } : {}),
       ...(o.firstRespAt != null ? { firstRespAt: stamp(o.firstRespAt) } : {}),
     };
@@ -649,7 +649,8 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
     const t = newTk('hardware', enter);
     b.judge(t, enter, { trigger: '新单', path: '留池', mode: HW_MIXED, status: null, failReason: '均达个人上限' });
     const take = enter + b.between(6, 14) * MIN;
-    b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_MIXED, { target, reason, firstRespAt: respAt(take) });
+    // 留池待领取的单被调剂到人：计入出池方式「人工指派」
+    b.manual(t, take, action, action === '二线领取' ? target : LEADER, HW_MIXED, { target, reason, firstRespAt: respAt(take), fromPool: action === '调剂到人' });
     noteTake(target, take);
   }
 

@@ -2075,10 +2075,11 @@ function onRefundAction(payload: Record<string, unknown>): boolean {
   const actor = { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
   // 个册退费单调剂只限本组成员（校园经理、城市经理改走「转校园经理」）
   if (type === '调剂' && data.scope !== 'cross') {
+    const row = TICKETS.find((x) => x.no === no);
+    const fromPool = !!row && !row.assignee && row.tab === 'pool';
     const res = refundStore.assignToMember(no, String(data.target ?? ''), actor, String(data.reason ?? ''));
     // 【1215】调剂到人写人工记录（结束排队、超额指派）
-    const row = TICKETS.find((x) => x.no === no);
-    if (res.ok && row?.assignee) useDispatchStore().recordManualTake(row, row.assignee, '调剂到人', actor.name, String(data.reason ?? ''));
+    if (res.ok && row?.assignee) useDispatchStore().recordManualTake(row, row.assignee, '调剂到人', actor.name, String(data.reason ?? ''), { fromPool });
     if (res.ok) message.success(res.message);
     else if (res.message) message.warning(res.message);
     return true;

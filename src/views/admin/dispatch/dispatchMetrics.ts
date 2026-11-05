@@ -189,12 +189,15 @@ function isPoolIn(l: DispatchLogEntry): boolean {
   return l.kind === '判定' && !!l.trigger && POOL_IN_TRIGGERS.has(l.trigger);
 }
 
-/** 工单离开工单池的四种方式（前两项由系统派出）。指定人规则命中的单不进工单池；改派、调剂到人、调剂到池、升级三线指定人、升级投诉直派不计入 */
+/**
+ * 工单离开工单池的四种方式（前两项由系统派出）。人工指派含班组长指派与工单池里未领取的单被调剂到人。
+ * 指定人规则命中的单不进工单池；已被领取的单再调剂到人、改派、调剂到池、升级三线指定人、升级投诉直派不计入。
+ */
 const OUT_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
   { name: '历史处理人派单', color: '#14b8a6', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
   { name: '综合打分', color: '#60a5fa', hit: (l) => isEngineAssign(l) && l.path === '加权评分' },
   { name: '主动领取', color: '#f59e0b', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
-  { name: '人工指派', color: '#84cc16', hit: (l) => l.kind === '人工' && l.manual?.action === '班组长指派' },
+  { name: '人工指派', color: '#84cc16', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || (l.manual?.action === '调剂到人' && !!l.manual.fromPool)) },
 ];
 
 function isPoolOut(l: DispatchLogEntry): boolean {

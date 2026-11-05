@@ -384,8 +384,9 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
       let msg = '';
       for (const t of tickets) {
         if (data.mode === 'person' && isRefundTicket(t)) {
+          const fromPool = !t.assignee && t.tab === 'pool';
           const res = refundStore.assignToMember(t.no, name, actor, data.reason);
-          if (res.ok && t.assignee) dispatch.recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason);
+          if (res.ok && t.assignee) dispatch.recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason, { fromPool });
           msg = res.ok ? res.message : msg;
           continue;
         }
