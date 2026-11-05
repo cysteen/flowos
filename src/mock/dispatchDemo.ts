@@ -193,6 +193,8 @@ interface JudgeOpts {
   gateFailedAt?: GateKey;
   /** 满额派回原处理人：记超额指派 */
   overCap?: boolean;
+  /** 不占随机序列（补记的进池判定，前后种子不变） */
+  noDraw?: boolean;
 }
 
 /** 种子日志里原处理人的关系：售后转回、回访打回为本单退回；其余按时刻分到关联单 / 同客户近期（不消耗随机序列） */
@@ -269,11 +271,11 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
   }
 
   /** 第 1 步判定结果（4.1）：`keep` 为最终候选数，没人可接时按排队原因记第一个没人满足的条件 */
-  function gateResultOf(pool: string, keep: number, capBlocked: number, failReason?: DispatchFailReason) {
+  function gateResultOf(pool: string, keep: number, capBlocked: number, failReason?: DispatchFailReason, noDraw?: boolean) {
     const m = members(pool);
     const off = m.filter((a) => !a.personalSwitch).length;
     const unconf = m.filter((a) => a.personalSwitch && !isProfileConfigured(a.profile)).length;
-    if (m.length - off - unconf - keep - capBlocked > 0) r(); // 保持种子序列不变
+    if (!noDraw && m.length - off - unconf - keep - capBlocked > 0) r(); // 保持种子序列不变
     const failedAt = failReason ? QUEUE_FAILED_GATE[failReason] : undefined;
     return { ...(failedAt ? { gateFailedAt: failedAt } : {}), candidateCount: keep };
   }
@@ -325,7 +327,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
       ...(o.path === '留池'
         // 混合派单走完三步仍没人可接：记第一个没人满足的条件；人工派单、系统异常不走三步
         ? (o.failReason && o.failReason !== '系统异常' ? { gateFailedAt: QUEUE_FAILED_GATE[o.failReason], candidateCount: 0 } : {})
-        : gateResultOf(t.pool, assignLike ? candidates : 0, capBlocked, o.failReason)),
+        : gateResultOf(t.pool, assignLike ? candidates : 0, capBlocked, o.failReason, o.noDraw)),
       ...(o.gateFailedAt ? { gateFailedAt: o.gateFailedAt } : {}),
       ...(o.chosen ? { chosen: { name: o.chosen.name, staffNo: o.chosen.staffNo, groupLabel: groupLabel(t.pool) } } : {}),
       ...(chosenScore ? { chosenScore } : {}),
@@ -662,8 +664,13 @@ function buildToday({ b, agents, now, t0, r, noteTake }: TodayCtx) {
   // 组内领取
   for (const [pool, name, f] of TODAY_CLAIMS) {
     const take = at(f);
-    const t = newTk(pool, take - b.between(4, 18) * MIN);
+    const enter = take - b.between(4, 18) * MIN;
+    const t = newTk(pool, enter);
     const mode = pool === 'edu-flash' ? FLASH_MANUAL : ['xiaozhi', 'edu'].includes(pool) ? OFF_GROUP : FORMAL;
+    // 进池判定：自动派单池排队后被领取，混合派单池留池待领取，人工派单池留池
+    if (mode === FORMAL) b.judge(t, enter, { trigger: '新单', path: '排队', mode, status: '排队中', failReason: '均达个人上限', noDraw: true });
+    else if (mode === OFF_GROUP) b.judge(t, enter, { trigger: '新单', path: '留池', mode, status: null, failReason: '均达个人上限' });
+    else b.judge(t, enter, { trigger: '新单', path: '留池', mode, status: null });
     b.manual(t, take, '二线领取', name, mode, { target: name, ...(mode === FORMAL ? { firstRespAt: respAt(take) } : {}) });
     noteTake(name, take);
   }
