@@ -3,6 +3,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { InboxOutlined, PlusOutlined } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, type PoolRule } from '@/views/tickets/types/dispatch';
 import { condItems } from './dispatchUi';
@@ -24,16 +25,14 @@ const emptyFilter = () => ({
   status: undefined as string | undefined,
   ticketType: undefined as string | undefined,
 });
+const currentPage = ref(1);
+const pageSize = ref(10);
 const draft = reactive(emptyFilter());
 const applied = ref(emptyFilter());
-function query() { applied.value = { ...draft }; }
+function query() { applied.value = { ...draft }; currentPage.value = 1; }
 function reset() { Object.assign(draft, emptyFilter()); query(); }
 const poolOpts = computed(() => store.pools.map((p) => ({ value: p.id, label: p.status === '启用' ? p.name : `${p.name}（已停用）` })));
 const typeOpts = computed(() => [TYPE_ANY, ...new Set(store.rules.flatMap((r) => r.conditions.ticketTypes))].map((v) => ({ value: v, label: v })));
-const filtering = computed(() => {
-  const q = applied.value;
-  return !!(q.name.trim() || q.poolId || q.status || q.ticketType);
-});
 const filteredRows = computed(() => {
   const q = applied.value;
   const kw = q.name.trim().toLowerCase();
@@ -45,6 +44,15 @@ const filteredRows = computed(() => {
     if (q.ticketType && q.ticketType !== TYPE_ANY && !r.conditions.ticketTypes.includes(q.ticketType)) return false;
     return true;
   });
+});
+const pagination = computed(() => stdPagination({
+  current: currentPage.value,
+  pageSize: pageSize.value,
+  onChange: (page: number, size: number) => { currentPage.value = page; pageSize.value = size; },
+}));
+/** 停用、删除、筛选后当前页没有数据时退回最后一页 */
+watch([() => filteredRows.value.length, pageSize], ([n, size]) => {
+  currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(n / size)));
 });
 const cols = [
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 80, align: 'center' as const },
@@ -82,7 +90,10 @@ const highlight = ref<string | undefined>(undefined);
 function focus(id?: string) {
   if (!id) return;
   highlight.value = id;
-  nextTick(() => document.querySelector(`[data-row-key="${id}"]`)?.scrollIntoView({ block: 'center' }));
+  // 目标规则可能在其他页：先翻到它所在页
+  const idx = filteredRows.value.findIndex((r) => r.id === id);
+  if (idx >= 0) currentPage.value = Math.floor(idx / pageSize.value) + 1;
+  nextTick(() => document.querySelector(`[data-row-key="${id}"]`)?.scrollIntoView({ block: 'center', inline: 'start' }));
   window.setTimeout(() => { if (highlight.value === id) highlight.value = undefined; }, 2400);
 }
 watch(() => props.focusId, (id) => focus(id), { immediate: true });
@@ -98,10 +109,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
       <div class="meta-chip">
         <span class="meta-chip-val">{{ enabledCount }}</span>
         <span class="meta-chip-lb">条启用</span>
-      </div>
-      <div v-if="filtering" class="meta-chip pr-chip-result">
-        <span class="meta-chip-lb">筛选结果</span>
-        <span class="meta-chip-lb"><b>{{ filteredRows.length }}</b> 条</span>
       </div>
       <span class="meta-hint">按优先级匹配入池</span>
       <div class="pr-filter">
@@ -136,7 +143,7 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
         :data-source="filteredRows"
         row-key="id"
         size="small"
-        :pagination="false"
+        :pagination="pagination"
         :scroll="{ x: 1100 }"
         :row-class-name="(r: PoolRule) => (r.id === highlight ? 'pr-focus' : r.enabled ? '' : 'pr-off')"
       >
@@ -182,9 +189,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 .pr-strip > .meta-actions { margin-left: 0; }
 .pr-strip > .meta-chip { padding: 2px 6px; white-space: nowrap; }
 .pr-strip > .meta-chip .meta-chip-val { font-size: 16px; }
-.pr-strip > .pr-chip-result { flex-direction: column; align-items: center; gap: 0; padding: 1px 6px; }
-.pr-chip-result .meta-chip-lb { font-size: 11px; line-height: 13px; }
-.pr-chip-result b { color: #111827; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pr-filter { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .pr-cell { display: flex; align-items: center; gap: 3px; min-width: 0; margin: 0; }
 .pr-cell-name { flex: 1 1 110px; min-width: 101px; max-width: 200px; }
@@ -198,9 +202,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 .pr-ctl :deep(.ant-select-selection-item), .pr-ctl :deep(.ant-select-selection-placeholder) { font-size: 12px !important; }
 .pr-ctl.ant-input-affix-wrapper { height: 24px; }
 .pr-ctl :deep(input.ant-input) { font-size: 12px; }
-@media (max-width: 1500px) {
-  .pr-strip > .meta-hint { width: 48px; line-height: 14px; }
-}
 @media (max-width: 1100px) {
   .pr-strip { flex-wrap: wrap; }
   .pr-filter { order: 1; flex-basis: 100%; }
@@ -223,4 +224,5 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 :deep(.pr-off .pr-name), :deep(.pr-off .pr-chip), :deep(.pr-off .pr-pool), :deep(.pr-off .pr-prio) { color: #9ca3af; }
 :deep(.pr-focus td) { background: #eff6ff !important; transition: background 0.3s; }
 :deep(.pr-default td) { background: #fafbfc; }
+.table-shell :deep(.ant-pagination) { margin: 12px 16px !important; }
 </style>
