@@ -1438,6 +1438,11 @@ function doImport(withUpdate: boolean) {
   flex: 1; min-width: 120px; margin: 0;
   font-size: 12px; color: #9ca3af; line-height: 20px; white-space: nowrap;
 }
+/* 一行放不下提示时，提示单独占筛选控件下方一行，避免被右侧按钮遮挡 */
+.toolbar-row--scope:has(.scope-hint) { flex-wrap: wrap; container-type: inline-size; }
+@container (max-width: 1240px) {
+  .scope-hint { order: 1; flex: 0 0 100%; }
+}
 /* 维度分段 + 三个联动下拉：一组，整组不拆行 */
 .fi-scope { gap: 6px; flex: none; }
 .fi-scope .sel-w { width: 100px !important; }
