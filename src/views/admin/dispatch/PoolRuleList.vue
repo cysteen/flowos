@@ -62,7 +62,7 @@ const cols = [
   { title: '状态', key: 'enabled', width: 80 },
   { title: '更新人', dataIndex: 'updatedBy', key: 'updatedBy', width: 90 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
-  { title: '操作', key: 'op', width: 170 },
+  { title: '操作', key: 'op', width: 170, fixed: 'right' as const },
 ];
 
 const modalOpen = ref(false);
