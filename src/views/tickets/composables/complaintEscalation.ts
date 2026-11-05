@@ -3,7 +3,7 @@ import { isRefundTicket } from '@/views/tickets/types/refund';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
-import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, normalizeTicketSource, type TicketSource } from '@/views/tickets/types/createTicket';
+import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, PRODUCT_NAMES, normalizeTicketSource, type TicketSource } from '@/views/tickets/types/createTicket';
 
 /**
  * 升级投诉 / 升级外投判定逻辑。
@@ -281,6 +281,31 @@ export const ESCALATE_COMPLAINT_SOURCES: TicketSource[] = ['电话', 'IM', '客�
 /** 升级外投弹窗的工单来源选项（默认内投渠道） */
 export const ESCALATE_EXTERNAL_SOURCES: TicketSource[] = ['内投渠道', '外投渠道'];
 
+/** 工单行上的存量产品分类 → 建单产品分类（建单下拉只有 `PRODUCT_CATEGORIES` 三项） */
+const LEGACY_PRODUCT_CATEGORY: Record<string, string> = {
+  消费电子: '智能硬件',
+  企业服务: '软件服务',
+  会员权益: '软件服务',
+  开放平台: '软件服务',
+  教育服务: '软件服务',
+};
+function toCreateCategory(category?: string): string | undefined {
+  if (!category) return undefined;
+  return PRODUCT_NAMES[category] ? category : LEGACY_PRODUCT_CATEGORY[category];
+}
+
+/**
+ * 升级弹窗的产品分类：本单工单行的分类 → 产品所在的建单分类 → 同产品其他工单行的分类，都折算成建单分类；
+ * 工单行没有分类时不取详情上的值（那是样例单的兜底，不属于本单）。
+ */
+function escalateProductCategory(row: Ticket | undefined, product: string): string | undefined {
+  const own = toCreateCategory(row?.productCategory);
+  if (own) return own;
+  const byName = Object.keys(PRODUCT_NAMES).find((k) => PRODUCT_NAMES[k].includes(product));
+  if (byName) return byName;
+  return toCreateCategory(TICKETS.find((t) => t.product === product && t.productCategory)?.productCategory);
+}
+
 /**
  * 升级投诉 / 升级外投的预填：两枚按钮同一套壳，已知字段取原单。
  * 问题分类取工单行三级，行上没有时取原单「工单信息」卡上那组问题标签，仍缺才留空。
@@ -305,7 +330,7 @@ export function buildEscalatePrefill(detail: TicketDetailMeta, target: EscalateT
     customerTypes: detail.customer.types.filter(Boolean),
     vip: detail.customer.types.some((t) => t.includes('VIP')),
     product: detail.product.name,
-    productCategory: realValue(row?.productCategory) ?? realValue(detail.product.category),
+    productCategory: escalateProductCategory(row, detail.product.name),
     sn: realValue(detail.product.sn),
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
     formTicketType: '投诉',

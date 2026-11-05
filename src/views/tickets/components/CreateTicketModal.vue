@@ -215,6 +215,14 @@ const ticketSourceOptions = computed(() => {
   return ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource);
 });
 
+/** 产品名称选项：升级带入的原单产品不在当前分类选项里时一并列出，回显原值 */
+const productNameSelectOptions = computed(() => {
+  const names = isEscalateMode.value && form.productName && !productNameOptions.value.includes(form.productName)
+    ? [form.productName, ...productNameOptions.value]
+    : productNameOptions.value;
+  return names.map((v) => ({ value: v, label: v }));
+});
+
 /** 归属产品线：随归属业务线联动，未选业务线时无选项 */
 const productLineOptions = computed(
   () => (PRODUCT_LINES_BY_BUSINESS_LINE[form.businessLine] ?? []).map((v) => ({ value: v, label: v })),
@@ -711,9 +719,9 @@ watch(
                 class="inline-control field-control"
                 size="middle"
                 :status="errors.productName ? 'error' : ''"
-                :disabled="!productNameOptions.length"
+                :disabled="!isEscalateMode && !productNameOptions.length"
                 :placeholder="productNameOptions.length ? '请选择' : '请先选分类'"
-                :options="productNameOptions.map((v) => ({ value: v, label: v }))"
+                :options="productNameSelectOptions"
                 @change="onProductNameChange"
               />
             </div>
@@ -1607,6 +1615,7 @@ watch(
   line-height: 20px;
   color: #606266;
 }
+.modal-body.is-escalate .inline-label .req { margin-right: 4px; }
 .modal-body.is-escalate .inline-control { flex: none; width: 100%; }
 .modal-body.is-escalate :deep(.ant-select-single),
 .modal-body.is-escalate :deep(.ant-select-selector) { height: 36px !important; }
