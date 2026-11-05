@@ -224,5 +224,6 @@ watch(() => props.focusId, (id) => focus(id), { immediate: true });
 :deep(.pr-off .pr-name), :deep(.pr-off .pr-chip), :deep(.pr-off .pr-pool), :deep(.pr-off .pr-prio) { color: #9ca3af; }
 :deep(.pr-focus td) { background: #eff6ff !important; transition: background 0.3s; }
 :deep(.pr-default td) { background: #fafbfc; }
-.table-shell :deep(.ant-pagination) { margin: 12px 16px !important; }
+/* 横向滚动表的测量行只用于定列宽，不占高度 */
+.table-shell :deep(.ant-table-measure-row > td) { padding: 0 !important; border: 0 !important; }
 </style>
