@@ -1,10 +1,10 @@
 /**
- * 【1215】智能派单 · 运行中种子（PRD 13 / 14 / 17 章）：近两周的派单日志、审计、池内待派工单与坐席当日在岗。
+ * 【1215】智能派单 · 运行中种子（PRD 13 / 14 / 17 章）：近 30 日的派单日志，近两周的审计，池内待派工单与坐席当日在岗。
  *
  * - 时间一律相对加载时刻生成：今日 08:30 起至当前时刻；前 13 天为上线以来的判定与人工记录
- *   （管理员先开放二线处理组池自动派单，第 4 天起再放开硬件、综合、技术支持三池）。
+ *   （管理员先开放二线处理组池自动派单，第 4 天起再放开硬件、综合、技术支持三池）；更早为上线前，全局人工派单。
  * - 只由 `stores/dispatch.ts` 在无缓存（或版本闸失效）时调用一次，结果随 `flowos-dispatch` 落库；改本文件须升 `DISPATCH_CACHE_VERSION`。
- * - 日志里的工单号为历史单（号段 5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
+ * - 日志里的工单号为历史单（号段 4xxxx、5xxxx，不在工单库）；池内待派单（号段 8xxxx）是真实工单行，随派单快照落库与回放。
  * - 历史单的派单后首响时刻记在日志 `firstRespAt`（工单库查不到该单时，分派监控按此取首响）。
  * - 种子值由确定性随机序列生成：新增种子放在 `buildRuleCases`（序列末尾），不扰动前面的数字。
  */
@@ -540,7 +540,10 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const ts = from + r() * (to - from);
       const t = newTk(pool, ts);
       const who = pool === 'xiaozhi' ? '谭小智' : pool === 'edu-flash' ? (r() < 0.75 ? '许文静' : '王坐席') : (r() < 0.75 ? '何教支' : '张三');
-      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP, { target: who });
+      // 进池留池待领取（留池判定不消耗随机序列）
+      const mode = pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP;
+      b.judge(t, ts, { trigger: '新单', path: '留池', mode, status: null, ...(pool === 'edu-flash' ? {} : { failReason: mixedFailOf(ts) }) });
+      b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, mode, { target: who });
     }
   }
 }
@@ -936,6 +939,96 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
 }
 
 /* ------------------------------------------------------------------ */
+/* 历史补量：近 30 日进出池（今日之前，号段 4xxxx）                         */
+/* ------------------------------------------------------------------ */
+
+/** 上线前：全局人工派单，各池进池后由人工领取、指派 */
+const PRE_LAUNCH: Mode = { globalMode: '人工派单', groupMode: '自动派单', effectiveMode: '人工派单' };
+const PRE_LAUNCH_POOLS = ['line2', 'line2', 'line2', 'line2', 'general', 'general', 'general', 'hardware', 'hardware', 'tech', 'xiaozhi', 'edu', 'edu-flash'];
+const CLAIM_POOLS = ['edu-flash', 'edu-flash', 'edu-flash', 'xiaozhi', 'edu'];
+/** 专属工单线各池的领取人 */
+const POOL_CLAIMERS: Record<string, string[]> = {
+  xiaozhi: ['谭小智'], 'edu-flash': ['许文静', '许文静', '王坐席'], edu: ['何教支', '何教支', '张三'],
+};
+/** 夜间进池、次日上午接手的单每天最多几张 */
+const OVERNIGHT_MAX = 3;
+
+/** 放在随机序列末尾、只写今日之前的记录：不扰动前面的种子，也不改今日数字 */
+function buildBackfill(b: Builder, tl: Timeline, r: () => number) {
+  const respAt = (take: number) => take + (6 + 18 * r() ** 1.3) * MIN;
+  for (let d = 29; d >= 1; d -= 1) {
+    const ds = tl.today0 - d * DAY;
+    const wd = new Date(ds).getDay();
+    const weekend = wd === 0 || wd === 6;
+    let serial = 40000;
+    const newTk = (pool: string, at: number): Tk => {
+      const snap = b.pick(SNAPS[pool]);
+      const x = r();
+      const priority: Priority = x < 0.04 ? 'P0' : x < 0.25 ? 'P1' : x < 0.9 ? 'P2' : 'P3';
+      serial += 1 + Math.floor(r() * 2);
+      return {
+        no: `${snap.ticketType === '投诉' ? 'IFLYTS' : 'IFLYZX'}-${ymd(ds)}-${serial}`,
+        pool, snap, priority,
+        remain0: priority === 'P0' ? b.between(9, 15) : b.between(180, FIRST_RESP_LIMIT[priority] - 10),
+        enteredAt: at, seq: 0,
+      };
+    };
+    const claimerOf = (pool: string) => (POOL_CLAIMERS[pool] ? b.pick(POOL_CLAIMERS[pool]) : b.pick(b.eligible(pool)).name);
+    /** 人工接手的一张单：进池留池，随后领取或指派 */
+    const manualCase = (pool: string, enter: number, take: number, mode: Mode, firstResp: boolean) => {
+      const t = newTk(pool, enter);
+      const who = claimerOf(pool);
+      const claim = r() < 0.68;
+      b.judge(t, enter, { trigger: '新单', path: '留池', mode, status: null });
+      b.manual(t, take, claim ? '二线领取' : '班组长指派', claim ? who : LEADER, mode, { target: who, ...(firstResp ? { firstRespAt: respAt(take) } : {}) });
+    };
+    const from = ds + 8 * HOUR + 40 * MIN;
+    const span = 9 * HOUR + 40 * MIN;
+    const prelaunch = ds + DAY <= tl.launchStart;
+    if (prelaunch) {
+      const volume = weekend ? 12 + Math.floor(r() * 5) : 28 + Math.floor(r() * 9);
+      for (let i = 0; i < volume; i += 1) {
+        const enter = from + r() * span;
+        const pool = b.pick(PRE_LAUNCH_POOLS);
+        manualCase(pool, enter, enter + b.between(3, 28) * MIN, pool === 'edu-flash' ? FLASH_MANUAL : PRE_LAUNCH, true);
+      }
+    } else {
+      const volume = weekend ? 7 + Math.floor(r() * 4) : 17 + Math.floor(r() * 8);
+      for (let i = 0; i < volume; i += 1) {
+        let enter = Math.max(from + r() * span, tl.launchStart);
+        // 全局混合派单那段时间不补单
+        if (enter >= tl.mixedStart && enter < tl.mixedEnd) enter = tl.mixedEnd + b.between(1, 20) * MIN;
+        const x = r();
+        if (x < 0.74) {
+          const pools = enter < tl.multiStart ? ['line2'] : ['line2', 'line2', 'general', 'general', 'hardware', 'tech'];
+          const pool = b.pick(pools);
+          const t = newTk(pool, enter);
+          const back = r() < 0.15;
+          b.judge(t, enter, {
+            trigger: back && r() < 0.5 ? '回访打回' : r() < 0.08 ? '售后转回' : '新单',
+            path: back ? '原处理人' : '加权评分', mode: FORMAL, chosen: b.pick(b.eligible(pool)), candidates: 1, firstRespAt: respAt(enter),
+          });
+        } else {
+          const pool = b.pick(CLAIM_POOLS);
+          manualCase(pool, enter, enter + b.between(3, 22) * MIN, pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP, false);
+        }
+      }
+    }
+    // 夜间进池、次日上午接手：当日进池多于出池、次日相反
+    if (d >= 2) {
+      const count = Math.floor(r() * (OVERNIGHT_MAX + 1));
+      for (let i = 0; i < count; i += 1) {
+        const enter = ds + 18 * HOUR + 40 * MIN + r() * 2.5 * HOUR;
+        const take = ds + DAY + 8 * HOUR + 35 * MIN + r() * 1.5 * HOUR;
+        const pool = prelaunch ? b.pick(PRE_LAUNCH_POOLS) : b.pick(CLAIM_POOLS);
+        const mode = pool === 'edu-flash' ? FLASH_MANUAL : prelaunch ? PRE_LAUNCH : OFF_GROUP;
+        manualCase(pool, enter, take, mode, false);
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* 审计（近两周）                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -989,6 +1082,7 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
   const { hwMixedAt } = buildToday({ b, agents, now, t0, r, noteTake });
   const pool = buildPool(b, agents, now, rules, noteTake);
   buildRuleCases(b, agents, now, t0, hwMixedAt, noteTake);
+  buildBackfill(b, tl, r);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
   const agentPatch: Record<string, Partial<DispatchAgent>> = {};
