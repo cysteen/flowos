@@ -414,9 +414,14 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   // 刷机单：走刷机服务落库（子状态、履历、刷机缓存），见 1130 PRD §4.2
 
+  // 未领取的单被调剂到人计入出池方式「人工指派」，换处理人前取值；兜底路径同样写人工记录
+  const fromPool = !t.assignee && t.tab === 'pool';
+
   if (isFlashTicket(t)) {
 
     const res = flashStore.transferOwner(t.no, queryActor(), { scope: data.scope, target: name, reason: data.reason });
+
+    if (res.ok && data.scope === 'same') useDispatchStore().recordManualTake(t, name, '调剂到人', queryActor().name, data.reason, { fromPool });
 
     if (res.ok) message.success(res.message);
 
@@ -430,6 +435,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   // 交给校园经理 / 城市经理走处理页「转校园经理」（用户 10-27 方案 B）
   if (isRefundTicket(t) && data.scope === 'same') {
     const res = refundStore.assignToMember(t.no, name, queryActor(), data.reason);
+    if (res.ok) useDispatchStore().recordManualTake(t, name, '调剂到人', queryActor().name, data.reason, { fromPool });
     if (res.ok) message.success(res.message);
     else if (res.message) message.warning(res.message);
     return;
@@ -447,6 +453,8 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   t.assignee = name;
 
   t.myTransferAction = true;
+
+  useDispatchStore().recordManualTake(t, name, '调剂到人', queryActor().name, data.reason, { fromPool });
 
   message.success(`已将 ${t.no} 调剂至 ${name}`);
 

@@ -119,7 +119,8 @@ export function claimTicketByType(t: Ticket, roleKey: string, userName: string):
   const gate = dispatch.checkClaim(t, me);
   if (!gate.ok) return gate;
   const res = claimByType(t, roleKey, userName);
-  if (res.ok && t.assignee) dispatch.recordManualTake(t, t.assignee, '二线领取', me);
+  // 刷机单的人工记录由刷机服务 `claimFromPool` 写
+  if (res.ok && t.assignee && !isFlashTicket(t)) dispatch.recordManualTake(t, t.assignee, '二线领取', me);
   return res;
 }
 

@@ -402,8 +402,10 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
       return;
     }
     for (const t of tickets) {
+      const fromPool = !t.assignee && t.tab === 'pool';
       t.assignee = name;
       t.myTransferAction = true;
+      dispatch.recordManualTake(t, name, '调剂到人', user.name, data.reason, { fromPool });
     }
     message.success(tickets.length === 1 ? `已调剂至 ${name}` : `已对 ${label} 调剂至 ${name}`);
   } else if (type === '退回') {

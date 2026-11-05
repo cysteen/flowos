@@ -1553,6 +1553,8 @@ export const useFlashStore = defineStore('flash', () => {
     });
     bump(ticketNo);
     persist();
+    // 【1215】人工记录（出池方式「主动领取」）：所有领取入口都经此，调用方不再重复写；一线刷机池不进入派单，由 store 判定不记
+    useDispatchStore().recordManualTake(r, by.name, '二线领取', by.name);
     return { ok: true, message: `已领取 ${ticketNo}` };
   }
 
@@ -1580,6 +1582,8 @@ export const useFlashStore = defineStore('flash', () => {
     });
     bump(ticketNo);
     persist();
+    // 【1215】人工记录（出池方式「人工指派」）：所有指派入口都经此，调用方不再重复写
+    useDispatchStore().recordManualTake(r, target, '班组长指派', by.name);
     return { ok: true, message: `已指派给${target}` };
   }
 

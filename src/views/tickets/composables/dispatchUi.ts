@@ -202,7 +202,8 @@ export function assignInTeam(ticket: Ticket, assignee: string): OccupyResult {
     }
     if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
   }
-  dispatch.recordManualTake(t, assignee, '班组长指派', operator);
+  // 刷机单的人工记录由刷机服务 `assignFromPool` 写
+  if (!isFlashTicket(t)) dispatch.recordManualTake(t, assignee, '班组长指派', operator);
   writeOverCapEntry(t, assignee);
   return { ok: true, message: `已指派给${assignee}` };
 }

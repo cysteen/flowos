@@ -1487,6 +1487,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
    * `opts.fromPool`：调剂到人前本单还在工单池里未领取，计入出池方式「人工指派」（调用方在换处理人前取值）。
    */
   function recordManualTake(t: Ticket, assignee: string, action: ManualAction, operator?: string, reason?: string, opts: { fromPool?: boolean } = {}) {
+    // 不进入派单的组池（一线客服组、一线刷机池，1.2）：领取、指派不算出池，不记
+    if ((action === '二线领取' || action === '班组长指派') && t.groupId && !isDispatchGroup(t.groupId)) return;
     const st = ticketStates.value[t.no];
     if (st) {
       st.status = null;

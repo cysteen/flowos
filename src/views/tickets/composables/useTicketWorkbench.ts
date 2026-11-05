@@ -13,6 +13,7 @@ import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
 import { claimTicketByType, visiblePoolGroupsForUser } from '@/views/tickets/composables/poolClaim';
+import { writeOverCapEntry } from '@/views/tickets/composables/dispatchUi';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
 function nowStamp(): string {
@@ -562,6 +563,8 @@ export function useTicketWorkbench() {
       }
       // 个册退费单（1120）：池内领取同咨询单，落库后由个册退费服务落快照（同 `claimTicketByType`）
       if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
+      // 【1215】催补待回里领取池内单，同工单池领取记人工记录
+      useDispatchStore().recordManualTake(t, me, '二线领取', me);
       return { ok: true, from };
     }
     if (t.nodeStatus === '已升级技术支持') {
@@ -608,6 +611,8 @@ export function useTicketWorkbench() {
         const res = opts.scope === 'cross-team'
           ? flash.transferOwner(t.no, flashActor(), { scope: 'cross', target: opts.targetName, reason: '' })
           : flash.assignFromPool(t.no, opts.targetName, flashActor());
+        // 指派的人工记录由刷机服务写；超出个人上限补记履历（同 `assignInTeam`）
+        if (res.ok && opts.scope === 'in-team') writeOverCapEntry(t, opts.targetName);
         rows.push(res.ok ? { id, ok: true } : { id, ok: false, reason: res.message });
         continue;
       }
