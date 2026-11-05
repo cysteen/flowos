@@ -6,8 +6,7 @@ import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { CUSTOMER_DIRECTORY } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
-import { REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, isRefundTicket, type RefundManager } from '@/views/tickets/types/refund';
-import { resolveSchoolManager } from '@/mock/refund/managers';
+import { isRefundTicket } from '@/views/tickets/types/refund';
 import { FLASH_SLA_FIRST_LIMIT_MS, readSla } from '@/views/tickets/utils/slaClock';
 import {
   registerDispatchEngine, type DispatchContext, type DispatchOutcome,
@@ -17,14 +16,14 @@ import {
   SCAN_INTERVAL_MINUTES, STALL_REMIND_HOURS, TAKEN_MESSAGE, PROFILE_DIMS, PROTECTED_POOL_TIP,
   computeScore, defaultDispatchConfig, emptyProfile, isProfileConfigured, isProtectedPool, migrateOriginalChain, stricterMode, takeIntensity,
   type OriginalExclusion, type OriginalRelation, type OriginalRelationRule,
-  type AgentProfile, type DesignatedRule, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
+  type AgentProfile, type DispatchAgent, type DispatchAuditEntry, type DispatchAuditKind, type DispatchConfig,
   type DispatchFailReason, type DispatchGroup, type DispatchLogEntry, type DispatchPath, type DispatchPool, type DispatchResult,
   type DispatchRole, type DispatchStatus, type DispatchTrigger, type GateKey, type ManualAction, type OccupyResult,
   type PoolMode, type PoolRule, type PoolRuleConditions, type ProductPick, type Proficiency,
   NOT_OWN_POOL_MESSAGE,
   type ScoreDetail, type SignInStatus, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
-import { DESIGNATED_SEED_RULE, buildDispatchDemo, poolEnteredAtSeed, specialPoolEnteredAtSeed } from '@/mock/dispatchDemo';
+import { buildDispatchDemo, poolEnteredAtSeed, specialPoolEnteredAtSeed } from '@/mock/dispatchDemo';
 import { SCORE_DIMENSION_ROWS, failLabel, pathWithRelation } from '@/views/admin/dispatch/dispatchLabels';
 import { useNotifyLogStore } from './notifyLog';
 import { useUserStore } from './user';
@@ -41,7 +40,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
  * 【持久化】`flowos-dispatch` 一个键，带版本号 `DISPATCH_CACHE_VERSION`；改种子必须升版本号。
  * 派单改写过的通用工单整行随本键落库、store 建立时回放到工单库（`main.ts` 启动即建立），刷新前后工单行与派单状态 / 日志一致；
  * 刷机 / 小智 / 个册退费单的工单行由各自服务缓存落库。
- * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：指定人规则（命中直接到人，不进池）→ 入池 → 派单方式 → 三步（谁可以接单 → 优先派回原处理人 → 综合打分）→ 派出 / 留池。
+ * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 派单方式 → 三步（谁可以接单 → 优先派回原处理人 → 综合打分）→ 派出 / 留池。
  * 自动派单与混合派单都走完三步，区别只在派不出时：自动派单留池排队、每 5 分钟重试，不可领取；混合派单留池待领取，无派单状态、不再重试。
  * 第 ② 步不依赖第 ① 步：原处理人只看是否已签入，坐席状态与个人上限不挡，满额派回记超额指派。
  * 派单方式（全局 / 各池）与个人开关全部由人手动切换，系统不自动切换。
@@ -57,7 +56,7 @@ import { joinProblemPath, splitProblemPath, useProblemTagsStore } from './proble
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 38;
+export const DISPATCH_CACHE_VERSION = 39;
 const LOG_LIMIT = 2000;
 const AUDIT_LIMIT = 400;
 const MIN = 60_000;
@@ -234,23 +233,6 @@ function seedRules(now: number): PoolRule[] {
   return [...engine, ...fromTags];
 }
 
-/** 指定人规则种子：内置个册退费规则、一条固定人员规则（迁自规则引擎派单到人） */
-function seedDesignatedRules(now: number): DesignatedRule[] {
-  const at = stamp(now);
-  return [
-    {
-      id: 'dr-refund', name: DESIGNATED_SEED_RULE.refund, priority: 1,
-      conditions: cond({ products: [{ category: REFUND_PRODUCT_CATEGORY, name: REFUND_PRODUCT_NAME }] }),
-      source: '对应关系', mapping: '学校 → 校园经理', enabled: true, builtin: true, updatedBy: SYSTEM, updatedAt: at,
-    },
-    {
-      id: 'dr-dealer', name: DESIGNATED_SEED_RULE.dealer, priority: 2,
-      conditions: cond({ customerTypes: ['经销商'], products: [{ category: '企业服务', name: '企业版' }] }),
-      source: '固定人员', assignee: '林坐席', enabled: true, updatedBy: SYSTEM, updatedAt: at,
-    },
-  ];
-}
-
 interface Persisted {
   version: number;
   savedAt: number;
@@ -259,7 +241,6 @@ interface Persisted {
   pools: DispatchPool[];
   agents: DispatchAgent[];
   rules: PoolRule[];
-  designatedRules: DesignatedRule[];
   ticketStates: Record<string, TicketDispatchState>;
   overAssigned: Record<string, boolean>;
   /** 领取后在途超过上限的坐席（标「满载」，不算超限、超额指派，7.4） */
@@ -372,18 +353,9 @@ interface OriginalCandidate {
   name: string;
 }
 
-/** 指定人规则的判断结果：内部坐席或校园经理（外部处理人，只记姓名与域账号）；都没有时按入池规则进池 */
-export interface DesignatedHit {
-  rule: DesignatedRule;
-  agent?: DispatchAgent;
-  manager?: RefundManager;
-}
-
 export interface DispatchOptions {
   /** 指定归属池（调剂到池、升级三线、专属工单落池点已定池时传入；不传按入池规则） */
   poolId?: string;
-  /** 已判断过指定人规则或不适用（个册退费单进池时：已在建单时判断，下送回池不再命中） */
-  skipDesignated?: boolean;
   /** 售后转回 / 回访打回：本单上一处理人（关系「本单退回」，有效期不限） */
   prevHandler?: string | null;
   /** 承接子单、升级投诉：原单号（关系「关联单」） */
@@ -443,7 +415,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const pools = ref<DispatchPool[]>(cached?.pools ?? seedPools(groups.value, now0));
   const agents = ref<DispatchAgent[]>(cached?.agents ?? seedAgents(now0));
   const rules = ref<PoolRule[]>(cached?.rules ?? seedRules(now0));
-  const designatedRules = ref<DesignatedRule[]>(cached?.designatedRules ?? seedDesignatedRules(now0));
   const ticketStates = ref<Record<string, TicketDispatchState>>(cached?.ticketStates ?? {});
   const overAssigned = ref<Record<string, boolean>>(cached?.overAssigned ?? {});
   const overClaimed = ref<Record<string, boolean>>(cached?.overClaimed ?? {});
@@ -563,7 +534,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
         pools: pools.value,
         agents: agents.value,
         rules: rules.value,
-        designatedRules: designatedRules.value,
         ticketStates: ticketStates.value,
         overAssigned: overAssigned.value,
         overClaimed: overClaimed.value,
@@ -780,7 +750,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /* ---------------- 入池规则（第 3 章） ---------------- */
 
-  function ruleHit(rule: Pick<PoolRule, 'conditions'>, t: Ticket): boolean {
+  function ruleHit(rule: PoolRule, t: Ticket): boolean {
     const c = rule.conditions;
     if (c.businessTypes.length && !c.businessTypes.includes(t.businessType ?? '')) return false;
     if (c.ticketTypes.length && !c.ticketTypes.includes(t.type)) return false;
@@ -802,36 +772,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       .sort((a, b) => a.priority - b.priority)
       .find((r) => ruleHit(r, t));
     return hit ? { poolId: hit.poolId, ruleId: hit.id, ruleName: hit.name } : { poolId: DEFAULT_POOL_ID, ruleId: null, ruleName: '默认池' };
-  }
-
-  /* ---------------- 指定人规则（进池前判断） ---------------- */
-
-  /**
-   * 规则对这张单取到的人：固定人员须未停用；学校 → 校园经理以建单所填校代对接人为准（`picked`，传 null 为已清空），
-   * 未填时按学校带出。取不到返回空，工单按入池规则进池走三步。签出、请假仍派，不受个人上限约束。
-   */
-  function designatedPersonOf(rule: DesignatedRule, t: Ticket, picked?: RefundManager | null): Pick<DesignatedHit, 'agent' | 'manager'> | null {
-    if (rule.source === '固定人员') {
-      const a = agentOf(rule.assignee);
-      return a && !a.disabled ? { agent: a } : null;
-    }
-    if (!t.refund) return null;
-    const manager = picked === undefined ? resolveSchoolManager(t.refund.info.schoolId) : picked ?? undefined;
-    return manager ? { manager } : null;
-  }
-
-  /**
-   * 按优先级取第一条相符的启用规则，判断此单是否直接到人；规则相符但取不到人的不再看后面的规则。
-   * 指定人规则不进工单池，与全局、各池的派单方式无关。
-   */
-  function matchDesignated(t: Ticket, opts: { picked?: RefundManager | null } = {}): DesignatedHit | null {
-    const rule = [...designatedRules.value]
-      .filter((r) => r.enabled)
-      .sort((a, b) => a.priority - b.priority)
-      .find((r) => ruleHit(r, t));
-    if (!rule) return null;
-    const person = designatedPersonOf(rule, t, opts.picked);
-    return person ? { rule, ...person } : null;
   }
 
   /* ---------------- 画像匹配（6.2） ---------------- */
@@ -1299,66 +1239,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return st.designatedPool ? '指定池' : '默认池';
   }
 
-  /** 指定人派单写派单日志：工单池「—」、结果已派出、判定路径指定人派单；不建派单状态（本单未进工单池，日后首次进池仍记新单） */
-  function logDesignated(t: Ticket, hit: DesignatedHit, poolId?: string, groupLabel = '', overCap = false): DispatchLogEntry {
-    const now = Date.now();
-    const person = hit.agent ? { name: hit.agent.name, staffNo: hit.agent.staffNo } : { name: hit.manager!.name, staffNo: hit.manager!.account };
-    const fr = firstRespOf(t, now);
-    const globalMode = globalEffectiveMode();
-    const stub: TicketDispatchState = { ticketNo: t.no, poolId: '', ruleId: null, enteredAt: now, status: null, seq: 0 };
-    const log: DispatchLogEntry = {
-      id: nextId('dl'),
-      ticketNo: t.no,
-      seq: nextTicketSeq(t.no),
-      at: stamp(now),
-      kind: '判定',
-      trigger: '新单',
-      poolId: '',
-      poolLabel: '—',
-      ruleName: hit.rule.name,
-      globalMode,
-      groupMode: poolId ? poolModeOf(poolId) : globalMode,
-      effectiveMode: poolId ? effectiveModeOf(poolId) : globalMode,
-      path: '直派规则',
-      chosen: { ...person, groupLabel },
-      status: null,
-      snapshot: { ...snapshotOf(t, stub, now), firstRespRemainMin: fr ? Math.max(0, Math.round(fr.remainMin)) : undefined },
-      ...(overCap ? { overCap: '超额指派' as const } : {}),
-    };
-    pushLog(log);
-    persist();
-    return log;
-  }
-
-  /**
-   * 指定人规则命中内部坐席：直接派给此人，不进工单池、不走三步；超出个人上限记超额指派；不计今日接单量。
-   * 校园经理由个册退费服务在建单时落库（`matchDesignated` + `logDesignated`），不经此处。
-   */
-  function runDesignated(t: Ticket, opts: DispatchOptions, write: boolean): DispatchResult | null {
-    const hit = matchDesignated(t);
-    const a = hit?.agent;
-    if (!hit || !a) return null;
-    const now = Date.now();
-    const overCap = inTransitOf(a.name, t.no) + 1 > capOf(a);
-    // 工单已归属此人所在组时不变，否则归到此人的第一个组（无组的坐席不改归属）
-    const gid = t.groupId && a.groupIds.includes(t.groupId) ? t.groupId : a.groupIds[0];
-    const g = groupOf(gid);
-    const reason = `系统派单 → ${a.name}（直派规则 · ${hit.rule.name}）`;
-    if (write) {
-      const target = reactive(t) as Ticket;
-      touchRow(target);
-      if (g) Object.assign(target, { groupId: g.id, groupNames: [g.label, ...(target.groupNames ?? []).slice(1).filter((n) => n !== g.label)] });
-      writeAssign(target, a.name, now);
-      writeTimeline(target, '系统派单', reason, now);
-      if (overCap) writeTimeline(target, '超额指派', `${a.name}在途 ${inTransitOf(a.name, t.no) + 1} / 上限 ${capOf(a)}，记超额指派`, now);
-      commitSpecial(target);
-    }
-    if (overCap) overAssigned.value = { ...overAssigned.value, [a.name]: true };
-    const log = logDesignated(t, hit, opts.poolId, g?.label ?? '', overCap);
-    notifyAssigned(t, { ticketNo: t.no, poolId: '', ruleId: null, enteredAt: now, status: null, seq: 0 }, a.name);
-    return { assignee: a.name, poolId: '', poolLabel: '—', path: '直派规则', status: null, reason, log };
-  }
-
   /**
    * 判定并落库。`write=false` 时只判定与记日志、不改工单行（售后回传 resolver 用：工单行由调用方组装）。
    */
@@ -1368,11 +1248,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     ensureSpecialService(t);
     // 先到先得：已有处理人不判定
     if (t.assignee) return null;
-    // 进池前判断指定人规则：只对新单，回流、调剂到池、升级三线、扫描不判断
-    if (trigger === '新单' && !opts.skipDesignated) {
-      const direct = runDesignated(t, opts, write);
-      if (direct) return direct;
-    }
     const now = Date.now();
     const st = ensureState(t, trigger, opts, now);
     const g = poolGroupOf(st.poolId);
@@ -1545,11 +1420,9 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const trigger: DispatchTrigger = ctx?.trigger ?? '新单';
     const r = run({ ...t, assignee: null }, trigger, { prevHandler: ctx?.prevAssignee ?? undefined }, false);
     if (!r) return { groupId: t.groupId ?? DEFAULT_POOL_ID, groupLabel: groupOf(t.groupId)?.label ?? DEFAULT_POOL_LABEL, assignee: null };
-    // 指定人派单不计今日接单量
-    if (r.assignee && r.path !== '直派规则') recordTake(r.assignee, Date.now());
-    // 归属组＝池所属处理组；所在池记在派单侧（ticketStates）。指定人派单无归属池：组取此人所在组
-    const direct = r.path === '直派规则' ? agentOf(r.assignee) : undefined;
-    const g = direct ? groupOf(t.groupId && direct.groupIds.includes(t.groupId) ? t.groupId : direct.groupIds[0]) : poolGroupOf(r.poolId);
+    if (r.assignee) recordTake(r.assignee, Date.now());
+    // 归属组＝池所属处理组；所在池记在派单侧（ticketStates）
+    const g = poolGroupOf(r.poolId);
     return {
       groupId: g?.id ?? r.poolId, groupLabel: g?.label ?? r.poolId, assignee: r.assignee,
       reason: r.assignee ? pathWithRelation(r.path, r.log.originalRelation) : undefined,
@@ -2003,70 +1876,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { ok: true, message: '已删除' };
   }
 
-  /* ---------------- 指定人规则 CRUD ---------------- */
-
-  type DesignatedDraft = Omit<DesignatedRule, 'id' | 'updatedBy' | 'updatedAt'>;
-
-  /** 指定人规则校验；通过返回空串，否则返回提示文案 */
-  function validateDesignatedRule(draft: DesignatedDraft, excludeId?: string): string {
-    const name = draft.name.trim();
-    if (!name) return '请输入规则名称';
-    if (name.length > 30) return '规则名称最多 30 字';
-    const others = designatedRules.value.filter((r) => r.id !== excludeId);
-    if (others.some((r) => r.name === name)) return '规则名称已存在';
-    if (!Number.isInteger(draft.priority) || draft.priority < 1 || draft.priority > 999) return '请输入 1–999 的整数';
-    const dup = others.find((r) => r.priority === draft.priority);
-    if (dup) return `优先级 ${draft.priority} 已被规则「${dup.name}」使用`;
-    if (Object.values(draft.conditions).every((v) => !(v as unknown[]).length)) return '请至少设置一个条件';
-    if (draft.source === '固定人员' && !agentOf(draft.assignee)) return '请选择指定人';
-    if (draft.source === '对应关系' && !draft.mapping) return '请选择对应关系';
-    return '';
-  }
-
-  function nextDesignatedPriority(): number {
-    return Math.min(999, designatedRules.value.reduce((m, r) => Math.max(m, r.priority), 0) + 1);
-  }
-
-  function designatedTargetText(r: Pick<DesignatedRule, 'source' | 'assignee' | 'mapping'>): string {
-    return r.source === '固定人员' ? r.assignee ?? '—' : r.mapping ?? '—';
-  }
-
-  function addDesignatedRule(draft: DesignatedDraft, operator?: string): OccupyResult & { rule?: DesignatedRule } {
-    const err = validateDesignatedRule(draft);
-    if (err) return { ok: false, message: err };
-    const rule: DesignatedRule = { ...clone(draft), name: draft.name.trim(), id: nextId('dr'), updatedBy: operator ?? operatorName(), updatedAt: stamp() };
-    designatedRules.value = [...designatedRules.value, rule];
-    audit('指定人规则', rule.name, '—', `新增 · ${designatedTargetText(rule)}`, operator);
-    persist();
-    return { ok: true, message: '已保存，对此后派单生效', rule };
-  }
-
-  function updateDesignatedRule(id: string, patch: Partial<Omit<DesignatedRule, 'id'>>, operator?: string): OccupyResult {
-    const cur = designatedRules.value.find((r) => r.id === id);
-    if (!cur) return { ok: false, message: '' };
-    const next = { ...cur, ...clone(patch) };
-    const err = validateDesignatedRule(next, id);
-    if (err) return { ok: false, message: err };
-    audit('指定人规则', cur.name, `${cur.priority} · ${designatedTargetText(cur)} · ${cur.enabled ? '启用' : '停用'}`,
-      `${next.priority} · ${designatedTargetText(next)} · ${next.enabled ? '启用' : '停用'}`, operator);
-    designatedRules.value = designatedRules.value.map((r) => (r.id === id ? { ...next, name: next.name.trim(), updatedBy: operator ?? operatorName(), updatedAt: stamp() } : r));
-    persist();
-    return { ok: true, message: '已保存，对此后派单生效' };
-  }
-
-  function setDesignatedRuleEnabled(id: string, enabled: boolean, operator?: string): OccupyResult {
-    return updateDesignatedRule(id, { enabled }, operator);
-  }
-
-  function removeDesignatedRule(id: string, operator?: string): OccupyResult {
-    const cur = designatedRules.value.find((r) => r.id === id);
-    if (!cur || cur.builtin) return { ok: false, message: '' };
-    designatedRules.value = designatedRules.value.filter((r) => r.id !== id);
-    audit('指定人规则', cur.name, `${cur.priority} · ${designatedTargetText(cur)}`, '删除', operator);
-    persist();
-    return { ok: true, message: '已删除' };
-  }
-
   /* ---------------- 坐席维护（6.5 / 7.5 / 8.1 / 11.4 / 11.5） ---------------- */
 
   /** 此人是固定落点池处理组的最后一名成员时返回提示（不能移出，停用账号不算成员）；否则空串 */
@@ -2354,14 +2163,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   return {
     // state
-    config, groups, pools, agents, rules, designatedRules, ticketStates, overAssigned, overClaimed, logs, audits,
+    config, groups, pools, agents, rules, ticketStates, overAssigned, overClaimed, logs, audits,
     // 读
     groupOf, isDispatchGroup, poolOf, isDispatchPool, isPoolEnabled, poolGroupIdOf, poolGroupOf, poolLabel, poolsOfGroup, enabledPools,
     poolIdOf, globalEffectiveMode, poolModeOf, effectiveModeOf, membersOf, poolMembersOf,
     agentOf, agentView, capOf, inTransitOf, profileMatches, matchesMe, isOwnPool, poolEnteredAtOf, lastMemberTip,
     ticketStateOf, dispatchStatusOf, logsOf, poolViews, nextRulePriority, validateProfile,
     // 引擎
-    dispatchTicket, dispatchNewTicket, redispatchToPool, returnFromSurvey, matchDesignated, logDesignated,
+    dispatchTicket, dispatchNewTicket, redispatchToPool, returnFromSurvey,
     // 先到先得 · 人工动作
     checkOccupy, checkClaim, inClaimablePool, recordManualTake, withdrawTicket,
     // 派单方式
@@ -2370,8 +2179,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     validatePoolName, addPool, renamePool, poolDisableTip, setPoolEnabled,
     // 入池规则
     addPoolRule, updatePoolRule, setPoolRuleEnabled, removePoolRule,
-    // 指定人规则
-    nextDesignatedPriority, addDesignatedRule, updateDesignatedRule, setDesignatedRuleEnabled, removeDesignatedRule,
     // 坐席
     setProfile, batchSetProfile, setProficiency, setCapOverride, setPersonalSwitch, setSignIn, setAgentGroup, setTicketPool,
     // 配置

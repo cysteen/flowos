@@ -373,8 +373,6 @@ export const REFUND_TL = {
   dispatchPicked: (m: RefundManager) => `建单指定 → ${m.kind} ${m.name}`,
   /** 按学校可带出校代对接人、建单时清空 */
   dispatchPoolCleared: `建单未指定校代对接人 → ${REFUND_POOL_GROUP_NAME}工单池`,
-  /** 有校代对接人，但指定人规则已停用或条件不相符 */
-  dispatchPoolByRule: `未执行指定人规则 → ${REFUND_POOL_GROUP_NAME}工单池`,
   save: '保存退费信息',
   submit: (taskId: string, items: RefundSubject[]) =>
     `提交退费 · 退费任务号 ${taskId}；${items.map(refundItemText).join('；')}`,

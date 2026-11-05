@@ -17,7 +17,6 @@ import {
   type OriginalRelation, type PoolMode, type PoolRule, type ScoreDetail, type TicketDispatchState,
 } from '@/views/tickets/types/dispatch';
 import { splitProblemPath } from '@/stores/problemTags';
-import { CAMPUS_MANAGERS } from '@/mock/refund/managers';
 import { REFUND_SEEDS } from '@/mock/refund/seedTickets';
 
 type Priority = Ticket['priority'];
@@ -369,32 +368,7 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
     return e;
   }
 
-  /** 指定人派单：不进工单池，工单池「—」，结果已派出（不占随机序列） */
-  function direct(t: Tk, at: number, mode: Mode, ruleName: string, chosen: { name: string; staffNo: string; groupLabel: string }): SeedLogEntry {
-    t.seq += 1;
-    const e: SeedLogEntry = {
-      id: `dl-seed-${(idn += 1)}`,
-      ticketNo: t.no,
-      seq: t.seq,
-      at: stamp(at),
-      kind: '判定',
-      trigger: '新单',
-      poolId: '',
-      poolLabel: '—',
-      ruleName,
-      globalMode: mode.globalMode,
-      groupMode: mode.groupMode,
-      effectiveMode: mode.effectiveMode,
-      path: '直派规则',
-      chosen,
-      status: null,
-      snapshot: snapshotOf(t, at),
-    };
-    logs.push(e);
-    return e;
-  }
-
-  return { logs, judge, manual, direct, members, eligible, poolLabel, groupLabel, between, pick, capOf };
+  return { logs, judge, manual, members, eligible, poolLabel, groupLabel, between, pick, capOf };
 }
 
 type Builder = ReturnType<typeof makeBuilder>;
@@ -1113,48 +1087,6 @@ function buildBackfill(b: Builder, tl: Timeline, r: () => number) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 指定人规则命中（上线以来 ＋ 今日，号段 7xxxx，不占随机序列）             */
-/* ------------------------------------------------------------------ */
-
-/** 种子规则名（`stores/dispatch.ts` 种子规则同用） */
-export const DESIGNATED_SEED_RULE = {
-  refund: '个册退费 · 按学校派校园经理',
-  dealer: '经销商企业版 · 指定专人',
-} as const;
-
-function buildDesignatedCases(b: Builder, agents: DispatchAgent[], tl: Timeline, now: number, t0: number) {
-  const managers = Object.values(CAMPUS_MANAGERS);
-  const dealer = agents.find((a) => a.name === '林坐席')!;
-  let serial = 70000;
-  const refundCase = (at: number, i: number, day: number) => {
-    const m = managers[i % managers.length];
-    serial += 1;
-    const t: Tk = { no: `IFLYZX-${ymd(day)}-${serial}`, pool: 'edu', snap: SNAPS.edu[0], priority: 'P2', remain0: 30, enteredAt: at, seq: 0 };
-    b.direct(t, at, OFF_GROUP, DESIGNATED_SEED_RULE.refund, { name: m.name, staffNo: m.account, groupLabel: '' });
-  };
-  const dealerCase = (at: number, day: number) => {
-    serial += 1;
-    const t: Tk = { no: `IFLYZX-${ymd(day)}-${serial}`, pool: 'general', snap: SNAPS.general[3], priority: 'P2', remain0: 420, enteredAt: at, seq: 0 };
-    b.direct(t, at, FORMAL, DESIGNATED_SEED_RULE.dealer, { name: dealer.name, staffNo: dealer.staffNo, groupLabel: b.groupLabel(dealer.groupIds[0]) });
-  };
-  // 每个工作日 1～2 张个册退费，每周一张经销商
-  for (let d = HISTORY_DAYS; d >= 1; d -= 1) {
-    const ds = tl.today0 - d * DAY;
-    const wd = new Date(ds).getDay();
-    if (wd === 0 || wd === 6) continue;
-    refundCase(ds + 10 * HOUR + d * 7 * MIN, d, ds);
-    if (d % 2) refundCase(ds + 15 * HOUR + d * 4 * MIN, d + 1, ds);
-    if (wd === 3) dealerCase(ds + 11 * HOUR + 20 * MIN, ds);
-  }
-  // 今日：三张个册退费、一张经销商
-  const at = (f: number) => t0 + f * (now - t0);
-  refundCase(at(0.2), 0, now);
-  refundCase(at(0.48), 1, now);
-  dealerCase(at(0.63), now);
-  refundCase(at(0.81), 2, now);
-}
-
-/* ------------------------------------------------------------------ */
 /* 审计（上线以来）                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -1211,7 +1143,6 @@ export function buildDispatchDemo(now: number, agents: DispatchAgent[], groups: 
   const pool = buildPool(b, agents, now, rules, noteTake);
   buildRuleCases(b, agents, now, t0, hwMixedAt, noteTake);
   buildBackfill(b, tl, r);
-  buildDesignatedCases(b, agents, tl, now, t0);
   buildBacklogEntries(b, now);
   const logs = b.logs.filter((l) => l.at <= stamp(now)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 

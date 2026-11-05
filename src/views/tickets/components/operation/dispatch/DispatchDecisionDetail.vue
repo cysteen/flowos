@@ -49,8 +49,6 @@ const factors = computed(() => {
 const reasonText = computed(() => {
   const l = log.value;
   if (!l) return '';
-  // 指定人派单不进工单池
-  if (l.path === '直派规则') return `命中指定人规则「${l.ruleName}」，直接派给此人`;
   const parts = [`${l.trigger ?? '新单'}进入${l.poolLabel}（${l.ruleName}）`];
   if (l.path === '原处理人') parts.push(`历史处理人${l.originalRelation ? `（${l.originalRelation}）` : ''}已签入，优先派给此人`);
   else if (l.candidateCount != null) parts.push(`可接单 ${l.candidateCount} 人`);

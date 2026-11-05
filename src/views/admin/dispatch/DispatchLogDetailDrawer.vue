@@ -51,10 +51,10 @@ const gateRows = computed(() => {
   }));
 });
 
-/** 人工派单、系统异常、指定人派单都不走原处理人一步 */
+/** 人工派单、系统异常都不走原处理人一步 */
 const stepOriginalEntered = computed(() => {
   const l = props.log;
-  return !!l && l.effectiveMode !== '人工派单' && l.failReason !== '系统异常' && l.path !== '直派规则';
+  return !!l && l.effectiveMode !== '人工派单' && l.failReason !== '系统异常';
 });
 const originalVerdict = computed(() => {
   const l = props.log;
@@ -108,9 +108,9 @@ const scoreRows = computed(() => {
           <a-descriptions-item label="判定次序">第 {{ judgeOrdinals(store.logs).get(log.id) ?? log.seq }} 次判定</a-descriptions-item>
           <a-descriptions-item label="触发" :span="2">{{ log.trigger ?? '—' }}</a-descriptions-item>
           <a-descriptions-item label="归属池">{{ log.poolLabel }}</a-descriptions-item>
-          <a-descriptions-item :label="log.path === '直派规则' ? '指定人规则' : '入池规则'">{{ log.ruleName }}</a-descriptions-item>
+          <a-descriptions-item label="入池规则">{{ log.ruleName }}</a-descriptions-item>
           <a-descriptions-item label="全局派单方式">{{ log.globalMode }}</a-descriptions-item>
-          <a-descriptions-item label="归属池派单方式">{{ log.poolId ? log.groupMode : '—' }}</a-descriptions-item>
+          <a-descriptions-item label="归属池派单方式">{{ log.groupMode }}</a-descriptions-item>
         </a-descriptions>
       </section>
 

@@ -19,7 +19,6 @@ export const GATE_LABEL: Record<GateKey, string> = {
 
 /** 判定路径（13.1） */
 export const PATH_LABEL: Record<DispatchPath, string> = {
-  直派规则: '指定人派单',
   原处理人: '历史处理人派单',
   加权评分: '综合打分',
   排队: '排队等待',
@@ -103,6 +102,6 @@ export function logSummary(l: DispatchLogEntry): string {
 
 /** 履历正文里的路径名（如「（加权评分）」「（原处理人 · 本单退回）」）换成界面名称 */
 export function replacePathNames(text: string): string {
-  return text.replace(/（(直派规则|原处理人|加权评分|排队|留池)( · [^）]+)?）/g,
+  return text.replace(/（(原处理人|加权评分|排队|留池)( · [^）]+)?）/g,
     (_, p: DispatchPath, rel?: string) => `（${PATH_LABEL[p]}${rel ?? ''}）`);
 }
