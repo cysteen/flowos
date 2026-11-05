@@ -115,10 +115,8 @@ export function useTicketWorkbench() {
   function inPoolTabScope(t: Ticket): boolean {
     if (!inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value))) return false;
     // 【1215】工单池只列待领取的单：自动派单池的单由系统派出，不在此列（9.2）
-    if (!dispatch.inClaimablePool(t)) return false;
     // 小智直通产研平台的记录单留在工单池页签（【1120】）：不可领、不计池内待派与池积压、不参与派单
-    // 【1215】投诉对象为本人的工单不可见（10.1）
-    return dispatch.ticketStates[t.no]?.complaintTarget !== user.name;
+    return dispatch.inClaimablePool(t);
   }
 
   /**

@@ -343,7 +343,7 @@ interface GateOutcome {
   blockedByCap: DispatchAgent[];
   /** 就绪成员数（排队原因判据，不看个人开关） */
   onDuty: number;
-  /** 就绪且画像相符的成员数（不看个人开关、投诉回避）：有人而候选仍为空即「无可接单成员」 */
+  /** 就绪且画像相符的成员数（不看个人开关）：有人而候选仍为空即「无可接单成员」 */
   matchedReady: number;
   /** 第一个没人满足的门槛；都有人满足时为空 */
   failedAt?: GateKey;
@@ -381,8 +381,6 @@ export interface DesignatedHit {
 export interface DispatchOptions {
   /** 指定归属池（调剂到池、升级三线、专属工单落池点已定池时传入；不传按入池规则） */
   poolId?: string;
-  /** 投诉对象（投诉回避） */
-  complaintTarget?: string;
   /** 已判断过指定人规则或不适用（个册退费单进池时：已在建单时判断，下送回池不再命中） */
   skipDesignated?: boolean;
   /** 售后转回 / 回访打回：本单上一处理人（关系「本单退回」，有效期不限） */
@@ -930,7 +928,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
     step('个人开关', (a) => a.personalSwitch);
     step('角色', (a) => !a.disabled && a.roles.length > 0);
     step('在班', (a) => a.signIn === '就绪');
-    step('投诉回避', (a) => !st.complaintTarget || a.name !== st.complaintTarget);
     step('画像已配置', (a) => isProfileConfigured(a.profile));
     step('画像匹配', (a) => profileMatches(a, t));
     const matched = list;
@@ -1038,7 +1035,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   /** 例外清单（4.3，统一判定）：命中即不派回 */
   function exclusionOf(t: Ticket, st: TicketDispatchState, c: OriginalCandidate): OriginalExclusion | null {
-    if (st.complaintTarget && c.name === st.complaintTarget) return '被投诉人';
     const a = agentOf(c.name);
     const gid = poolGroupIdOf(st.poolId);
     if (!a || a.disabled || !gid || !a.groupIds.includes(gid)) return '不在归属组或已停用';
@@ -1077,7 +1073,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     return { hit: undefined, excluded };
   }
 
-  /** 原处理人的接单条件（4.3）：坐席状态与个人上限不挡；归属组、停用、被投诉人已由例外清单判定 */
+  /** 原处理人的接单条件（4.3）：坐席状态与个人上限不挡；归属组、停用已由例外清单判定 */
   function originalAcceptable(t: Ticket, a: DispatchAgent): boolean {
     return a.personalSwitch && a.roles.length > 0 && profileMatches(a, t);
   }
@@ -1254,10 +1250,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const fresh = trigger === '新单' || trigger === '调剂到池' || trigger === '升级三线' || trigger === '售后转回' || trigger === '回访打回'
       || trigger === '重新进池' || resumed;
     const prev = ticketStates.value[t.no];
-    if (prev && !fresh && isPoolEnabled(prev.poolId)) {
-      if (opts.complaintTarget) prev.complaintTarget = opts.complaintTarget;
-      return prev;
-    }
+    if (prev && !fresh && isPoolEnabled(prev.poolId)) return prev;
     // 指定池已停用：按入池规则重新确定归属池（14.3）
     let poolId = opts.poolId && isPoolEnabled(opts.poolId) ? opts.poolId : undefined;
     let ruleId: string | null = null;
@@ -1294,7 +1287,6 @@ export const useDispatchStore = defineStore('dispatch', () => {
       ...(fr ? { firstRespTotalMin: fr.limitMin, firstRespDueAt: now + fr.remainMin * MIN } : {}),
       ...(resumed && prev?.firstRespDueAt != null ? { firstRespTotalMin: prev.firstRespTotalMin, firstRespDueAt: prev.firstRespDueAt } : {}),
       ...(designated ? { designatedPool: true } : {}),
-      complaintTarget: opts.complaintTarget ?? prev?.complaintTarget,
       prevHandler: opts.prevHandler ?? (resumed ? prev?.prevHandler : undefined),
       relatedNo: opts.relatedNo ?? (resumed ? prev?.relatedNo : undefined),
       seq: prev?.seq ?? 0,

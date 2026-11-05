@@ -335,7 +335,7 @@ export interface OriginalRelationRule {
 }
 
 /** 不派回的情况（4.3 例外清单）；不在岗＝原处理人未签入或已签出 */
-export type OriginalExclusion = '被投诉人' | '不在归属组或已停用' | '上次回访不满意' | '小智退回' | '不在岗';
+export type OriginalExclusion = '不在归属组或已停用' | '上次回访不满意' | '小智退回' | '不在岗';
 
 export function defaultOriginalChain(): OriginalRelationRule[] {
   return [
@@ -464,8 +464,8 @@ export type DispatchPath = '直派规则' | '原处理人' | '加权评分' | '�
 export type DispatchFailReason = '组内暂无已就绪成员' | '无画像匹配成员' | '无可接单成员' | '均达个人上限' | '系统异常';
 
 /** 门槛（4.1 P0 项），按此次序逐条判定 */
-export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '投诉回避' | '画像已配置' | '画像匹配' | '个人上限';
-export const GATE_ORDER: GateKey[] = ['候选范围', '个人开关', '角色', '在班', '投诉回避', '画像已配置', '画像匹配', '个人上限'];
+export type GateKey = '候选范围' | '个人开关' | '角色' | '在班' | '画像已配置' | '画像匹配' | '个人上限';
+export const GATE_ORDER: GateKey[] = ['候选范围', '个人开关', '角色', '在班', '画像已配置', '画像匹配', '个人上限'];
 
 /** 单个候选的评分明细（4.4） */
 export interface ScoreDetail {
@@ -555,8 +555,6 @@ export interface TicketDispatchState {
   firstRespDueAt?: number;
   /** 经调剂到池、升级三线指定池进入（命中规则记「指定池」，13.1） */
   designatedPool?: boolean;
-  /** 投诉对象（投诉回避） */
-  complaintTarget?: string;
   /** 售后转回 / 回访打回：本单上一处理人（关系「本单退回」） */
   prevHandler?: string;
   /** 承接子单、升级投诉的原单号（关系「关联单」；外投单读工单行「升级自」） */
