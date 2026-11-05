@@ -398,6 +398,11 @@ function makeBuilder(agents: DispatchAgent[], groups: DispatchGroup[], r: () => 
 
 type Builder = ReturnType<typeof makeBuilder>;
 
+/** 混合派单池进入派单后由系统派出的占比，其余留池待领取 */
+const MIXED_SYSTEM_RATE = 0.9;
+/** 历史补量里自动派单池排队后被人工接走的占比 */
+const QUEUE_TAKEN_RATE = 0.1;
+
 const REASSIGN_REASONS = ['客户要求更换处理人', '原处理人临时外出培训', '需熟悉该产品的坐席跟进'];
 const TRANSFER_REASONS = ['该客户近期由其跟进', '跨组协助处理'];
 const QUEUE_REASONS: DispatchFailReason[] = ['均达个人上限', '均达个人上限', '均达个人上限', '组内暂无已就绪成员', '无可接单成员', '无画像匹配成员'];
@@ -561,7 +566,7 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       }
     }
 
-    // 专属工单线的组（小智、教育支持混合派单，教育刷机人工派单）：组内领取
+    // 专属工单线的组：小智、教育支持混合派单，多数由系统派出，其余留池由组内领取；教育刷机人工派单，组内领取
     const offCount = weekend ? 3 : 5;
     for (let i = 0; i < offCount; i += 1) {
       const pool = (['xiaozhi', 'edu-flash', 'edu'] as const)[i % 3];
@@ -570,6 +575,12 @@ function buildHistory(b: Builder, agents: DispatchAgent[], tl: Timeline, r: () =
       const who = pool === 'xiaozhi' ? '谭小智' : pool === 'edu-flash' ? (r() < 0.75 ? '许文静' : '王坐席') : (r() < 0.75 ? '何教支' : '张三');
       // 进池留池待领取（留池判定不消耗随机序列）
       const mode = pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP;
+      if (pool !== 'edu-flash' && r() < MIXED_SYSTEM_RATE) {
+        const chosen = b.pick(b.eligible(pool));
+        b.judge(t, ts, { trigger: '新单', path: '加权评分', mode, chosen, candidates: 1, firstRespAt: respAt(ts) });
+        noteTake(chosen.name, ts);
+        continue;
+      }
       b.judge(t, ts, { trigger: '新单', path: '留池', mode, status: null, ...(pool === 'edu-flash' ? {} : { failReason: mixedFailOf(ts) }) });
       b.manual(t, ts + b.between(3, 20) * MIN, '二线领取', who, mode, { target: who });
     }
@@ -587,22 +598,15 @@ const TODAY_ASSIGNS: [string, string, number][] = [
   ['tech', '陈技支', 0.22], ['general', '刘洋', 0.25], ['line2', '王坐席', 0.3], ['general', '徐璐', 0.33],
   ['general', '张三', 0.35], ['line2', '张三', 0.4], ['line2', '王坐席', 0.42], ['general', '刘洋', 0.47],
   ['line2', '林坐席', 0.5], ['tech', '陈技支', 0.55], ['general', '林坐席', 0.58], ['general', '徐璐', 0.6],
-  ['line2', '林坐席', 0.65], ['general', '刘洋', 0.7], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
-  ['line2', '林坐席', 0.8], ['general', '林坐席', 0.92],
-  ['line2', '王坐席', 0.12], ['line2', '张三', 0.26], ['line2', '王坐席', 0.36], ['line2', '林坐席', 0.44], ['line2', '王坐席', 0.55],
-  ['line2', '王坐席', 0.62], ['line2', '张三', 0.68], ['line2', '王坐席', 0.72], ['line2', '张三', 0.85], ['line2', '王坐席', 0.9],
-  ['general', '徐璐', 0.06], ['general', '刘洋', 0.1], ['general', '徐璐', 0.2], ['general', '刘洋', 0.28], ['general', '徐璐', 0.38],
-  ['general', '刘洋', 0.44], ['general', '徐璐', 0.52], ['general', '林坐席', 0.66], ['general', '刘洋', 0.74], ['general', '刘洋', 0.83],
-  ['hardware', '李四', 0.05], ['hardware', '陈坐席', 0.25], ['tech', '陈技支', 0.12], ['tech', '陈技支', 0.4],
+  ['line2', '林坐席', 0.65], ['tech', '陈技支', 0.75], ['general', '徐璐', 0.78],
+  ['line2', '林坐席', 0.8], ['tech', '陈技支', 0.32],
 ];
 /** 派出方式：d 加权评分直派、o 原处理人、q 排队后由扫描派出、r 投诉单派回已签入的原处理人 */
-const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdqrdoq' + 'qqqoqqdqqq' + 'qdqqqdqqqq' + 'qqdq';
-const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5, 12, 6, 4, 9, 3, 7, 5, 8, 4, 6, 10, 3, 5, 7, 4, 9, 6, 3, 8, 5, 4, 7];
+const TODAY_VIA = 'qdqoqqdqrqdqqoqdqqdqdrdoq';
+const QUEUE_WAITS = [3, 5, 2, 8, 4, 11, 6, 3, 14, 7, 4, 9, 5];
 /** 今日组内领取：[池, 坐席, 比例] */
 const TODAY_CLAIMS: [string, string, number][] = [
-  ['edu-flash', '许文静', 0.14], ['edu-flash', '许文静', 0.2], ['edu-flash', '许文静', 0.38], ['edu-flash', '王坐席', 0.44],
-  ['edu-flash', '许文静', 0.6], ['edu-flash', '张三', 0.66], ['edu-flash', '许文静', 0.84], ['edu-flash', '许文静', 0.9],
-  ['tech', '周技支', 0.5],
+  ['edu-flash', '许文静', 0.2], ['edu-flash', '王坐席', 0.44], ['edu-flash', '许文静', 0.84],
 ];
 
 interface TodayCtx {
@@ -927,7 +931,7 @@ function surveyBadRow(now: number, groupLabel: string): Ticket {
 
 /**
  * 今日的规则演示日志（工单号段 6xxxx，不在工单库）：放在随机序列末尾，不扰动前面的种子。
- * 混合派单各池都有综合打分派出与待领取；人工派单有待领取；
+ * 硬件、小智池有综合打分派出与待领取，教育支持池今日都已派出；人工派单有待领取；
  * 原处理人已签入但满额（超额指派）、已签入但小休都派回，已签出的转综合打分。
  */
 function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: number, hwMixedAt: number, noteTake: (name: string, at: number) => void) {
@@ -961,7 +965,6 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
   dispatched('xiaozhi', '谭小智', 0.25, OFF_GROUP, 1);
   dispatched('xiaozhi', '谭小智', 0.4, OFF_GROUP);
   dispatched('xiaozhi', '谭小智', 0.6, OFF_GROUP, 1);
-  dispatched('xiaozhi', '谭小智', 0.5, OFF_GROUP);
   dispatched('xiaozhi', '谭小智', 0.72, OFF_GROUP, 1);
   waiting('xiaozhi', 0.76, OFF_GROUP, '组内暂无已就绪成员', 1);
   dispatched('edu', '何教支', 0.18, OFF_GROUP, 1);
@@ -970,9 +973,7 @@ function buildRuleCases(b: Builder, agents: DispatchAgent[], now: number, t0: nu
   dispatched('edu', '何教支', 0.66, OFF_GROUP, 1);
   dispatched('edu', '何教支', 0.55, OFF_GROUP);
   dispatched('edu', '何教支', 0.72, OFF_GROUP, 1);
-  waiting('edu', 0.79, OFF_GROUP, '均达个人上限', 1);
   waiting('edu-flash', 0.42, FLASH_MANUAL);
-  waiting('edu-flash', 0.83, FLASH_MANUAL, undefined, 1);
 
   // 原处理人：已签入但满额 → 派回，记超额指派
   const full = at(0.86);
@@ -1058,6 +1059,14 @@ function buildBackfill(b: Builder, tl: Timeline, r: () => number) {
           const pools = enter < tl.multiStart ? ['line2'] : ['line2', 'line2', 'general', 'general', 'hardware', 'tech'];
           const pool = b.pick(pools);
           const t = newTk(pool, enter);
+          if (r() < QUEUE_TAKEN_RATE) {
+            const who = b.pick(b.eligible(pool)).name;
+            const claim = r() < 0.55;
+            const take = enter + b.between(5, 30) * MIN;
+            b.judge(t, enter, { trigger: '新单', path: '排队', mode: FORMAL, status: '排队中', failReason: b.pick(QUEUE_REASONS) });
+            b.manual(t, take, claim ? '二线领取' : '班组长指派', claim ? who : LEADER, FORMAL, { target: who, firstRespAt: respAt(take) });
+            continue;
+          }
           const back = r() < 0.15;
           b.judge(t, enter, {
             trigger: back && r() < 0.5 ? '回访打回' : r() < 0.08 ? '售后转回' : '新单',
@@ -1065,7 +1074,11 @@ function buildBackfill(b: Builder, tl: Timeline, r: () => number) {
           });
         } else {
           const pool = b.pick(CLAIM_POOLS);
-          manualCase(pool, enter, enter + b.between(3, 22) * MIN, pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP, false);
+          if (pool !== 'edu-flash' && r() < MIXED_SYSTEM_RATE) {
+            b.judge(newTk(pool, enter), enter, { trigger: '新单', path: '加权评分', mode: OFF_GROUP, chosen: b.pick(b.eligible(pool)), candidates: 1, firstRespAt: respAt(enter) });
+          } else {
+            manualCase(pool, enter, enter + b.between(3, 22) * MIN, pool === 'edu-flash' ? FLASH_MANUAL : OFF_GROUP, false);
+          }
         }
       }
     }
@@ -1075,7 +1088,8 @@ function buildBackfill(b: Builder, tl: Timeline, r: () => number) {
       for (let i = 0; i < count; i += 1) {
         const enter = ds + 18 * HOUR + 40 * MIN + r() * 2.5 * HOUR;
         const take = ds + DAY + 8 * HOUR + 35 * MIN + r() * 1.5 * HOUR;
-        const pool = prelaunch ? b.pick(PRE_LAUNCH_POOLS) : b.pick(CLAIM_POOLS);
+        // 上线后的夜间单只留人工派单池：混合派单池进池即判定，不留到次日
+        const pool = prelaunch ? b.pick(PRE_LAUNCH_POOLS) : 'edu-flash';
         const mode = pool === 'edu-flash' ? FLASH_MANUAL : prelaunch ? PRE_LAUNCH : OFF_GROUP;
         manualCase(pool, enter, take, mode, false);
       }
