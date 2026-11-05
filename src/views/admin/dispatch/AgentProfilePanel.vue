@@ -134,7 +134,7 @@ const recordCols = [
   { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
   { title: '操作人', dataIndex: 'operator', key: 'operator', width: 90 },
   { title: '坐席', dataIndex: 'target', key: 'target', width: 90 },
-  { title: '类型', dataIndex: 'kind', key: 'kind', width: 90 },
+  { title: '修改内容', dataIndex: 'kind', key: 'kind', width: 90 },
   { title: '变更前', dataIndex: 'before', key: 'before', ellipsis: true },
   { title: '变更后', dataIndex: 'after', key: 'after', ellipsis: true },
 ];
@@ -164,33 +164,35 @@ function rowClass(name: string) {
     </section>
 
     <section class="block profile-split">
-      <div class="b-title inline">
-        坐席画像
-        <span class="b-tip">共 {{ rows.length }} 人 · 按负载降序</span>
-        <span class="hd-btn ap-hd-btns">
-          <a-button size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>画像变更记录</a-button>
-          <a-button size="small" :disabled="!selectedKeys.length" @click="batchOpen = true"><template #icon><TeamOutlined /></template>批量设置画像</a-button>
-        </span>
-      </div>
+      <header class="profile-top-bar">
+        <div class="profile-top-lead">
+          <h3 class="profile-split-name">坐席画像</h3>
+          <span class="profile-split-meta">共 <b>{{ rows.length }}</b> 人 · 负载降序</span>
+        </div>
+        <div class="pf-filter-grid">
+          <a-input v-model:value="f.kw" class="pf-ctl pf-search" placeholder="姓名 / 工号" allow-clear>
+            <template #prefix><SearchOutlined class="pf-search-icon" /></template>
+          </a-input>
+          <a-select v-model:value="f.group" class="pf-ctl pf-sel" :options="groupOpts" placeholder="所属组" allow-clear />
+          <a-select v-model:value="f.signIn" class="pf-ctl pf-sel" :options="opts(SIGN_IN_STATUSES)" placeholder="坐席状态" allow-clear />
+          <a-select v-model:value="f.proficiency" class="pf-ctl pf-sel" :options="opts(PROFICIENCIES)" placeholder="熟练度" allow-clear />
+          <a-select v-model:value="f.personal" class="pf-ctl pf-sel" :options="personalOpts" placeholder="个人开关" allow-clear />
+          <a-checkbox v-model:checked="f.unconfigured" class="pf-unconfigured">是否配置了画像</a-checkbox>
+        </div>
+        <div class="ap-hd-btns">
+          <a-button size="small" @click="recordOpen = true"><template #icon><HistoryOutlined /></template>变更记录</a-button>
+          <a-button size="small" type="primary" :disabled="!selectedKeys.length" @click="batchOpen = true"><template #icon><TeamOutlined /></template>批量设置</a-button>
+        </div>
+      </header>
 
       <div class="profile-layout">
         <aside class="profile-list-panel">
-          <div class="pf-toolbar">
-            <a-input v-model:value="f.kw" size="small" placeholder="姓名 / 工号" allow-clear class="pf-search">
-              <template #prefix><SearchOutlined class="pf-search-icon" /></template>
-            </a-input>
-            <a-select v-model:value="f.group" size="small" :options="groupOpts" placeholder="所属组" allow-clear />
-            <a-select v-model:value="f.signIn" size="small" :options="opts(SIGN_IN_STATUSES)" placeholder="坐席状态" allow-clear />
-            <a-select v-model:value="f.proficiency" size="small" :options="opts(PROFICIENCIES)" placeholder="熟练度" allow-clear />
-            <a-select v-model:value="f.personal" size="small" :options="personalOpts" placeholder="个人开关" allow-clear />
-            <a-checkbox v-model:checked="f.unconfigured">画像未配置</a-checkbox>
-          </div>
           <div class="profile-table-wrap table-shell">
             <a-table
               :columns="cols"
               :data-source="rows"
               row-key="name"
-              size="small"
+              size="middle"
               :pagination="pagination"
               :row-selection="rowSelection"
               :scroll="{ x: 552 }"
@@ -310,8 +312,64 @@ function rowClass(name: string) {
 
 /* 主区块 · 左右分栏 */
 .profile-split { padding: 16px 20px; margin-bottom: 0; }
+
+.profile-top-bar {
+  display: flex; align-items: center; gap: 10px 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.profile-top-lead {
+  display: flex; align-items: baseline; gap: 8px; flex: none;
+  padding-right: 4px;
+}
+.profile-split-name {
+  margin: 0;
+  font-size: 14px; font-weight: 600; color: #1f2329; line-height: 20px;
+  padding-left: 10px; border-left: 3px solid #1a6fff; white-space: nowrap;
+}
+.profile-split-meta { font-size: 12px; color: #86909c; line-height: 20px; white-space: nowrap; }
+.profile-split-meta b { font-weight: 600; color: #1f2329; font-variant-numeric: tabular-nums; }
+
+.pf-filter-grid {
+  flex: 1; min-width: 0;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+}
+.pf-search { width: 128px; flex: none; }
+.pf-sel { width: 102px; flex: none; }
+.pf-unconfigured { margin: 0; flex: none; font-size: 12px; color: #4e5969; white-space: nowrap; }
+.pf-unconfigured :deep(.ant-checkbox + span) { padding-inline-end: 0; }
+.pf-search-icon { color: #c9cdd4; font-size: 13px; }
+
+.profile-top-bar :deep(.ant-select-selector),
+.profile-top-bar :deep(.ant-input-affix-wrapper) {
+  border-radius: 6px !important;
+  border-color: #e5e7eb !important;
+  background: #fff !important;
+  font-size: 12px !important;
+}
+.profile-top-bar :deep(.ant-select-selector) {
+  height: 28px !important;
+  padding-inline: 8px !important;
+  align-items: center;
+}
+.profile-top-bar :deep(.ant-input-affix-wrapper) {
+  height: 28px !important;
+  padding-inline: 8px !important;
+}
+.profile-top-bar :deep(.ant-input-affix-wrapper > input.ant-input) {
+  font-size: 12px !important;
+}
+.profile-top-bar :deep(.ant-select-selection-item),
+.profile-top-bar :deep(.ant-select-selection-placeholder) {
+  font-size: 12px !important;
+  line-height: 26px !important;
+}
+
 .profile-layout {
-  display: flex; gap: 16px; margin-top: 14px; align-items: stretch;
+  display: flex; gap: 16px; margin-top: 12px; align-items: stretch;
   min-height: 480px;
 }
 .profile-list-panel {
@@ -319,26 +377,24 @@ function rowClass(name: string) {
   border: 1px solid #eef0f3; border-radius: 8px; padding: 12px;
   background: #fafbfc; display: flex; flex-direction: column; overflow: hidden;
 }
-.pf-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; }
-.pf-search { width: 200px; flex: none; }
-.pf-search-icon { color: #9ca3af; font-size: 13px; }
-.pf-toolbar :deep(.ant-select) { min-width: 110px; flex: 1; max-width: 150px; }
-.profile-table-wrap { flex: 1; min-height: 0; overflow: auto; }
-.profile-list-panel :deep(.ant-table) { background: #fff; border-radius: 6px; font-size: 12px; }
+
+.profile-table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid #eef0f3; border-radius: 8px; background: #fff; }
+.profile-list-panel :deep(.ant-table) { font-size: 13px; }
 .profile-list-panel :deep(.ant-table-thead > tr > th),
-.profile-list-panel :deep(.ant-table-tbody > tr > td) { padding: 7px 8px !important; }
+.profile-list-panel :deep(.ant-table-tbody > tr > td) { padding: 10px 12px !important; }
 /* 横向滚动表的测量行只用于定列宽，不占高度 */
 .profile-list-panel :deep(.ant-table-tbody > tr.ant-table-measure-row > td) { padding: 0 !important; border: 0 !important; }
 .profile-list-panel :deep(.ant-table-row) { cursor: pointer; }
 .profile-list-panel :deep(.profile-row-active > td) { background: #eff6ff !important; }
 
-.ap-hd-btns { display: inline-flex; gap: 8px; }
-.staff-no { font-size: 11px; margin-left: 4px; }
-.ap-prof { font-size: 12px; color: #374151; }
+.ap-hd-btns { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.ap-hd-btns :deep(.ant-btn) { font-size: 12px; height: 28px; padding-inline: 10px; border-radius: 6px; }
+.staff-no { font-size: 12px; margin-left: 4px; color: #9ca3af; }
+.ap-prof { font-size: 13px; color: #374151; }
 .flag-muted { color: #9ca3af; }
-.cap-text { font-size: 12px; }
+.cap-text { font-size: 13px; }
 .load-full { color: #ff7d00; font-weight: 600; }
-.status-cell.compact { font-size: 11px; gap: 4px; }
+.status-cell.compact { font-size: 13px; gap: 6px; }
 
 .profile-detail-panel {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
@@ -382,7 +438,9 @@ function rowClass(name: string) {
 .pd-foot { text-align: right; border-top: 1px solid #eef0f3; padding-top: 12px; margin-top: auto; }
 .pd-empty { padding: 48px 0; }
 
-.profile-list-panel :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
+.profile-list-panel :deep(.ant-table-thead > tr > th) {
+  background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
+}
 
 @container (max-width: 1080px) {
   .profile-layout { flex-direction: column; min-height: 0; }
