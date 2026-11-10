@@ -7,8 +7,6 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   BellOutlined,
-  CheckOutlined,
-  CloseOutlined,
 } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
 import { useUserStore } from '@/stores/user';
@@ -64,10 +62,11 @@ const team: Req[] = [
   { id: 'AP-2039', title: '赠品发放申请', type: '补偿审批', applicant: '刘洋', node: '已完成', status: '已通过', submit: '06-18 15:20' },
   { id: 'AP-2035', title: '请假 6/20', type: '请假调班', applicant: '周敏', node: '已驳回', status: '已驳回', submit: '06-18 08:00' },
 ];
+/** 强结单置顶，便于演示「免审」仅强结类型出现 */
 const todo: Req[] = [
-  { id: 'AP-2045', title: 'TK-88250 升级二线', type: '工单升级审批', applicant: '陈静', node: '待我审批', status: '审批中', submit: '06-19 11:02' },
   { id: 'AP-2043', title: 'TK-88248 强制结案', type: '工单强结审批', applicant: '黄勇', node: '待我审批', status: '审批中', submit: '06-19 10:35' },
   { id: 'AP-2041', title: 'TK-88231 强制结案', type: '工单强结审批', applicant: '吴婷', node: '待我审批', status: '审批中', submit: '06-19 10:20' },
+  { id: 'AP-2045', title: 'TK-88250 升级二线', type: '工单升级审批', applicant: '陈静', node: '待我审批', status: '审批中', submit: '06-19 11:02' },
   { id: 'AP-2040', title: '退款 ¥499', type: '退款审批', applicant: '钱进', node: '待我审批', status: '审批中', submit: '06-19 09:55', amount: '¥499' },
 ];
 const done: Req[] = [
@@ -91,8 +90,13 @@ const baseCols = [
   { title: '当前节点', dataIndex: 'node', key: 'node', width: 100 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 88 },
   { title: '提交时间', dataIndex: 'submit', key: 'submit', width: 112 },
-  { title: '操作', key: 'op', width: 220 },
+  { title: '操作', key: 'op', width: 320, fixed: 'right' as const },
 ];
+
+/** 仅工单强结审批展示「免审」 */
+function isForceCloseApproval(r: Req) {
+  return r.type === '工单强结审批' || r.title.includes('强制结案');
+}
 
 function moveToDone(r: Req) {
   const i = dataMap.todo.findIndex((x) => x.id === r.id);
@@ -107,6 +111,13 @@ function approve(r: Req) {
   r.node = '已完成';
   moveToDone(r);
   message.success(`已通过 ${r.id}`);
+}
+function approveExempt(r: Req) {
+  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
+  r.status = '已通过';
+  r.node = '已完成';
+  moveToDone(r);
+  message.success(`免审通过 ${r.id}`);
 }
 function reject(r: Req) {
   if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
@@ -183,31 +194,39 @@ function withdraw(r: Req) {
                 {{ record.status }}
               </a-tag>
               <template v-else-if="column.key === 'op'">
-                <a-button type="link" size="small" @click="viewDetail(record as Req)">
-                  查看详情
-                </a-button>
-                <!-- 无审批资格的角色（② ③ ④ 等）整两枚不展示，不是置灰：矩阵取值是「无」 -->
-                <template v-if="active === 'todo' && canApprove">
-                  <a-button type="link" size="small" @click="approve(record as Req)">
-                    <template #icon><CheckOutlined /></template>
-                    通过
+                <div class="op-actions">
+                  <a-button type="link" size="small" @click="viewDetail(record as Req)">
+                    查看详情
                   </a-button>
-                  <a-button type="link" size="small" danger @click="reject(record as Req)">
-                    <template #icon><CloseOutlined /></template>
-                    驳回
-                  </a-button>
-                </template>
-                <template v-else-if="active === 'mine'">
-                  <a-button
-                    type="link"
-                    size="small"
-                    danger
-                    :disabled="record.status !== '审批中'"
-                    @click="withdraw(record as Req)"
-                  >
-                    撤回
-                  </a-button>
-                </template>
+                  <template v-if="active === 'todo' && canApprove">
+                    <a-button
+                      v-if="isForceCloseApproval(record as Req)"
+                      type="link"
+                      size="small"
+                      class="op-exempt"
+                      @click="approveExempt(record as Req)"
+                    >
+                      免审
+                    </a-button>
+                    <a-button type="link" size="small" @click="approve(record as Req)">
+                      通过
+                    </a-button>
+                    <a-button type="link" size="small" danger @click="reject(record as Req)">
+                      驳回
+                    </a-button>
+                  </template>
+                  <template v-else-if="active === 'mine'">
+                    <a-button
+                      type="link"
+                      size="small"
+                      danger
+                      :disabled="record.status !== '审批中'"
+                      @click="withdraw(record as Req)"
+                    >
+                      撤回
+                    </a-button>
+                  </template>
+                </div>
               </template>
             </template>
             <template #emptyText>
@@ -244,6 +263,21 @@ function withdraw(r: Req) {
           <a-step title="审批中" :description="detailReq.node" />
           <a-step :title="detailReq.status === '已驳回' ? '已驳回' : '审批完成'" />
         </a-steps>
+        <div
+          v-if="
+            active === 'todo' &&
+            canApprove &&
+            detailReq.status === '审批中' &&
+            isForceCloseApproval(detailReq)
+          "
+          class="detail-actions"
+        >
+          <a-button type="primary" ghost class="detail-exempt" @click="approveExempt(detailReq); detailOpen = false">
+            免审
+          </a-button>
+          <a-button type="primary" @click="approve(detailReq); detailOpen = false">通过</a-button>
+          <a-button danger @click="reject(detailReq); detailOpen = false">驳回</a-button>
+        </div>
       </template>
     </a-modal>
   </div>
@@ -411,6 +445,24 @@ function withdraw(r: Req) {
   color: #6b7280;
 }
 
+.op-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  max-width: 100%;
+}
+
+.op-actions :deep(.ant-btn-link) {
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+
+
+.op-exempt {
+  color: #059669 !important;
+}
+
 .empty {
   padding: 32px 0;
   color: #9ca3af;
@@ -422,5 +474,19 @@ function withdraw(r: Req) {
   font-weight: 600;
   color: #374151;
   margin: 18px 0 12px;
+}
+
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f1f3;
+}
+
+.detail-exempt {
+  color: #059669 !important;
+  border-color: #6ee7b7 !important;
 }
 </style>
