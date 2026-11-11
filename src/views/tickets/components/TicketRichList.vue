@@ -1382,7 +1382,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   position: relative;
   width: min(420px, 92vw);
   max-width: min(420px, 92vw);
-  height: min(360px, 56vh);
+  height: min(300px, 48vh);
   display: flex;
   flex-direction: column;
   gap: 8px;
