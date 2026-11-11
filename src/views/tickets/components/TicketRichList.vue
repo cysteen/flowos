@@ -196,12 +196,6 @@ function summaryHandlingEntries(t: Ticket): LatestHandlingItem[] {
   return [...handlingTrail(t)].reverse();
 }
 
-function summaryHandlingFootTip(t: Ticket): string {
-  const n = summaryHandlingEntries(t).length;
-  if (n > 1) return `共 ${n} 条处理结果，可在上方区域内滚动`;
-  return '内容过长可在上方区域内滚动';
-}
-
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -770,7 +764,6 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                   </section>
                 </div>
                 <div class="sp-foot">
-                  <span class="sp-foot-tip">{{ summaryHandlingFootTip(t) }}</span>
                   <button
                     type="button"
                     class="sp-expand"
@@ -1521,14 +1514,9 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 4px;
   border-top: 1px solid #f3f4f6;
-}
-.summary-pop .sp-foot-tip {
-  font-size: 10px;
-  color: #9ca3af;
-  line-height: 1.4;
 }
 .summary-pop .sp-expand {
   border: none;
