@@ -46,7 +46,12 @@ import {
   type Ticket,
 } from '@/views/tickets/types/ticket';
 import { latestWhenText, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
-import { useLatestHandlingPreview } from '@/views/tickets/composables/latestHandlingPreview';
+import {
+  latestHandlingLineText,
+  useLatestHandlingList,
+  useLatestHandlingPreview,
+} from '@/views/tickets/composables/latestHandlingPreview';
+import { ticketProductIssue } from '@/views/tickets/utils/ticketOverview';
 import TicketTitleCell from './TicketTitleCell.vue';
 
 const props = withDefaults(
@@ -167,6 +172,7 @@ const props = withDefaults(
 const user = useUserStore();
 /** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
 const latestPreview = useLatestHandlingPreview();
+const latestList = useLatestHandlingList();
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -677,7 +683,12 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         </div>
 
         <div v-else-if="colKey === 'summary'" class="col-summary cell-summary">
-          <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+          <a-popover
+            trigger="hover"
+            placement="rightTop"
+            :mouse-enter-delay="0.2"
+            overlay-class-name="ticket-summary-popover"
+          >
             <div class="summary-stack">
               <!-- 建议单、商机单建单不填问题描述，问题行与悬浮卡问题描述块都不出 -->
               <div v-if="t.type !== '建议' && t.type !== '商机'" class="summary-line">
@@ -686,28 +697,64 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
               </div>
               <div class="summary-line">
                 <span class="hi-label handle">最新</span>
-                <span class="hi-text line-clamp">{{ latestPreview(t)?.text || '暂无处理记录' }}</span>
+                <span class="hi-text line-clamp">{{
+                  latestPreview(t) ? latestHandlingLineText(latestPreview(t)!) : '暂无处理记录'
+                }}</span>
               </div>
             </div>
             <template #content>
               <div class="summary-pop">
-                <div class="sp-title"><span class="sp-type">{{ ticketTypeLabel(t) }}</span>{{ t.title }}</div>
+                <div class="sp-head">
+                  <div class="sp-title">
+                    <span class="sp-type">{{ ticketTypeLabel(t) }}</span>{{ t.title }}
+                  </div>
+                  <div class="sp-meta">
+                    <span
+                      class="sp-status"
+                      :style="statusStyle(t.nodeStatus)"
+                    >{{ ticketStatusDisplayName(t) }}</span>
+                    <span class="sp-prio">
+                      <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }" />
+                      {{ t.priority }}
+                    </span>
+                    <span class="sp-no">{{ t.no }}</span>
+                  </div>
+                  <div class="sp-facts">
+                    <span class="sp-fact">{{ t.customer || '—' }}</span>
+                    <span class="sp-sep">·</span>
+                    <span class="sp-fact">{{ t.product || '—' }}</span>
+                  </div>
+                  <div class="sp-subfacts">
+                    <span v-if="ticketProductIssue(t)">{{ ticketProductIssue(t) }}</span>
+                    <span v-if="t.assignee" class="sp-assignee">当前处理：{{ t.assignee }}</span>
+                    <span v-if="t.updatedAt" class="sp-updated">更新 {{ t.updatedAt }}</span>
+                  </div>
+                </div>
                 <div v-if="t.type !== '建议' && t.type !== '商机'" class="sp-block">
                   <div class="hi-meta">
                     <span class="hi-label">问题描述</span>
                   </div>
-                  <div class="hi-text">{{ t.problemDesc || '—' }}</div>
+                  <div class="hi-text sp-problem">{{ t.problemDesc || '—' }}</div>
                 </div>
-                <div class="sp-block">
-                  <div class="hi-meta">
+                <div class="sp-block sp-block--trail">
+                  <div class="sp-block-title">
                     <span class="hi-label handle">最新处理</span>
-                    <template v-if="latestPreview(t)">
-                      <span class="hi-who">{{ latestPreview(t)!.who }}</span>
-                      <span class="hi-action">{{ resolveLatestHandlingAction(latestPreview(t)!) }}</span>
-                      <span class="hi-when">{{ latestWhenText(latestPreview(t)!.when) }}</span>
-                    </template>
+                    <span v-if="latestList(t).length > 1" class="sp-trail-count">{{ latestList(t).length }} 条</span>
                   </div>
-                  <div class="hi-text">{{ latestPreview(t)?.text || '暂无处理记录' }}</div>
+                  <div v-if="!latestList(t).length" class="hi-text muted">暂无处理记录</div>
+                  <div
+                    v-for="(h, i) in latestList(t)"
+                    :key="`${t.id}-lh-${i}`"
+                    class="sp-handle-item"
+                  >
+                    <div class="hi-meta">
+                      <span class="hi-who">{{ h.who }}</span>
+                      <span v-if="h.role" class="hi-role">{{ h.role }}</span>
+                      <span class="hi-action">{{ resolveLatestHandlingAction(h) }}</span>
+                      <span class="hi-when">{{ latestWhenText(h.when) }}</span>
+                    </div>
+                    <div class="hi-text">{{ h.text }}</div>
+                  </div>
                 </div>
               </div>
             </template>
@@ -1333,22 +1380,57 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 
 <!-- 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->
 <style>
-.summary-pop { width: 320px; display: flex; flex-direction: column; gap: 8px; }
+.ticket-summary-popover .ant-popover-inner { padding: 12px 14px; }
+.summary-pop { width: 360px; max-width: min(360px, 88vw); display: flex; flex-direction: column; gap: 10px; }
+.summary-pop .sp-head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #f3f4f6; }
 .summary-pop .sp-title {
-  font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4;
+  font-size: 13px; font-weight: 600; color: #111827; line-height: 1.45;
   display: flex; align-items: baseline; gap: 6px;
 }
 .summary-pop .sp-type {
   flex: none; font-size: 11px; font-weight: 600; color: #4b5563;
   background: #f3f4f6; border-radius: 3px; padding: 1px 6px;
 }
+.summary-pop .sp-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.summary-pop .sp-status {
+  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 4px;
+}
+.summary-pop .sp-prio {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: #374151;
+}
+.summary-pop .sp-prio .prio-dot { width: 6px; height: 6px; border-radius: 50%; }
+.summary-pop .sp-no { font-size: 11px; color: #6b7280; font-family: ui-monospace, Consolas, monospace; }
+.summary-pop .sp-facts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: #111827; font-weight: 500; }
+.summary-pop .sp-sep { color: #d1d5db; }
+.summary-pop .sp-subfacts {
+  display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: #6b7280; line-height: 1.5;
+}
+.summary-pop .sp-assignee { color: #1a6fff; font-weight: 500; }
+.summary-pop .sp-updated { margin-left: auto; color: #9ca3af; }
 .summary-pop .sp-block { display: flex; flex-direction: column; gap: 4px; }
-.summary-pop .hi-meta { display: flex; align-items: center; gap: 8px; }
+.summary-pop .sp-block--trail {
+  max-height: min(220px, 40vh); overflow-y: auto; scrollbar-width: thin;
+  padding-right: 2px; gap: 8px;
+}
+.summary-pop .sp-block-title { display: flex; align-items: center; gap: 8px; }
+.summary-pop .sp-trail-count {
+  font-size: 10px; font-weight: 500; color: #6b7280; background: #f3f4f6;
+  border-radius: 8px; padding: 0 6px;
+}
+.summary-pop .sp-handle-item {
+  padding: 6px 8px; border-radius: 8px; background: #f9fafb; border: 1px solid #f3f4f6;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.summary-pop .sp-problem { max-height: 88px; overflow-y: auto; scrollbar-width: thin; }
+.summary-pop .hi-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
 .summary-pop .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
+.summary-pop .hi-role { font-size: 11px; color: #9ca3af; }
 .summary-pop .hi-action { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
-.summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
+.summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; white-space: nowrap; }
 .summary-pop .hi-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
+.summary-pop .hi-text.muted { color: #9ca3af; }
 .group-pop {
   display: flex;
   flex-wrap: wrap;

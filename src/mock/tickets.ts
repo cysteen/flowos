@@ -1445,7 +1445,12 @@ const BASE_TICKETS: Ticket[] = [
 
 /** 列表速览：问题描述 + 最新处理结果（按工单 id 合并，便于坐席快速扫读） */
 const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: string }> = {
-  t1: { problemDesc: '在线音乐频繁自动跳过当前歌曲，重启无效', latestHandling: '已远程升级固件并复测，观察中' },
+  t1: {
+    problemDesc:
+      '使用无线音箱播放在线音乐时，频繁出现自动跳过当前歌曲的情况，重启后仍复现，影响正常使用，要求尽快解决。',
+    latestHandling:
+      '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
+  },
   t2: { problemDesc: '扫地机器人无法开机、指示灯不亮，重启无效', latestHandling: '已指导强制重启与充电检测，疑似主板供电故障' },
   t3: { problemDesc: '企业版功能咨询，需客户补充账号与场景信息', latestHandling: '已挂起，等待客户补充材料后继续' },
   t4: { problemDesc: 'API 调用频繁返回 429 限流，影响集成', latestHandling: '已升级二线，建议提升配额并优化调用频率' },
