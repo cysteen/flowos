@@ -189,6 +189,13 @@ function toggleSummaryPopExpand(id: string) {
   summaryPopExpandedId.value = summaryPopExpandedId.value === id ? null : id;
 }
 
+/** 放大时高度变高，禁止纵向贴边重算，避免卡片“跳到”视口顶部 */
+const summaryPopoverAdjust = { adjustY: 0 as const, adjustX: 1 as const };
+
+function onSummaryPopoverOpenChange(open: boolean) {
+  if (!open) summaryPopExpandedId.value = null;
+}
+
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -703,7 +710,9 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
             trigger="hover"
             placement="rightTop"
             :mouse-enter-delay="0.2"
+            :auto-adjust-overflow="summaryPopoverAdjust"
             overlay-class-name="ticket-summary-popover"
+            @open-change="onSummaryPopoverOpenChange"
           >
             <div class="summary-stack">
               <!-- 建议单、商机单建单不填问题描述，问题行与悬浮卡问题描述块都不出 -->
@@ -1386,8 +1395,9 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: height 0.12s ease-out;
 }
-.summary-pop.is-expanded { height: min(640px, 78vh); }
+.summary-pop.is-expanded { height: min(520px, 68vh); }
 .summary-pop .sp-title-row {
   flex: none;
   display: flex;
