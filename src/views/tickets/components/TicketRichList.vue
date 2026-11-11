@@ -752,7 +752,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                   </section>
                 </div>
                 <div class="sp-foot">
-                  <span class="sp-foot-hint" aria-hidden="true">…</span>
+                  <span class="sp-foot-tip">内容过长可在上方区域内滚动</span>
                   <button
                     type="button"
                     class="sp-expand"
@@ -1481,11 +1481,10 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   padding-top: 4px;
   border-top: 1px solid #f3f4f6;
 }
-.summary-pop .sp-foot-hint {
-  font-size: 14px;
+.summary-pop .sp-foot-tip {
+  font-size: 10px;
   color: #9ca3af;
-  letter-spacing: 2px;
-  line-height: 1;
+  line-height: 1.4;
 }
 .summary-pop .sp-expand {
   border: none;
