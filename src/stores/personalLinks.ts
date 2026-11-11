@@ -16,8 +16,12 @@ const MAX_LINKS = 30;
 export const MAX_TITLE_LEN = 30;
 /** 网址：覆盖带查询参数的内链；与常见 BFF / DB 字段长度对齐 */
 export const MAX_URL_LEN = 512;
-/** 调高此版本可在开发环境一次性刷新演示数据 */
-const DEV_SEED_REV = '2026-02-demo-overflow-21';
+/**
+ * 调高此版本可在原型环境一次性刷新验收演示数据。
+ * GitHub Pages / `npm run preview` 与本地 dev 均启用（接真实 BFF 后改为仅 DEV 或关种子）。
+ */
+const DEMO_SEED_REV = '2026-02-demo-overflow-21';
+const ENABLE_DEMO_SEED = import.meta.env.VITE_PERSONAL_LINKS_DEMO !== 'false';
 
 const LONG_URL_DEMO =
   'https://www.baidu.com/s?wd=%E5%AE%A2%E6%9C%8D%E7%B3%BB%E7%BB%9F&ie=utf-8&tn=demo' +
@@ -64,31 +68,42 @@ function buildDemoLinks(): PersonalLink[] {
   }));
 }
 
-function applyDevSeed(account: string): PersonalLink[] {
+function applyDemoSeed(account: string): PersonalLink[] {
   const seeded = buildDemoLinks();
   save(account, seeded);
-  localStorage.setItem(`${STORAGE_PREFIX}:dev_seed_rev:${account}`, DEV_SEED_REV);
+  localStorage.setItem(`${STORAGE_PREFIX}:demo_seed_rev:${account}`, DEMO_SEED_REV);
   return seeded;
 }
 
 function load(account: string): PersonalLink[] {
+  if (!ENABLE_DEMO_SEED) {
+    try {
+      const raw = localStorage.getItem(storageKey(account));
+      if (!raw) return [];
+      const list = JSON.parse(raw) as PersonalLink[];
+      return Array.isArray(list) ? list.sort((a, b) => a.sort - b.sort) : [];
+    } catch {
+      return [];
+    }
+  }
+
   try {
     const key = storageKey(account);
-    const revKey = `${STORAGE_PREFIX}:dev_seed_rev:${account}`;
-    if (import.meta.env.DEV && localStorage.getItem(revKey) !== DEV_SEED_REV) {
-      return applyDevSeed(account);
+    const revKey = `${STORAGE_PREFIX}:demo_seed_rev:${account}`;
+    if (localStorage.getItem(revKey) !== DEMO_SEED_REV) {
+      return applyDemoSeed(account);
     }
     const raw = localStorage.getItem(key);
     if (!raw) {
-      return import.meta.env.DEV ? applyDevSeed(account) : [];
+      return applyDemoSeed(account);
     }
     const list = JSON.parse(raw) as PersonalLink[];
     if (Array.isArray(list) && list.length) {
       return list.sort((a, b) => a.sort - b.sort);
     }
-    return import.meta.env.DEV ? applyDevSeed(account) : [];
+    return applyDemoSeed(account);
   } catch {
-    return import.meta.env.DEV ? buildDemoLinks() : [];
+    return buildDemoLinks();
   }
 }
 
