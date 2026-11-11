@@ -27,3 +27,6 @@ _shot.png
 
 # gh-pages 部署工作目录
 .deploy-gh-pages
+
+# 本地性能/需求池分析草稿（不入库）
+.tmp-perf/
