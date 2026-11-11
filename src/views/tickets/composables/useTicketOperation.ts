@@ -41,9 +41,23 @@ import {
   resolveTicketSourceForList,
 } from '@/views/tickets/types/createTicket';
 import {
-  applyOpAction, isAftersaleInbound, mapUserRole, nowWhen, pushEntry,
-  type OpActionPayload, type SuspendInfo, type TicketOpState,
+  applyHoldExpiryAutoResume,
+  applyOpAction,
+  isAftersaleInbound,
+  mapUserRole,
+  nowWhen,
+  pushEntry,
+  type OpActionPayload,
+  type SuspendInfo,
+  type TicketOpState,
 } from './opActions';
+import { LOGIN_URL } from '@/mock/notifyRules';
+import { useNotifyLogStore } from '@/stores/notifyLog';
+import {
+  hasHoldAutoResumeDone,
+  isHoldResumeDue,
+  markHoldAutoResumeDone,
+} from '@/views/tickets/utils/holdAutoResume';
 import { aftersaleInboundOperator, isAftersaleChainTicket, migrateAftersaleLink } from './aftersaleEvents';
 
 /**
@@ -179,6 +193,7 @@ export function useTicketOperation() {
   const refund = useRefundStore();
   const handleLog = useHandleLogStore();
   const delegateTasks = useDelegateTaskStore();
+  const notifyLog = useNotifyLogStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -550,6 +565,38 @@ export function useTicketOperation() {
       alignSampleHandleEntry(typeSampleKey(base));
       const seen = new Set(timeline.value.map((e) => e.id));
       [...entries, ...saved].forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+    }
+
+    // 【1120】已挂起且预计恢复时间已到 → 自动解挂 + R15 通知（同会话每张单一次）
+    if (t?.nodeStatus === '已挂起' && t.suspendResumeAt) {
+      suspendInfo.value = {
+        reason: '等待跟进',
+        detail: '',
+        resumeAt: t.suspendResumeAt,
+        operator: t.assignee ?? '—',
+        at: t.suspendedAt ?? '—',
+      };
+      if (!hasHoldAutoResumeDone(t.no) && isHoldResumeDue(t.suspendResumeAt)) {
+        const planned = t.suspendResumeAt;
+        const result = applyHoldExpiryAutoResume(detail.value, timeline.value, planned);
+        opState.value = result.opState;
+        suspendInfo.value = null;
+        detail.value.status = '处理中';
+        markHoldAutoResumeDone(t.no);
+        const assignee = detail.value.lastHandler || t.assignee || '处理人';
+        notifyLog.emit({
+          ticketNo: t.no,
+          event: 'ticket.resume',
+          kind: 'hold',
+          title: '【解挂通知】您有一条挂起工单已自动解除挂起',
+          receivers: [`${assignee}(处理人)`],
+          channel: 'IM',
+          status: '已发送',
+          content:
+            `您好，您有一条工单：${t.no}已到期自动解除挂起，挂起时限截止：${planned}。请尽快核实问题处理进展！\n\n系统登录地址：${LOGIN_URL}`,
+        });
+        message.info(result.message);
+      }
     }
   }
 

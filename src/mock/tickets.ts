@@ -489,6 +489,18 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-06-10 08:12:23', updatedAt: '2026-06-10 14:30:08',
     // 已联系：催补后坐席已回电 → 催补待回**不收**（PRD-915 补充与催单 §10.1）
     responded: true, upgradedByMe: true, hasDunning: true, dunningContacted: true, contactedAfterUrge: true,
+    eventTimeline: [{
+      id: 'tl-hold-auto-resume-1120',
+      category: 'node',
+      action: 'accept',
+      who: '系统自动',
+      role: '系统',
+      systemActor: true,
+      how: '系统自动解除挂起',
+      when: '2026-11-11 10:00:05',
+      what: '预计恢复时间：2026-11-11 09:30。实际解挂时间：2026-11-11 10:00:05。预计恢复时间已到，系统自动解除挂起。',
+      resumeAt: '2026-11-11 09:30',
+    }],
   },
   { serviceScore: 5,
     id: 't2', no: 'IFLYZX-20260610-00004', type: '咨询', channel: '电话',
@@ -714,6 +726,8 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13733335552', productCategory: '智能硬件',
     createdAt: '2026-09-23 09:30:44', updatedAt: '2026-09-23 10:40:09',
     responded: true,
+    suspendedAt: '2026-09-23 09:35:00',
+    suspendResumeAt: '2026-09-23 10:00:00',
   },
   // 投诉单 · 已委派（到人）：子任务见 `mock/delegateTasks.ts`
   {

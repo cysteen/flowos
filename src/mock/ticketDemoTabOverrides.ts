@@ -3,6 +3,22 @@ import { COMPLAINT_SUPPLEMENT_TYPE } from '@/views/tickets/types/operationTabs';
 
 /** 830 演示单 · 按工单号覆盖 Tab 数据（补充/催单记录等） */
 export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>> = {
+  // 【1120】§14 挂起到期自动解挂 · 通知记录样例（R15）
+  'IFLYTS-20260610-00002': {
+    notifyRecords: [
+      {
+        id: 'n-hold-r15-1120',
+        kind: 'hold',
+        title: '【解挂通知】您有一条挂起工单已自动解除挂起',
+        receiver: '张三(处理人)',
+        when: '2026-11-11 10:00:06',
+        channel: 'IM',
+        status: '已发送',
+        content:
+          '您好，您有一条工单：IFLYTS-20260610-00002已到期自动解除挂起，挂起时限截止：2026-11-11 09:30。请尽快核实问题处理进展！\n\n系统登录地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
+      },
+    ],
+  },
   // D3 · 外投渠道：验「补充投诉信息」+ 投诉平台组全链路
   'IFLYTS-20260817-00001': {
     supplementRecords: [

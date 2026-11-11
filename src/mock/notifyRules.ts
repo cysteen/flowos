@@ -101,7 +101,7 @@ export const DICT_RETURN_FROM = ['技术支持'] as const;
  * 各自的通知挂在各自的动作事件上（见 R03）。
  */
 export const DICT_DISPATCH_FROM = ['建单', '认领', '转售后', '售后转入'] as const;
-/** 解挂方式：区分人工解除与到期自动解除，「挂起到期提醒」靠它过滤 */
+/** 解挂方式：区分人工解除与到期自动解除，「解挂通知」等规则靠它过滤 */
 export const DICT_RESUME_TYPE = ['到期自动解挂', '人工解除挂起'] as const;
 /** 预约类型（OpAppointmentTab：上门 / 回访） */
 export const DICT_APPT_TYPE = ['上门', '回访'] as const;
@@ -169,7 +169,7 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
   { code: 'ticket.resume', name: '恢复（解除挂起）', source: 'dispatch', actionCode: 'RESUME(31)',
     payload: [...BASE,
       { key: 'operatorId', label: '操作人', type: 'userId', isRecipient: true, desc: '执行本次操作的人' },
-      { key: 'resumeType', label: '解挂方式', type: 'enum', enumValues: DICT_RESUME_TYPE, desc: '到期自动解挂，还是有人手工解除。「挂起到期提醒」只发前者——后者是处理人自己的操作，无需再通知他' },
+      { key: 'resumeType', label: '解挂方式', type: 'enum', enumValues: DICT_RESUME_TYPE, desc: '到期自动解挂，还是有人手工解除。「解挂通知」只发前者——后者是处理人自己的操作，无需再通知他' },
       { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', templateOnly: true, desc: '挂起到什么时候，到期后系统自动解挂。写进正文展示用' },
     ],
     remark: '工单解除挂起时发出，含人工解挂与到期自动解挂两种，可用「解挂方式」区分。' },
@@ -583,16 +583,10 @@ export const NOTIFY_RULES: NotifyRule[] = [
       },
     },
     enabled: true },
-  { id: 'R15', name: '挂起到期提醒', event: 'ticket.resume', audience: 'internal',
-    // 挂起到期自动解挂才发；人工解除不发（是处理人自己操作的）
+  { id: 'R15', name: '解挂通知', event: 'ticket.resume', audience: 'internal',
+    // 到期自动解挂才发 IM；人工解除不发（是处理人自己操作的）
     conditions: [{ field: 'resumeType', op: 'eq', value: ['到期自动解挂'] }],
-    recipients: [{ type: 'assignee' }], channels: ['邮件'], templates: {},
-    contents: {
-      邮件: {
-        subject: '【挂起到期通知】您有一条挂起工单已到期',
-        body: '您好，您有一条工单：${ticketNo}已到期自动解除挂起，挂起时限截止：${holdUntil}。请尽快核实问题处理进展！\n\n系统登录地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
-      },
-    },
+    recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_RESUME_AUTO' }, contents: {},
     enabled: true },
   { id: 'R16', name: '预约到期提醒', event: 'appointment.dailyCheck', audience: 'internal',
     // 距预约 1 天当天命中一次
@@ -678,8 +672,8 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
       body: `您好，您有一条工单：\${ticketNo}，挂起即将到期，挂起时限截止：\${holdUntil}。请尽快核实问题处理进展！\n系统登录地址：${LOGIN_URL}`,
     },
     {
-      code: 'IM_HOLD_EXPIRED', name: '挂起到期提醒',
-      subject: '【挂起到期通知】您有一条挂起工单已到期',
+      code: 'IM_RESUME_AUTO', name: '解挂通知',
+      subject: '【解挂通知】您有一条挂起工单已自动解除挂起',
       body: `您好，您有一条工单：\${ticketNo}已到期自动解除挂起，挂起时限截止：\${holdUntil}。请尽快核实问题处理进展！\n\n系统登录地址：${LOGIN_URL}`,
     },
     {

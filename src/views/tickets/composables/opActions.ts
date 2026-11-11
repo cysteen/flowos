@@ -15,6 +15,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { isTicketTerminated } from './complaintEscalation';
 import { aftersaleLinkDemotedEntry } from './aftersaleEvents';
 import { opTimeNow } from '@/views/tickets/utils/opTime';
+import { formatResumeNow } from '@/views/tickets/utils/holdAutoResume';
 import {
   applyTransferDispatch, scheduleEscalateDispatch, techPoolLabel,
 } from '@/views/tickets/components/operation/dispatch/transferDispatch';
@@ -610,6 +611,55 @@ export function pushEntry(
   const entry: TimelineEntry = { id: nextTimelineId(list), when: partial.when ?? nowWhen(), ...partial };
   list.push(entry);
   return entry;
+}
+
+/**
+ * 【1120】预计恢复时间到点 · 系统自动解除挂起（PRD §14.4）。
+ * 不写挂起原因弹窗；处理意见格式与操作人展示与产品定稿一致。
+ */
+export function applyHoldExpiryAutoResume(
+  detail: TicketDetailMeta,
+  timeline: TimelineEntry[],
+  plannedResumeAt: string,
+): { opState: TicketOpState; suspendInfo: null; message: string } {
+  const actualAt = formatResumeNow();
+  detail.status = '处理中';
+  const row = TICKETS.find((t) => t.no === detail.no);
+  if (row) {
+    row.nodeStatus = '处理中';
+    row.slaState = 'ok';
+    if (row.slaMinutes != null && row.slaMinutes < 0) {
+      row.slaSub = '已超时';
+      row.slaState = 'overdue';
+    } else if (row.slaMinutes != null && row.slaMinutes <= 30) {
+      row.slaSub = '距超时';
+      row.slaState = 'soon';
+    } else {
+      row.slaSub = '充足';
+    }
+    delete row.suspendedAt;
+    delete row.suspendResumeAt;
+    row.suspendedByMe = false;
+  }
+  const flashNo = flashTicketNo(detail);
+  if (flashNo) useFlashStore().resumeSla(flashNo);
+  detail.slaClocks.forEach((c) => {
+    if (c.phase === 'paused') c.phase = 'running';
+  });
+  const what =
+    `预计恢复时间：${plannedResumeAt}。实际解挂时间：${actualAt}。预计恢复时间已到，系统自动解除挂起。`;
+  pushEntry(timeline, {
+    category: 'node',
+    action: 'accept',
+    who: '系统自动',
+    role: '系统',
+    systemActor: true,
+    how: '系统自动解除挂起',
+    what,
+    when: actualAt,
+    resumeAt: plannedResumeAt,
+  });
+  return { opState: 'processing', suspendInfo: null, message: '已到预计恢复时间，系统自动解除挂起' };
 }
 
 export function statusLabel(state: TicketOpState): string {
