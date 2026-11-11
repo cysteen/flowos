@@ -45,13 +45,11 @@ import {
   ticketStatusDisplayName,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-import { latestWhenText } from '@/views/tickets/utils/ticketOverview';
 import {
   latestHandlingLineText,
-  useLatestHandlingList,
   useLatestHandlingPreview,
+  useSummaryProcessResultText,
 } from '@/views/tickets/composables/latestHandlingPreview';
-import type { LatestHandlingItem } from '@/views/tickets/types/operation';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import TicketTitleCell from './TicketTitleCell.vue';
 
@@ -173,10 +171,15 @@ const props = withDefaults(
 const user = useUserStore();
 /** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
 const latestPreview = useLatestHandlingPreview();
-/** 悬停卡「处理结果」：可多条、按时间正序（贴近一线在外部系统里看到的处理结果区） */
-const handlingTrail = useLatestHandlingList();
+/** 悬停卡「处理结果」：与处理页多行文本域同一段正文 */
+const processResultBody = useSummaryProcessResultText();
 /** 摘要悬停卡「放大」：仅一块区域定高 → 展开读全文 */
 const summaryPopExpandedId = ref<string | null>(null);
+
+function summaryProblemCompact(t: Ticket): boolean {
+  const body = processResultBody(t);
+  return body.length > 80 || body.includes('\n');
+}
 
 function summaryPopHeadline(t: Ticket) {
   return [t.product, t.title, ticketListSourceLabel(t)].filter(Boolean).join(' · ');
@@ -184,16 +187,6 @@ function summaryPopHeadline(t: Ticket) {
 
 function toggleSummaryPopExpand(id: string) {
   summaryPopExpandedId.value = summaryPopExpandedId.value === id ? null : id;
-}
-
-/** 处理结果日志行：保留完整日期时间，便于对照外呼/CRM 记录 */
-function summaryPopLogWhen(when: string) {
-  return latestWhenText(when);
-}
-
-/** 悬停卡里展示的处理结果条目（时间正序，旧在上、新在下） */
-function summaryHandlingEntries(t: Ticket): LatestHandlingItem[] {
-  return [...handlingTrail(t)].reverse();
 }
 
 const riskTags = useRiskTagStore();
@@ -738,28 +731,17 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                   <section
                     v-if="t.type !== '建议' && t.type !== '商机'"
                     class="sp-section sp-section--problem"
-                    :class="{ 'is-compact': summaryHandlingEntries(t).length > 1 }"
+                    :class="{ 'is-compact': summaryProblemCompact(t) }"
                   >
                     <div class="sp-section-label">问题描述</div>
                     <div class="sp-section-body">{{ t.problemDesc || '—' }}</div>
                   </section>
                   <section class="sp-section sp-section--results">
-                    <div class="sp-section-label handle">
-                      处理结果
-                      <span v-if="summaryHandlingEntries(t).length" class="sp-result-meta">
-                        共 {{ summaryHandlingEntries(t).length }} 条
-                      </span>
-                    </div>
-                    <div v-if="summaryHandlingEntries(t).length" class="sp-result-list">
-                      <p
-                        v-for="(h, idx) in summaryHandlingEntries(t)"
-                        :key="`${t.id}-handle-${idx}`"
-                        class="sp-result-item"
-                      >
-                        <time class="sp-result-time">{{ summaryPopLogWhen(h.when) }}</time>
-                        <span class="sp-result-text">{{ h.text }}</span>
-                      </p>
-                    </div>
+                    <div class="sp-section-label handle">处理结果</div>
+                    <div
+                      v-if="processResultBody(t)"
+                      class="sp-section-body sp-section-body--result"
+                    >{{ processResultBody(t) }}</div>
                     <div v-else class="sp-section-body">暂无处理记录</div>
                   </section>
                 </div>
@@ -1460,12 +1442,6 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   color: #374151;
 }
 .summary-pop .sp-section-label.handle { color: #111827; }
-.summary-pop .sp-result-meta {
-  margin-left: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #9ca3af;
-}
 .summary-pop .sp-section--problem.is-compact .sp-section-body {
   max-height: 4.8em;
   overflow: hidden;
@@ -1481,30 +1457,8 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.summary-pop .sp-result-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.summary-pop .sp-result-item {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
+.summary-pop .sp-section-body--result {
   color: #374151;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.summary-pop .sp-result-time {
-  display: inline;
-  margin-right: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #6b7280;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.summary-pop .sp-result-text {
-  color: #4b5563;
 }
 .summary-pop .sp-section--results {
   flex: 1;
