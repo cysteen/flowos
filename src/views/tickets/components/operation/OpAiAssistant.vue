@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { CloseOutlined, SendOutlined } from '@ant-design/icons-vue';
 import type { SimilarTicket } from '@/mock/ticketDetail';
 import type { AiTicketInsight } from '@/views/tickets/types/operation';
+import PersonalLinksFabMenu from '@/components/personal-links/PersonalLinksFabMenu.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -167,18 +168,19 @@ watch(open, (v) => {
 <template>
   <Teleport to="body">
     <div class="ai-copilot-wrap">
-      <button
-        v-if="!open"
-        type="button"
-        class="ai-fab"
-        title="打开 AI 助手"
-        aria-label="打开 AI 助手"
-        @click="open = true"
-      >
-        <span class="ai-fab-icon" aria-hidden="true">
-          <img :src="avatarUrl" alt="" class="ai-fab-img" />
-        </span>
-      </button>
+      <PersonalLinksFabMenu v-if="!open">
+        <button
+          type="button"
+          class="ai-fab"
+          title="悬停查看我的链接，点击打开 AI 助手"
+          aria-label="AI 助手与我的链接"
+          @click="open = true"
+        >
+          <span class="ai-fab-icon" aria-hidden="true">
+            <img :src="avatarUrl" alt="" class="ai-fab-img" />
+          </span>
+        </button>
+      </PersonalLinksFabMenu>
 
       <div v-else id="aiPanel" class="ai-panel">
         <div class="ai-panel-head">

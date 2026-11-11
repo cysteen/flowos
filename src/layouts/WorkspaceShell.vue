@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { SIDER_COLLAPSED_WIDTH, SIDER_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import WorkspaceSidebar from './WorkspaceSidebar.vue';
 import WorkspacePageTabs from './WorkspacePageTabs.vue';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
+import FlowGlobalAssistantFab from '@/components/personal-links/FlowGlobalAssistantFab.vue';
 
 const route = useRoute();
+const showGlobalLinksFab = computed(
+  () => route.name !== 'ticket-operation',
+);
 const tabsStore = useWorkspaceTabsStore();
 
 // 侧栏折叠状态（§0.3 定稿：实现折叠）
@@ -52,6 +56,7 @@ watch(
         </div>
       </a-layout-content>
     </a-layout>
+    <FlowGlobalAssistantFab v-if="showGlobalLinksFab" />
   </a-layout>
 </template>
 
@@ -89,6 +94,8 @@ watch(
 
 :deep(.workspace-sider .ant-layout-sider-children) {
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

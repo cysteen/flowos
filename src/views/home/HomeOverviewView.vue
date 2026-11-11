@@ -21,6 +21,7 @@ import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue'
 import { useOpenUnifiedCreate } from '@/views/tickets/composables/unifiedCreateEntry';
 import { XIAOZHI_CREATE_ROLES } from '@/config/roles';
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
+import PersonalLinksSection from '@/components/personal-links/PersonalLinksSection.vue';
 import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
 import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
@@ -493,20 +494,25 @@ function openDrillTicket(no: string) {
         </div>
       </div>
 
-      <div class="card quick-card">
-        <div class="card-title">快捷入口</div>
-        <div class="quick-grid">
+      <div class="card entry-hub-card">
+        <div class="entry-hub-head">
+          <span class="card-title">快捷入口</span>
+        </div>
+        <div class="quick-grid entry-hub-quick">
           <div
             v-for="q in HOME_QUICK_LINKS"
             :key="q.key"
-            class="quick-tile"
+            class="quick-tile quick-tile--hub"
             @click="onQuick(q.key)"
           >
             <div class="quick-icon" :style="{ background: q.color + '14' }">
-              <component :is="quickIcons[q.icon]" :style="{ color: q.color, fontSize: '18px' }" />
+              <component :is="quickIcons[q.icon]" :style="{ color: q.color, fontSize: '13px' }" />
             </div>
             <span class="quick-label">{{ q.label }}</span>
           </div>
+        </div>
+        <div class="entry-hub-personal">
+          <PersonalLinksSection variant="compact" hide-heading embedded hub-toolbar />
         </div>
       </div>
     </div>
@@ -1121,12 +1127,84 @@ function openDrillTicket(no: string) {
   gap: 12px;
 }
 .todo-card,
-.quick-card {
+.entry-hub-card {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   min-width: 0;
   border-radius: 14px;
+}
+.entry-hub-card {
+  gap: 0;
+}
+.entry-hub-head {
+  margin-bottom: 6px;
+}
+.entry-hub-personal {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.entry-hub-personal :deep(.pl-section.compact.pl-section--embedded) {
+  border-bottom: none;
+  background: #fff;
+  padding: 8px 10px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+.entry-hub-personal :deep(.pl-section--embedded .pl-list) {
+  gap: 6px;
+}
+.entry-hub-personal :deep(.pl-section--embedded .pl-link) {
+  max-width: 100%;
+}
+.entry-hub-split {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+.entry-hub-split-line {
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+.entry-hub-split-label {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.04em;
+}
+.entry-hub-quick .quick-tile--hub {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 5px 5px;
+  min-height: 0;
+  min-width: 0;
+}
+.entry-hub-quick .quick-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex: none;
+}
+.entry-hub-quick .quick-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
 }
 .todo-head-left {
   display: flex;
@@ -1237,6 +1315,14 @@ function openDrillTicket(no: string) {
   gap: 8px;
   margin-top: 8px;
   flex: 1;
+}
+/* 门户合一卡：须写在 .quick-grid 之后，否则被 2 列规则覆盖 */
+.quick-grid.entry-hub-quick {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto;
+  gap: 4px;
+  margin-top: 0;
+  flex: 0 0 auto;
 }
 .quick-tile {
   display: flex;

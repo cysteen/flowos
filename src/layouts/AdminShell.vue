@@ -6,6 +6,7 @@ import AppHeader from './AppHeader.vue';
 import AdminSidebar from './AdminSidebar.vue';
 import AdminPageTabs from './AdminPageTabs.vue';
 import { useAdminTabsStore } from '@/stores/adminTabs';
+import FlowGlobalAssistantFab from '@/components/personal-links/FlowGlobalAssistantFab.vue';
 
 const route = useRoute();
 const tabsStore = useAdminTabsStore();
@@ -49,6 +50,7 @@ watch(
         </div>
       </a-layout-content>
     </a-layout>
+    <FlowGlobalAssistantFab />
   </a-layout>
 </template>
 
@@ -86,6 +88,8 @@ watch(
 
 :deep(.admin-sider .ant-layout-sider-children) {
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>
