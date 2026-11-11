@@ -104,14 +104,6 @@ export interface OutboundNumberOption {
   remark: string;
 }
 
-/** 不指定外显号 —— 由呼叫中心按默认策略下发 */
-export const OUTBOUND_NONE_ID = '__none__';
-export const OUTBOUND_NONE_OPTION: OutboundNumberOption = {
-  id: OUTBOUND_NONE_ID,
-  number: '',
-  remark: '使用呼叫中心默认',
-};
-
 /** 演示：角色 → 业务班组（与「用户分组」同源） */
 export function resolveAgentTeamKey(roleKey: RoleKey): string {
   const MAP: Partial<Record<RoleKey, string>> = {

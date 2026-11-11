@@ -8,7 +8,7 @@ import {
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
   CheckCircleOutlined, StarFilled,
-  ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
+  ThunderboltOutlined, ClockCircleOutlined, TeamOutlined,
   SafetyOutlined, SafetyCertificateOutlined, FileSearchOutlined, WarningOutlined,
   CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined, RightOutlined,
 } from '@ant-design/icons-vue';
@@ -101,9 +101,9 @@ const filteredEntries = computed(() => {
 });
 
 const COLUMNS = [
-  { title: '处理时间', key: 'time', width: 170 },
-  { title: '操作', key: 'op', width: 170 },
-  { title: '处理人', key: 'who', width: 170 },
+  { title: '处理时间', key: 'time', width: 148 },
+  { title: '操作', key: 'op', width: 128 },
+  { title: '处理人', key: 'who', width: 88 },
   { title: '处理意见', key: 'what' },
 ];
 
@@ -123,9 +123,25 @@ function timeOf(e: TimelineEntry): string {
   return formatOpTime(e.slaClose?.closedAt ?? e.when);
 }
 
+/** 电话外呼：外呼开始 / 接通 / 挂机。未接通的接通时间写「—」 */
+function callSpanText(e: TimelineEntry): string {
+  const s = e.callSpan;
+  if (!s) return '';
+  const connected = s.connectedAt ? formatOpTime(s.connectedAt) : '—';
+  return `外呼开始时间 ${formatOpTime(s.startedAt)} · 接通时间 ${connected} · 挂机时间 ${formatOpTime(s.endedAt)}`;
+}
+
 /** 处理意见：系统派单行的路径名换成界面名称，与展开行内的正文一致 */
 function whatOf(e: TimelineEntry): string {
   return e.how === '系统派单' ? replacePathNames(e.what ?? '') : e.what;
+}
+
+/** 申请挂起的预计恢复时间单独露出；正文里已写过的那一句不再重复 */
+function opinionRest(e: TimelineEntry): string {
+  const text = whatOf(e);
+  if (!e.resumeAt) return text;
+  const prefix = `预计恢复时间：${e.resumeAt}。`;
+  return text.startsWith(prefix) ? text.slice(prefix.length) : text;
 }
 
 /** 该行有无展开内容：字段变更 / 派单明细 / 风险 chip / 关联单 / 附件 / 录音 */
@@ -141,9 +157,8 @@ function hasDetail(e: TimelineEntry): boolean {
 
 <template>
   <div class="timeline-card">
-    <!-- 标题 + 图例筛选 -->
+    <!-- 图例筛选 -->
     <div class="tl-header">
-      <span class="tl-title"><HistoryOutlined :style="{ fontSize: '15px' }" />工单动态</span>
       <div class="legend">
         <button
           v-for="l in LEGEND"
@@ -166,7 +181,7 @@ function hasDetail(e: TimelineEntry): boolean {
       row-key="id"
       :pagination="false"
       table-layout="fixed"
-      :expand-column-width="40"
+      :expand-column-width="32"
       :row-expandable="hasDetail"
     >
       <template #emptyText>
@@ -205,9 +220,15 @@ function hasDetail(e: TimelineEntry): boolean {
           <span v-if="e.internal" class="internal">仅内部可见</span>
         </template>
         <!-- 操作人只显示姓名（系统事件为「系统」），不显示角色（1021） -->
-        <template v-else-if="column.key === 'who'">{{ e.who }}</template>
+        <a-tooltip v-else-if="column.key === 'who'" :title="e.who">
+          <span class="tl-ellipsis">{{ e.who }}</span>
+        </a-tooltip>
         <a-tooltip v-else-if="column.key === 'what'" :title="whatOf(e as TimelineEntry)">
-          <span class="tl-ellipsis">{{ whatOf(e as TimelineEntry) }}</span>
+          <span class="tl-what">
+            <span v-if="(e as TimelineEntry).resumeAt" class="tl-resume">预计恢复时间：{{ (e as TimelineEntry).resumeAt }}</span>
+            <span v-if="(e as TimelineEntry).callSpan" class="tl-call-times">{{ callSpanText(e as TimelineEntry) }}</span>
+            <span class="tl-ellipsis">{{ opinionRest(e as TimelineEntry) }}</span>
+          </span>
         </a-tooltip>
       </template>
 
@@ -326,21 +347,19 @@ function hasDetail(e: TimelineEntry): boolean {
   container-type: inline-size;
 }
 /* 卡片窄于四列规格宽度时收窄定宽列，处理意见列保留可读宽度 */
-@container (max-width: 760px) {
-  .tl-table :deep(col:nth-child(2)) { width: 164px !important; }
-  .tl-table :deep(col:nth-child(3)) { width: 130px !important; }
-  .tl-table :deep(col:nth-child(4)) { width: 110px !important; }
+@container (max-width: 720px) {
+  .tl-table :deep(col:nth-child(2)) { width: 140px !important; }
+  .tl-table :deep(col:nth-child(3)) { width: 112px !important; }
+  .tl-table :deep(col:nth-child(4)) { width: 72px !important; }
 }
 .tl-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 16px;
-  padding: 12px 14px;
+  gap: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid #eff0f2;
 }
-.tl-title { font-size: 14px; font-weight: 700; color: #111827; display: flex; align-items: center; gap: 6px; flex: none; }
-
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -386,27 +405,30 @@ function hasDetail(e: TimelineEntry): boolean {
 
 /* 表格：表头与行 */
 .tl-table :deep(.ant-table .ant-table-thead > tr > th) {
-  padding: 6px 12px;
-  font-size: 14px;
+  padding: 5px 10px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 18px;
   color: #909399;
-  background: #fff;
+  background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
 }
 .tl-table :deep(.ant-table .ant-table-thead > tr > th::before) {
   display: none;
 }
 .tl-table :deep(.ant-table .ant-table-tbody > tr > td) {
-  padding: 5px 12px;
-  font-size: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 18px;
   color: #303133;
   border-bottom: 1px solid #ebeef5;
 }
 .tl-table :deep(.ant-table .ant-table-tbody > tr.ant-table-row) {
-  height: 34px;
+  height: 28px;
+}
+.tl-table :deep(.ant-table .ant-table-tbody > tr > td.ant-table-row-expand-icon-cell) {
+  padding: 4px 6px;
 }
 .tl-table :deep(.ant-table .ant-table-tbody > tr.ant-table-row:hover > td) {
   background: #f5f7fa;
@@ -418,6 +440,24 @@ function hasDetail(e: TimelineEntry): boolean {
 .tl-table :deep(.ant-table .ant-table-tbody > tr.ant-table-placeholder > td),
 .tl-table :deep(.ant-table .ant-table-tbody > tr.ant-table-placeholder:hover > td) {
   background: #fff;
+}
+.tl-what {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.tl-call-times {
+  color: #374151;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: normal;
+}
+.tl-resume {
+  flex: none;
+  color: #1a6fff;
+  font-weight: 600;
 }
 .tl-ellipsis {
   display: block;
@@ -431,13 +471,13 @@ function hasDetail(e: TimelineEntry): boolean {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 23px;
+  width: 14px;
+  height: 18px;
   margin: 0;
   padding: 0;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: 10px;
   color: #606266;
   cursor: pointer;
   vertical-align: top;
@@ -452,16 +492,16 @@ function hasDetail(e: TimelineEntry): boolean {
   align-items: center;
   box-sizing: border-box;
   max-width: 100%;
-  height: 22px;
-  padding: 1px 7px;
-  border-radius: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 3px;
   font-size: 10px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 18px;
   white-space: nowrap;
   vertical-align: top;
 }
-.how-icon { flex: none; font-size: 12px; margin-right: 3px; }
+.how-icon { flex: none; font-size: 10px; margin-right: 2px; }
 .how-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .internal {
   margin-left: 6px;
@@ -476,11 +516,12 @@ function hasDetail(e: TimelineEntry): boolean {
 
 /* 筛选为空 */
 .empty-hint {
-  font-size: 14px;
+  font-size: 12px;
   color: #909399;
+  padding: 8px 0;
 }
 .clear-filter {
-  font-size: 14px;
+  font-size: 12px;
   color: #909399;
   background: none;
   border: none;
@@ -493,9 +534,9 @@ function hasDetail(e: TimelineEntry): boolean {
 .tl-expand {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 16px 12px;
-  background: #fff;
+  gap: 6px;
+  padding: 6px 12px 10px 42px;
+  background: #fafbfc;
 }
 
 /* 工单处理字段变更明细 */

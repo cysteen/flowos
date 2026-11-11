@@ -68,7 +68,13 @@ const okButtonProps = computed<OkButtonProps>(() => {
   return { ...base, type: 'primary' };
 });
 
-const cancelButtonProps = computed<OkButtonProps | undefined>(() => (props.hideCancel ? { style: { display: 'none' } } : undefined));
+/**
+ * 显式 `disabled: false`，避免父级 Tab 的只读态（component-disabled）把「取消」一并禁掉。
+ * 取消是关掉弹窗，不该跟着表单只读走。
+ */
+const cancelButtonProps = computed<OkButtonProps | undefined>(() => (
+  props.hideCancel ? { style: { display: 'none' } } : { disabled: false }
+));
 
 function onCancel() {
   emit('cancel');

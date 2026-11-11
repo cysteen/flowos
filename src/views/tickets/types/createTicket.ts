@@ -549,8 +549,11 @@ export {
   COMPLAINED_ROLE_OPTIONS,
   needsComplainedRole,
   isComplaintCategoryComplete,
+  isComplaintCategoryRowFieldsComplete,
+  complaintCategoryRowStarted,
+  EMPTY_COMPLAINT_CATEGORY_ROW,
 } from './complaintCategoryTree';
-export type { ComplaintNature, ComplaintKind } from './complaintCategoryTree';
+export type { ComplaintNature, ComplaintKind, ProcessComplaintCategoryRow } from './complaintCategoryTree';
 
 export const MOCK_CUSTOMER: CustomerInfo = {
   id: 'c-001',

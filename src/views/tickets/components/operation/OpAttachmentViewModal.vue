@@ -16,24 +16,30 @@ const emit = defineEmits<{
 }>();
 
 const NO_PICK_TIP = '请选择要下载的附件';
+const REVOKED_TIP = '客户已撤回，不能查看或下载';
 
-/** 已勾选的文件 id；每次打开弹窗清空 */
+/** 已勾选的文件 id；每次打开弹窗清空。已撤回的不能勾 */
 const picked = ref<string[]>([]);
 
+const selectable = computed(() => props.files.filter((f) => !f.revoked));
 const pickedCount = computed(() => picked.value.length);
-const allPicked = computed(() => props.files.length > 0 && pickedCount.value === props.files.length);
-const somePicked = computed(() => pickedCount.value > 0 && pickedCount.value < props.files.length);
+const allPicked = computed(
+  () => selectable.value.length > 0 && pickedCount.value === selectable.value.length,
+);
+const somePicked = computed(() => pickedCount.value > 0 && pickedCount.value < selectable.value.length);
 
 function isPicked(id: string) {
   return picked.value.includes(id);
 }
 
 function togglePick(id: string) {
+  const file = props.files.find((f) => f.id === id);
+  if (!file || file.revoked) return;
   picked.value = isPicked(id) ? picked.value.filter((x) => x !== id) : [...picked.value, id];
 }
 
 function toggleAll() {
-  picked.value = allPicked.value ? [] : props.files.map((f) => f.id);
+  picked.value = allPicked.value ? [] : selectable.value.map((f) => f.id);
 }
 
 watch(
@@ -48,8 +54,14 @@ function close() {
   emit('update:open', false);
 }
 
-function onDownload(name: string) {
-  message.info(`下载 ${name}`);
+function onView(f: AttachmentLinkFile) {
+  if (f.revoked) return;
+  message.info(`查看 ${f.name}`);
+}
+
+function onDownload(f: AttachmentLinkFile) {
+  if (f.revoked) return;
+  message.info(`下载 ${f.name}`);
 }
 
 function onDownloadPicked() {
@@ -65,7 +77,7 @@ function onDownloadPicked() {
     title="附件查看"
     :icon="PaperClipOutlined"
     tone="primary"
-    :width="640"
+    :width="880"
     ok-text="下载"
     cancel-text="取消"
     :ok-disabled="pickedCount === 0"
@@ -82,13 +94,21 @@ function onDownloadPicked() {
     <a-config-provider :component-disabled="false">
       <div class="table-wrap">
         <table class="attach-table">
+          <colgroup>
+            <col class="col-chk" />
+            <col class="col-name" />
+            <col class="col-note" />
+            <col class="col-time" />
+            <col class="col-revoked" />
+            <col class="col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th class="col-chk">
                 <a-checkbox
                   :checked="allPicked"
                   :indeterminate="somePicked"
-                  :disabled="files.length === 0"
+                  :disabled="selectable.length === 0"
                   @change="toggleAll"
                 />
               </th>
@@ -96,22 +116,41 @@ function onDownloadPicked() {
               <th class="col-note">文件备注</th>
               <th class="col-time">上传时间</th>
               <th class="col-revoked">是否删除</th>
+              <th class="col-actions">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="f in files" :key="f.id">
               <td class="col-chk">
-                <a-checkbox :checked="isPicked(f.id)" @change="togglePick(f.id)" />
+                <a-checkbox
+                  :checked="isPicked(f.id)"
+                  :disabled="f.revoked"
+                  @change="togglePick(f.id)"
+                />
               </td>
-              <td>
-                <button type="button" class="link-btn" @click="onDownload(f.name)">{{ f.name }}</button>
-              </td>
+              <td class="col-name" :title="f.name">{{ f.name }}</td>
               <td class="col-note">{{ f.note }}</td>
               <td class="col-time">{{ formatOpTime(f.uploadedAt) }}</td>
               <td class="col-revoked">
                 <span class="av-pill" :class="f.revoked ? 'av-pill-warn' : 'av-pill-gray'">
                   {{ f.revoked ? '是' : '否' }}
                 </span>
+              </td>
+              <td class="col-actions">
+                <button
+                  type="button"
+                  class="link-btn"
+                  :disabled="f.revoked"
+                  :title="f.revoked ? REVOKED_TIP : '查看'"
+                  @click="onView(f)"
+                >查看</button>
+                <button
+                  type="button"
+                  class="link-btn"
+                  :disabled="f.revoked"
+                  :title="f.revoked ? REVOKED_TIP : '下载'"
+                  @click="onDownload(f)"
+                >下载</button>
               </td>
             </tr>
           </tbody>
@@ -131,6 +170,7 @@ function onDownloadPicked() {
 .attach-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 12px;
 }
 
@@ -163,23 +203,33 @@ function onDownloadPicked() {
 }
 
 .col-chk {
-  width: 40px;
+  width: 36px;
   padding-right: 0 !important;
   white-space: nowrap;
 }
 
+.col-name {
+  word-break: break-all;
+}
+
 .col-note {
-  width: 140px;
+  width: 132px;
 }
 
 /* 时刻列靠右（2026-10-07 裁决：全页签时刻一律靠右），与附件历史 Tab 的表同一做法 */
 .col-time {
-  width: 164px;
+  width: 156px;
   white-space: nowrap;
   text-align: right;
 }
 
 .col-revoked {
+  width: 72px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.col-actions {
   width: 84px;
   white-space: nowrap;
 }
@@ -209,7 +259,14 @@ function onDownloadPicked() {
   text-align: left;
   word-break: break-all;
 }
-.link-btn:hover {
+.link-btn + .link-btn {
+  margin-left: 10px;
+}
+.link-btn:hover:not(:disabled) {
   text-decoration: underline;
+}
+.link-btn:disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
 }
 </style>

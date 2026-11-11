@@ -4,6 +4,7 @@ import { message } from 'ant-design-vue';
 import {
   SendOutlined, SyncOutlined, CheckCircleOutlined,
   ThunderboltOutlined, BellOutlined, CloseCircleOutlined, ReloadOutlined,
+  CopyOutlined,
 } from '@ant-design/icons-vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
@@ -31,6 +32,11 @@ const props = defineProps<{
   priority?: string;
   productName?: string;
   feedbackNo?: string;
+  /**
+   * 飞书项目工作项编号（详情链接末段，纯数字）。
+   * 小智单不传：产研不走飞书项目，反馈单号不可点，也不出「复制链接」。
+   */
+  workItemId?: string;
   failReason?: string;
   createdAt?: string;
   /**
@@ -152,6 +158,49 @@ const feedbackNo = computed(
     || props.records.find((r) => r.kind === 'push')?.meta?.replace('反馈单号 ', '')
     || '—',
 );
+
+/**
+ * 飞书项目工单详情。末段是工作项编号（纯数字），不是信息板上的反馈单号。
+ * 路径中 `resovled` 为飞书项目现网拼写，按原样拼接。
+ * 小智单、关联失败、还没有编号时不出入口。
+ */
+const FEISHU_ISSUE_BASE = 'https://project.xfchat.iflytek.com/cbg_product_develop/issue_to_resovled/detail/';
+
+const feishuItemId = computed(() => {
+  if (props.xiaozhiMode) return '';
+  const explicit = (props.workItemId || '').trim();
+  if (/^\d{6,}$/.test(explicit)) return explicit;
+  const no = feedbackNo.value;
+  if (!no || no === '—') return '';
+  const digits = no.replace(/\D/g, '');
+  if (digits.length < 6) return '';
+  return digits.slice(-8);
+});
+
+const feishuDetailUrl = computed(() =>
+  feishuItemId.value ? `${FEISHU_ISSUE_BASE}${feishuItemId.value}` : '',
+);
+
+async function copyFeishuUrl() {
+  const text = feishuDetailUrl.value;
+  if (!text) return;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+    await navigator.clipboard.writeText(text);
+    message.success('飞书工单链接已复制');
+  } catch {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    if (ok) message.success('飞书工单链接已复制');
+    else message.info(text);
+  }
+}
 
 /** 从时间线推断当前负责人 */
 const cardOwner = computed(() => {
@@ -360,7 +409,26 @@ function onDunning() {
         <div class="fs-sheet-brand">
           <h3 class="fs-sheet-title">{{ feedbackName || '客户反馈单' }}</h3>
           <div class="fs-sheet-idrow">
-            <span class="fs-sheet-no">{{ feedbackNo }}</span>
+            <a
+              v-if="feishuDetailUrl"
+              class="fs-sheet-no is-link"
+              :href="feishuDetailUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="feishuDetailUrl"
+            >{{ feedbackNo }}</a>
+            <span v-else class="fs-sheet-no">{{ feedbackNo }}</span>
+            <button
+              v-if="feishuDetailUrl"
+              type="button"
+              class="fs-copy"
+              title="复制飞书工单链接"
+              aria-label="复制飞书工单链接"
+              @click="copyFeishuUrl"
+            >
+              <CopyOutlined />
+              复制链接
+            </button>
             <span v-if="productName" class="fs-sheet-dot">·</span>
             <span v-if="productName" class="fs-sheet-product">{{ productName }}</span>
           </div>
@@ -623,6 +691,30 @@ function onDunning() {
   font-weight: 600;
   color: #475569;
 }
+a.fs-sheet-no.is-link {
+  color: #1a6fff;
+  text-decoration: none;
+  cursor: pointer;
+}
+a.fs-sheet-no.is-link:hover {
+  text-decoration: underline;
+}
+.fs-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: #1a6fff;
+  cursor: pointer;
+}
+.fs-copy:hover { text-decoration: underline; }
 .fs-sheet-dot { color: #cbd5e1; }
 .fs-sheet-product { color: #64748b; }
 

@@ -179,7 +179,7 @@ const riskTags = useRiskTagStore();
 /**
  * 三个页签，**两个分母**：
  *   · `realtime` 实时监控 —— **监控条目**（A 线）。本轮从"命中维度"改成"条目维度"，见 `QueueView`；
- *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量，**只做查询**，结果不落库）；
+ *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量）。结果行可直接「风险识别」，不必先并入清单；
  *   · `judged`   命中明细 —— 风险词命中记录（事后点查 + 核实打标，词表准确率由它回填）。
  *
  * 🔴 **两个分母不可相加**：一张单可以被三条词命中、也可以既有条目又有报备。
@@ -654,6 +654,12 @@ function todayPrefix() {
  * composable、渲染走共享组件 `EscalateComplaintFields`，与工单页底栏、风险报备池两个评估入口
  * **同一份实现**。整段显隐同样是共享的 `showEscalateComplaintFields`，本页不自判一遍。
  */
+/**
+ * 必须写在 `useEscalateComplaintFields` 之前。那个 composable 一创建就会读业务类型，
+ * 读的是这一格；声明放在后面，页面一打开就撞上「尚未初始化」，整页白屏。
+ * 类型 `QueueRow` 在本文件后部声明，这里只先占住这一格。
+ */
+const entryTagTarget = ref<QueueRow | null>(null);
 const escalateFields = useEscalateComplaintFields(
   () => ticketBusinessTypeOf(entryTagTarget.value?.ticketNo),
 );
@@ -1386,11 +1392,24 @@ const scanDupIds = computed(
   () => new Set((scanResult.value ?? []).filter((r) => r.duplicated).map((r) => r.hit.id)),
 );
 
+/** 已在清单里的重复命中，打标落到原记录上，避免同一条记两份结论 */
+function scanCanon(h: RiskHit): RiskHit {
+  if (!scanDupIds.value.has(h.id)) return h;
+  return rows.value.find((x) => x.ticketNo === h.ticketNo && x.word === h.word && !x.id.startsWith('scan-')) ?? h;
+}
+function scanHasRecord(h: RiskHit): boolean {
+  return scanDupIds.value.has(h.id) || isJudged(h);
+}
+function scanAmend(h: RiskHit): boolean {
+  return isJudged(scanCanon(h));
+}
+function openScanTag(h: RiskHit) {
+  openTag(scanCanon(h));
+}
+
 /*
- * 🔴 **原先这里有 `scanPicked` / `scanAllPicked` / `toggleScanPick` / `toggleScanPickAll`
- * 与 `adoptScan`**（勾选结果行 → 「并入清单」→ 补条目 + 并命中 + 回填本次执行的并入条数）。
- * 随 2026-10-08 裁决整组删除：手动筛查只做查询，结果不落库。
- * 结果态因此没有任何写动作，只剩"点工单号进那张单"与「退出筛查」两条出路。
+ * 结果行上的「风险识别 / 重新识别」直接打标，不必先并入清单。
+ * 新扫出来的命中提交后经 `adoptManualHit` 进入命中明细。
  */
 
 /** 退出筛查结果态，清单回到常规命中 */
@@ -1573,11 +1592,16 @@ function removeSavedFilter(f: SavedScanFilter) {
 
 // ---- 命中列表 ----
 /*
- * 🔴 **命中记录只有自动链路一个来源**（2026-10-08 裁决：手动筛查取消「并入」）：
- * 原先这里要把"已并入的筛查命中"并进来、并给那几行标一枚「来自手动筛查」的徽标，
- * 两处随并入一并删除。筛查扫出来的行只活在结果态里，不进这份清单。
+ * 自动扫库的命中在 `wordOnlyRiskHitsOf`。手动筛查里点「风险识别」提交后，
+ * 这条命中立刻进同一份清单，来源标「来自手动筛查」，不必等下一轮自动扫描。
  */
-const allHits = computed(() => wordOnlyRiskHitsOf(scope.value));
+const manualAdoptedHits = ref<RiskHit[]>([]);
+function adoptManualHit(hit: RiskHit) {
+  if (!hit.id.startsWith('scan-')) return;
+  if (manualAdoptedHits.value.some((x) => x.id === hit.id)) return;
+  manualAdoptedHits.value = [...manualAdoptedHits.value, hit];
+}
+const allHits = computed(() => [...wordOnlyRiskHitsOf(scope.value), ...manualAdoptedHits.value]);
 const rows = computed(() => allHits.value);
 
 const GRADE_ORDER: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
@@ -1963,9 +1987,11 @@ const tagAmend = ref(false);
  * 命中记录只可能来自预警词那一路，故来源恒写「实时监控」（见 `isVerifyMonitorSource`：
  * 「重点工单」那一路没有命中原话可摆，也就进不了这个形态）。
  */
-const tagSubtitle = computed(
-  () => (tagTarget.value ? `实时监控 · ${tagTarget.value.ticketNo}` : ''),
-);
+const tagSubtitle = computed(() => {
+  if (!tagTarget.value) return '';
+  const fromScan = tagTarget.value.id.startsWith('scan-');
+  return `${fromScan ? '来自手动筛查' : '实时监控'} · ${tagTarget.value.ticketNo}`;
+});
 const tagHistory = computed(() => (tagTarget.value ? historyOf(tagTarget.value) : []));
 const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.value) : undefined));
 /**
@@ -2061,6 +2087,7 @@ function saveTag() {
    * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量识别（命中那一路）走同一个入口。
    */
   const outcome = riskQueue.verifyHit(target, { ...entry, verdict: tagVerdict.value });
+  adoptManualHit(target);
   message.success(
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
@@ -3414,7 +3441,6 @@ function saveBulkVerify() {
 // 两者的衔接只有一处（2026-09-15 裁决，store 的 `verifyHit`）：**未打标**工单上首次成立即由核实给这张单打标入池，
 // 全部误报则改归或打为无风险；工单一旦有了打标结论，之后的核实与修正只改命中，条目要改走本弹窗。
 const entryTagOpen = ref(false);
-const entryTagTarget = ref<QueueRow | null>(null);
 const entryTagResult = ref<RiskTagResult | ''>('');
 /**
  * 本次标记的**风险备注**。
@@ -6437,7 +6463,11 @@ function toggleWordEnabled(w: RiskWord) {
             <th>命中内容</th>
             <th style="width: 118px">客户 / 班组</th>
             <th style="width: 52px">时间</th>
-            <th style="width: 148px">{{ inScanResult ? '状态' : '处置' }}</th>
+            <th
+              :class="{ 'hit-op-col': !inScanResult }"
+              :style="{ width: inScanResult ? '112px' : '176px' }"
+            >{{ inScanResult ? '状态' : '操作' }}</th>
+            <th v-if="inScanResult" style="width: 88px">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -6459,6 +6489,7 @@ function toggleWordEnabled(w: RiskWord) {
             </td>
             <td>
               <div class="track-word">「{{ h.word }}」</div>
+              <div v-if="!inScanResult && h.id.startsWith('scan-')" class="hit-flag flag-manual">来自手动筛查</div>
             </td>
             <td>
               <!--
@@ -6496,21 +6527,14 @@ function toggleWordEnabled(w: RiskWord) {
             </td>
             <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
             <td class="hit-when">{{ h.when.slice(11) }}</td>
-            <td>
+            <td :class="{ 'hit-op-col': !inScanResult }">
               <!--
-                筛查态：这一列答的是"这条命中在系统里有没有记录"——有记录的那几条
-                能在「命中明细」里查到核实结论，新扫出来的则还没有任何记录。
-                🔴 **结果态不出任何处置动作**：筛查只做查询（2026-10-08 裁决），
-                要处置就点上一列的工单号进那张单。
-              -->
-              <!--
-                两种取值**互为反面、措辞对仗**（「已有」↔「无」，后半截同为"命中记录"）：
-                同一列里一正一反，读的人不必记住哪个词对应哪种情形。
-                🔴 另一支原先叫「新命中」——那是「并入清单」时代的叫法（新＝待并入的那批），
-                并入取消之后"新"字已无所指，且与左栏「今日发现」的"新"撞口径。
+                筛查态：「状态」只区分「已有命中记录 / 无命中记录」。
+                「风险识别」在后面单独的「操作」列，两种行都能点，不必先并入清单。
+                没判过的是「风险识别」，判过的是「重新识别」，弹窗与实时监控、命中明细是同一套。
               -->
               <template v-if="inScanResult">
-                <span v-if="scanDupIds.has(h.id)" class="state-chip">已有命中记录</span>
+                <span v-if="scanHasRecord(h)" class="state-chip">已有命中记录</span>
                 <span v-else class="state-chip sc-fresh">无命中记录</span>
               </template>
               <div v-else class="cell-done">
@@ -6550,6 +6574,16 @@ function toggleWordEnabled(w: RiskWord) {
                   <span v-else class="hit-sub">—</span>
                 </template>
               </div>
+            </td>
+            <td v-if="inScanResult" class="hit-act-cell">
+              <button
+                v-if="canRiskTag"
+                type="button"
+                class="row-btn"
+                :class="scanAmend(h) ? 'row-btn-amend' : 'row-btn-tag'"
+                @click="openScanTag(h)"
+              >{{ scanAmend(h) ? '重新识别' : '风险识别' }}</button>
+              <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
             </td>
           </tr>
         </tbody>
@@ -8077,6 +8111,7 @@ function toggleWordEnabled(w: RiskWord) {
   font-family: inherit; line-height: 16px; cursor: pointer;
 }
 .flag-sib:hover { border-color: #6366F1; background: #E0E7FF; }
+.flag-manual { border: 1px solid #FDE68A; background: #FFFBEB; color: #B45309; line-height: 16px; }
 .flag-sib.on { border-color: #4338CA; background: #4338CA; color: #fff; }
 .ticket-grade-note { margin-top: 3px; font-size: 11px; }
 .ticket-grade-note b { font-weight: 700; }
@@ -9033,6 +9068,9 @@ function toggleWordEnabled(w: RiskWord) {
 .run-res.failed, .run-res.abnormal { color: #64748b; }
 
 .cell-done { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.hit-table th.hit-op-col,
+.hit-table td.hit-op-col { text-align: right; }
+.hit-table td.hit-op-col .cell-done { justify-content: flex-end; }
 .tag-done { padding: 1px 7px; border-radius: 3px; font-size: 11px; cursor: help; font-weight: 600; }
 /* 误报行没有等级徽标，打标来源的悬停说明落在这枚判定标上，故它同样给 help 光标 */
 .verdict-chip { padding: 0 5px; border-radius: 3px; font-size: 10px; cursor: help; }

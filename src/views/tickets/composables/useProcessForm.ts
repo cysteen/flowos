@@ -7,7 +7,7 @@ import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { isAftersaleChainTicket } from './aftersaleEvents';
-import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
+import { isComplaintCategoryComplete, EMPTY_COMPLAINT_CATEGORY_ROW } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
@@ -26,12 +26,12 @@ const BLANK_PROCESS_DRAFT: ProcessFormDraft = {
   conclusion: '',
   serviceSolution: '',
   concessionPlan: '',
-  complaintCat1: '',
-  complaintCat2: '',
-  complaintCat3: '',
+  complaintCategoryRows: [{ ...EMPTY_COMPLAINT_CATEGORY_ROW }],
   complainedRole: [],
   complaintMark: '',
   backendPush: '',
+  backendPushProgress: '',
+  backendPushProgressAttachments: [],
   complaintNote: '',
   complaintNoteAttachments: [],
   platformFollowups: [],

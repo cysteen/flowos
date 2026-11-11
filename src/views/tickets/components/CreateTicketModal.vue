@@ -266,6 +266,48 @@ function onCancel() {
   emit('update:open', false);
 }
 
+/** 「创建并处理」选定的工单归属组。多个工单组时由按钮悬停菜单写入，只有一个时直接用那一组 */
+const needsOwnerGroupPick = computed(
+  () => !isFlashType.value && userStore.groups.length > 1,
+);
+const ownerGroupForCreate = ref('');
+const chosenGroup = ref('');
+
+function applyOwnerGroup(ticket: Ticket, groupName: string) {
+  if (!groupName) return;
+  const rest = (ticket.groupNames ?? []).filter((name) => name !== groupName);
+  ticket.groupNames = [groupName, ...rest];
+  const created = ticket.eventTimeline?.[0];
+  if (created && !created.what.includes('归属组')) {
+    created.what = `${created.what.replace(/。$/, '')}，归属组为「${groupName}」。`;
+  }
+}
+
+function onCreateAndProcess() {
+  if (isFlashType.value || isXiaozhiType.value || isRefundType.value) {
+    onCreate(true);
+    return;
+  }
+  if (needsOwnerGroupPick.value) {
+    if (!chosenGroup.value) {
+      message.warning('请选择本单的归属组');
+      return;
+    }
+    if (!validate()) return;
+    ownerGroupForCreate.value = chosenGroup.value;
+    chosenGroup.value = '';
+    onCreate(true);
+    return;
+  }
+  if (!validate()) return;
+  ownerGroupForCreate.value = userStore.groups.length === 1 ? userStore.groups[0] : '';
+  onCreate(true);
+}
+
+function pickOwnerGroup(name: string) {
+  chosenGroup.value = name;
+}
+
 /** 刷机单提交：校验与建单都走刷机服务（PRD §2.3 / §2.4），不走 buildTicket */
 function onCreateFlash(processAfter: boolean) {
   submitting.value = true;
@@ -360,6 +402,8 @@ function onCreate(processAfter = false) {
   if (!validate()) return;
   submitting.value = true;
   const ticket = buildTicket();
+  if (processAfter) applyOwnerGroup(ticket, ownerGroupForCreate.value);
+  ownerGroupForCreate.value = '';
   // 【1215】「创建」进入派单（新单）；「创建并处理」由建单人自行处理，不进入派单。
   // 升级投诉（11.2）：一线发起、客诉专员代客户发起（「创建」）的新投诉单进入派单、按出池规则派出；
   // 自主发起（非一线「创建并处理」，发起人本人处理）直派发起人，计入在途、超出记超额指派并写派单日志
@@ -413,6 +457,7 @@ watch(
   () => props.open,
   (v) => {
     if (!v) return;
+    chosenGroup.value = '';
     const draft = props.draftId ? draftStore.get(props.draftId) : null;
     restoredDraftScene.value = draft ? (draft.xiaozhiScene ? 'xiaozhi' : 'general') : null;
     if (draft) {
@@ -1049,7 +1094,33 @@ watch(
           非小智单照旧三枚，行为未变。
           个册退费单同样不出「创建并处理」，只留「创建」（用户 10-27 拍板）。
         -->
-        <button v-if="!isXiaozhiType && !isRefundType && !isEscalateMode" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
+        <!-- 多个工单组：悬停本按钮选择归属组，不再另开弹窗 -->
+        <a-popover
+          v-if="needsOwnerGroupPick"
+          placement="topRight"
+          trigger="hover"
+          :mouse-enter-delay="0.1"
+          :z-index="1300"
+          overlay-class-name="owner-group-pop"
+        >
+          <template #content>
+            <p class="og-tip">请选择本单的归属组</p>
+            <button
+              v-for="name in userStore.groups"
+              :key="name"
+              type="button"
+              class="og-item"
+              :class="{ on: chosenGroup === name }"
+              :disabled="submitting"
+              @click.stop="pickOwnerGroup(name)"
+            >
+              <span class="og-radio" />
+              <span>{{ name }}</span>
+            </button>
+          </template>
+          <button type="button" class="btn-ghost" :disabled="submitting" @click="onCreateAndProcess">创建并处理</button>
+        </a-popover>
+        <button v-else-if="!isXiaozhiType && !isRefundType && !isEscalateMode" type="button" class="btn-ghost" :disabled="submitting" @click="onCreateAndProcess">
           创建并处理
         </button>
       </div>
@@ -1680,5 +1751,54 @@ watch(
     grid-template-columns: 1fr;
   }
   .row-3 > .span-2 { grid-column: auto; }
+}
+</style>
+
+<style>
+.owner-group-pop .ant-popover-inner {
+  padding: 8px;
+}
+.owner-group-pop .og-tip {
+  margin: 0 4px 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+.owner-group-pop .og-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 148px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+.owner-group-pop .og-item:hover { background: #f3f4f6; }
+.owner-group-pop .og-radio {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  flex: none;
+  position: relative;
+  background: #fff;
+}
+.owner-group-pop .og-item.on {
+  background: #eff6ff;
+  color: #1a6fff;
+}
+.owner-group-pop .og-item.on .og-radio { border-color: #1a6fff; }
+.owner-group-pop .og-item.on .og-radio::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #1a6fff;
 }
 </style>

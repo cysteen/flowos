@@ -275,11 +275,9 @@ const categoriesSubmitReady = computed(() => {
   return !!categoryRow.value.cat1 && !!categoryRow.value.cat2;
 });
 
-/** 选了「补充投诉信息」时须至少勾一项，且勾选项须填完整 */
+/** 选了「补充投诉信息」时：分类 / 渠道勾选均为可选；勾了哪项才校验该项内字段（《1120》§11） */
 const complaintSupplementReady = computed(() => {
   if (!isComplaintSupplement.value) return true;
-  if (!hasComplaintPickOptions.value) return true;
-  if (!pickCategory.value && !pickChannel.value) return false;
   return categoriesSubmitReady.value && channelsSubmitReady.value;
 });
 

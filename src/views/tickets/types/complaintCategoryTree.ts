@@ -117,17 +117,44 @@ export function needsComplainedRole(cat3: string): boolean {
   return cat3 === COMPLAINT_CAT3_NEEDS_COMPLAINED_ROLE;
 }
 
-/** 投诉分类一/二/三（及条件字段）是否填完整 */
+/** 工单处理 · 投诉定性：一组三级投诉分类（支持多组） */
+export interface ProcessComplaintCategoryRow {
+  cat1: string;
+  cat2: string;
+  cat3: string;
+}
+
+export const EMPTY_COMPLAINT_CATEGORY_ROW: ProcessComplaintCategoryRow = {
+  cat1: '',
+  cat2: '',
+  cat3: '',
+};
+
+export function complaintCategoryRowStarted(row: ProcessComplaintCategoryRow): boolean {
+  return !!(row.cat1 || row.cat2 || row.cat3);
+}
+
+/** 单行分类一二三是否填齐（不含被投诉角色） */
+export function isComplaintCategoryRowFieldsComplete(row: ProcessComplaintCategoryRow): boolean {
+  if (!row.cat1 || !row.cat2) return false;
+  const l3 = COMPLAINT_L3_MAP[row.cat2] ?? [];
+  if (l3.length && !row.cat3) return false;
+  return true;
+}
+
+/** 投诉分类（多组）及条件字段是否填完整 */
 export function isComplaintCategoryComplete(f: {
-  complaintCat1: string;
-  complaintCat2: string;
-  complaintCat3: string;
+  complaintCategoryRows?: ProcessComplaintCategoryRow[];
   complainedRole?: string[];
 }): boolean {
-  if (!f.complaintCat1 || !f.complaintCat2) return false;
-  const l3 = COMPLAINT_L3_MAP[f.complaintCat2] ?? [];
-  if (l3.length && !f.complaintCat3) return false;
-  if (needsComplainedRole(f.complaintCat3) && !(f.complainedRole?.length)) return false;
+  const rows = f.complaintCategoryRows?.length
+    ? f.complaintCategoryRows
+    : [];
+  if (!rows.some((r) => isComplaintCategoryRowFieldsComplete(r))) return false;
+  for (const row of rows) {
+    if (complaintCategoryRowStarted(row) && !isComplaintCategoryRowFieldsComplete(row)) return false;
+  }
+  if (rows.some((r) => needsComplainedRole(r.cat3)) && !(f.complainedRole?.length)) return false;
   return true;
 }
 

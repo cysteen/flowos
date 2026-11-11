@@ -1,28 +1,46 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import DialPad from '@/components/cti/DialPad.vue';
 import PhoneBook from '@/components/cti/PhoneBook.vue';
-import { OUTBOUND_NONE_ID, type OutboundNumberOption } from '@/mock/outboundNumbers';
+import { useUserStore } from '@/stores/user';
+import {
+  getOutboundNumbersForTeam,
+  resolveAgentTeamKey,
+  type OutboundNumberOption,
+} from '@/mock/outboundNumbers';
 
 const emit = defineEmits<{
   call: [phone: string, outboundNumber: string, contactLabel?: string];
 }>();
 
+const user = useUserStore();
 const dialPadRef = ref<InstanceType<typeof DialPad> | null>(null);
-const selectedOutboundId = ref(OUTBOUND_NONE_ID);
+const options = computed(() => getOutboundNumbersForTeam(resolveAgentTeamKey(user.roleKey)));
+const selectedOutboundId = ref('');
 const selectedOutboundNumber = ref('');
 
-watch(selectedOutboundNumber, (num) => {
-  dialPadRef.value?.setOutboundNumber(num);
-});
-
-onMounted(() => {
-  dialPadRef.value?.setOutboundNumber('');
-});
-
-function onOutboundSelect(entry: OutboundNumberOption) {
+function selectEntry(entry: OutboundNumberOption) {
   selectedOutboundId.value = entry.id;
   selectedOutboundNumber.value = entry.number;
+}
+
+watch(options, (list) => {
+  const current = list.find((item) => item.id === selectedOutboundId.value);
+  const next = current ?? list[0];
+  if (!next) {
+    selectedOutboundId.value = '';
+    selectedOutboundNumber.value = '';
+    return;
+  }
+  selectEntry(next);
+}, { immediate: true });
+
+watch(selectedOutboundNumber, (num) => {
+  nextTick(() => dialPadRef.value?.setOutboundNumber(num));
+}, { immediate: true });
+
+function onOutboundSelect(entry: OutboundNumberOption) {
+  selectEntry(entry);
 }
 
 function onDial(phone: string, outboundNumber: string) {

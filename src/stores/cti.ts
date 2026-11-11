@@ -70,7 +70,8 @@ export function buildCallContactSummary(
     const holdPart = holdMs > 0 ? ` | 保持: ${formatCallDuration(holdMs)}` : '';
     return `呼叫号码: ${phone} | 状态: 接通 | 时长: ${formatCallDuration(endedAt - session.connectedAt!)}${holdPart}`;
   }
-  return `呼叫号码: ${phone} | 状态: 未接通 | 振铃时长: ${formatCallDuration(endedAt - session.startedAt)}`;
+  /* 振铃时长在联系记录一行里按时刻段展示为「振铃」，摘要仅存号码与状态 */
+  return `呼叫号码: ${phone} | 状态: 未接通`;
 }
 
 /** 签入号码记忆：跨刷新保留，故落 localStorage 而非仅存内存 */

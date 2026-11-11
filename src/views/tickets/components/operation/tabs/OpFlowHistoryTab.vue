@@ -76,7 +76,7 @@ function viewFlow() {
 .flow-history {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
 }
 
@@ -86,12 +86,12 @@ function viewFlow() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   background: #f0f7ff;
   border: 1px solid #d6e4ff;
   border-radius: 6px;
-  font-size: 13px;
-  line-height: 19.5px;
+  font-size: 12px;
+  line-height: 18px;
   flex: none;
 }
 

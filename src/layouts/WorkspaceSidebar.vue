@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { NAV_ITEMS, type NavItem } from '@/config/navigation';
-
 defineProps<{ collapsed: boolean }>();
 
 const user = useUserStore();
@@ -29,27 +28,38 @@ function go(item: NavItem) {
 
 <template>
   <div class="sidebar" :class="{ collapsed }">
-    <div
-      v-for="item in menuItems"
-      :key="item.key"
-      class="nav-item"
-      :class="{ active: isActive(item.key) }"
-      :title="collapsed ? item.label : ''"
-      @click="go(item)"
-    >
-      <component :is="item.icon" class="nav-icon" />
-      <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
-    </div>
+    <nav class="nav-main" aria-label="模块导航">
+      <div
+        v-for="item in menuItems"
+        :key="item.key"
+        class="nav-item"
+        :class="{ active: isActive(item.key) }"
+        :title="collapsed ? item.label : ''"
+        @click="go(item)"
+      >
+        <component :is="item.icon" class="nav-icon" />
+        <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+      </div>
+    </nav>
   </div>
 </template>
 
 <style scoped>
 .sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.nav-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 12px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  height: 100%;
 }
 
 .nav-item {

@@ -98,12 +98,19 @@ export interface TimelineEntry {
   attachment?: string;
   /** 电话录音时长，如 "02:15" */
   recording?: string;
+  /**
+   * 外呼的三个时刻（工单处理履历 · 电话联系）。
+   * 未接通时 `connectedAt` 为空，界面写「—」。
+   */
+  callSpan?: { startedAt: string; connectedAt?: string; endedAt: string };
   /** 语音识别转写 */
   asr?: AsrLine[];
   /** 催单第 N 次 */
   dunningTimes?: number;
   /** 好评星级 */
   stars?: number;
+  /** 申请挂起时填写的预计恢复时间（YYYY-MM-DD HH:mm），履历里单独露出，不跟在长文后面被截掉 */
+  resumeAt?: string;
   /** 关联单（relate 事件）：派生的关联工单卡片信息，时间线内联展示 */
   relatedTicket?: RelatedTicketBrief;
   /** 工单处理（handle 事件）：本次提交的字段级变更（补充/修改） */

@@ -5,8 +5,6 @@ import { useUserStore } from '@/stores/user';
 import {
   getOutboundNumbersForTeam,
   resolveAgentTeamKey,
-  OUTBOUND_NONE_ID,
-  OUTBOUND_NONE_OPTION,
   type OutboundNumberOption,
 } from '@/mock/outboundNumbers';
 
@@ -21,20 +19,8 @@ const options = computed(() => getOutboundNumbersForTeam(resolveAgentTeamKey(use
   <div class="phone-book">
     <div class="pb-cap">外显号码</div>
 
-    <div class="pb-list">
-      <button
-        type="button"
-        class="pb-row pb-row-none"
-        :class="{ on: selectedId === OUTBOUND_NONE_ID }"
-        @click="emit('select', OUTBOUND_NONE_OPTION)"
-      >
-        <div class="pb-row-main">
-          <span class="pb-number">不指定</span>
-          <span class="pb-remark muted">默认外显</span>
-        </div>
-        <CheckOutlined v-if="selectedId === OUTBOUND_NONE_ID" class="pb-check" />
-      </button>
-
+    <div v-if="!options.length" class="pb-empty">暂无可用外显号码，请联系管理员配置</div>
+    <div v-else class="pb-list">
       <button
         v-for="entry in options"
         :key="entry.id"
@@ -105,11 +91,10 @@ const options = computed(() => getOutboundNumbersForTeam(resolveAgentTeamKey(use
   background: #ecfdf5;
   border-color: #a7f3d0;
 }
-.pb-row-none .pb-number {
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 600;
-  color: #6b7280;
+.pb-empty {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9ca3af;
 }
 .pb-row-main {
   flex: 1;

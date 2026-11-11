@@ -264,6 +264,7 @@ defineExpose({ switchTab });
         :priority="detail.priority"
         :product-name="detail.product.name"
         :feedback-no="detail.feishuFeedbackNo"
+        :work-item-id="detail.feishuWorkItemId"
         :fail-reason="detail.feishuFailReason"
         :created-at="detail.createdAt"
         :readonly="activeTabReadonly"

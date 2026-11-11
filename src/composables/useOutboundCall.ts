@@ -41,7 +41,7 @@ export function useOutboundCall() {
     payload: OutboundCallPayload,
     hooks?: {
       onSuccess?: (outboundNumber: string) => void;
-      /** 拨号盘等场景已选定外显号（空字符串=不指定） */
+      /** 已选定的外显号码。空字符串表示当前没有可用号码 */
       outboundNumber?: string;
     },
   ): boolean {
@@ -52,13 +52,18 @@ export function useOutboundCall() {
     }
     if (!payload.phone.trim()) return false;
 
-    if (hooks?.outboundNumber === undefined) {
-      message.warning('请选择外显号码');
+    const outboundNumber = hooks?.outboundNumber?.trim() ?? '';
+    if (!outboundNumber) {
+      message.warning(
+        hooks?.outboundNumber === undefined
+          ? '请选择外显号码'
+          : '暂无可用外显号码，请联系管理员配置',
+      );
       return false;
     }
 
-    const ok = executeCall(payload, hooks.outboundNumber.trim());
-    if (ok) hooks?.onSuccess?.(hooks.outboundNumber.trim());
+    const ok = executeCall(payload, outboundNumber);
+    if (ok) hooks?.onSuccess?.(outboundNumber);
     return ok;
   }
 

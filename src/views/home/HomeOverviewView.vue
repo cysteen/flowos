@@ -1123,7 +1123,7 @@ function openDrillTicket(no: string) {
 /* 底部行 */
 .bottom-row {
   display: grid;
-  grid-template-columns: 1fr minmax(220px, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 336px);
   gap: 12px;
 }
 .todo-card,

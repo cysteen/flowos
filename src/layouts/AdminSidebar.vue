@@ -91,7 +91,7 @@ function backToWorkspace() {
     </a-tooltip>
 
     <!-- 平台超管：租户管理 / 系统参数 -->
-    <div v-if="isPlatform" class="menu-list">
+    <div v-if="isPlatform" class="menu-list menu-scroll">
       <a-tooltip v-for="it in PLATFORM_NAV.items" :key="it.key" :title="collapsed ? it.label : ''" placement="right">
         <div
           class="nav-item top"
@@ -105,7 +105,7 @@ function backToWorkspace() {
     </div>
 
     <!-- 租户管理员 / 运营管理员：数据总览 + 各自 scope 分组 -->
-    <div v-else class="menu-list">
+    <div v-else class="menu-list menu-scroll">
       <!-- 数据总览（一级直达） -->
       <a-tooltip v-if="!isScoped" :title="collapsed ? ADMIN_OVERVIEW.label : ''" placement="right">
         <div
@@ -189,15 +189,23 @@ function backToWorkspace() {
         </div>
       </template>
     </div>
+
   </div>
 </template>
 
 <style scoped>
 .admin-sidebar {
   height: 100%;
+  min-height: 0;
   background: #fff;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.menu-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .sb-header {

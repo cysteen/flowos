@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
-import { message } from 'ant-design-vue';
+import { h, ref, reactive, computed } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import {
   FileTextOutlined,
   TeamOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
+  CheckCircleFilled,
   BellOutlined,
 } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
@@ -112,18 +113,64 @@ function approve(r: Req) {
   moveToDone(r);
   message.success(`已通过 ${r.id}`);
 }
-function approveExempt(r: Req) {
-  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
-  r.status = '已通过';
-  r.node = '已完成';
-  moveToDone(r);
-  message.success(`免审通过 ${r.id}`);
-}
 function reject(r: Req) {
   if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
   r.status = '已驳回';
   r.node = '已驳回';
   moveToDone(r);
+  message.success(`已驳回 ${r.id}`);
+}
+
+/** 免审、通过只做二次确认，不填理由。文案对齐现网确认框。 */
+function confirmPass(r: Req, action: 'exempt' | 'approve') {
+  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
+  const verb = action === 'exempt' ? '免审' : '通过';
+  Modal.confirm({
+    title: '提示',
+    icon: h(CheckCircleFilled, { style: { color: '#52c41a' } }),
+    content: `确认${verb}审批「${r.title}」？`,
+    okText: '确定',
+    cancelText: '取消',
+    onOk: () => {
+      r.status = '已通过';
+      r.node = '已完成';
+      moveToDone(r);
+      detailOpen.value = false;
+      message.success(action === 'exempt' ? `已免审 ${r.id}` : `已通过 ${r.id}`);
+    },
+  });
+}
+function onPass(r: Req) {
+  if (isForceCloseApproval(r)) confirmPass(r, 'approve');
+  else approve(r);
+}
+
+const opinionOpen = ref(false);
+const opinionText = ref('');
+const opinionReq = ref<Req | null>(null);
+
+function openReject(r: Req) {
+  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
+  opinionReq.value = r;
+  opinionText.value = '';
+  opinionOpen.value = true;
+}
+function onReject(r: Req) {
+  if (isForceCloseApproval(r)) openReject(r);
+  else reject(r);
+}
+function submitReject() {
+  const text = opinionText.value.trim();
+  if (text.length < 1) {
+    message.warning('请填写驳回理由');
+    return Promise.reject(new Error('opinion required'));
+  }
+  const r = opinionReq.value;
+  if (!r) return;
+  r.status = '已驳回';
+  r.node = '已驳回';
+  moveToDone(r);
+  detailOpen.value = false;
   message.success(`已驳回 ${r.id}`);
 }
 
@@ -204,14 +251,14 @@ function withdraw(r: Req) {
                       type="link"
                       size="small"
                       class="op-exempt"
-                      @click="approveExempt(record as Req)"
+                      @click="confirmPass(record as Req, 'exempt')"
                     >
                       免审
                     </a-button>
-                    <a-button type="link" size="small" @click="approve(record as Req)">
+                    <a-button type="link" size="small" @click="onPass(record as Req)">
                       通过
                     </a-button>
-                    <a-button type="link" size="small" danger @click="reject(record as Req)">
+                    <a-button type="link" size="small" danger @click="onReject(record as Req)">
                       驳回
                     </a-button>
                   </template>
@@ -272,13 +319,30 @@ function withdraw(r: Req) {
           "
           class="detail-actions"
         >
-          <a-button type="primary" ghost class="detail-exempt" @click="approveExempt(detailReq); detailOpen = false">
+          <a-button type="primary" ghost class="detail-exempt" @click="confirmPass(detailReq, 'exempt')">
             免审
           </a-button>
-          <a-button type="primary" @click="approve(detailReq); detailOpen = false">通过</a-button>
-          <a-button danger @click="reject(detailReq); detailOpen = false">驳回</a-button>
+          <a-button type="primary" @click="confirmPass(detailReq, 'approve')">通过</a-button>
+          <a-button danger @click="openReject(detailReq)">驳回</a-button>
         </div>
       </template>
+    </a-modal>
+
+    <a-modal
+      v-model:open="opinionOpen"
+      title="驳回审批"
+      ok-text="确定"
+      cancel-text="取消"
+      :width="480"
+      @ok="submitReject"
+    >
+      <div class="reject-label">请输入驳回理由</div>
+      <a-textarea
+        v-model:value="opinionText"
+        :maxlength="500"
+        :rows="3"
+        placeholder="请输入驳回理由"
+      />
     </a-modal>
   </div>
 </template>
@@ -488,5 +552,12 @@ function withdraw(r: Req) {
 .detail-exempt {
   color: #059669 !important;
   border-color: #6ee7b7 !important;
+}
+
+.reject-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.88);
 }
 </style>

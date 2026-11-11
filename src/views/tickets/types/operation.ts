@@ -3,6 +3,7 @@
 import dayjs from 'dayjs';
 import type { RoleKey } from '@/config/roles';
 import { RISK_LEVELS, RISK_LEVEL_SELECT_OPTIONS, type RiskLevel } from '@/config/risk';
+import type { ProcessComplaintCategoryRow } from './complaintCategoryTree';
 
 export interface ContactItem {
   type: 'phone' | 'email';
@@ -161,18 +162,17 @@ export interface ProcessFormDraft {
   serviceSolution: string;
   /** @deprecated 历史字段，新结论枚举不再使用 */
   concessionPlan: string;
-  /** 投诉分类一 */
-  complaintCat1: string;
-  /** 投诉分类二 */
-  complaintCat2: string;
-  /** 投诉分类三 */
-  complaintCat3: string;
+  /** 投诉分类（可多组：一类 / 二类 / 三类） */
+  complaintCategoryRows: ProcessComplaintCategoryRow[];
   /** 被投诉角色（投诉分类三 = 服务态度差 时必填，可多选） */
   complainedRole: string[];
   /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
   complaintMark: string;
   /** 需后端推动（非必填） */
   backendPush: string;
+  /** 需推动问题描述（选了需后端推动时可填，非必填） */
+  backendPushProgress: string;
+  backendPushProgressAttachments: string[];
   complaintNote: string;
   complaintNoteAttachments: string[];
   /**

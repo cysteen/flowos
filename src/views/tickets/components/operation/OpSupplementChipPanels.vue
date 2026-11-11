@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
+import { CloseOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
@@ -20,7 +21,11 @@ import {
   COMPLAINT_L3_MAP,
   COMPLAINED_ROLE_OPTIONS,
   needsComplainedRole,
+  EMPTY_COMPLAINT_CATEGORY_ROW,
+  complaintCategoryRowStarted,
+  isComplaintCategoryRowFieldsComplete,
 } from '@/views/tickets/types/createTicket';
+import type { ProcessComplaintCategoryRow } from '@/views/tickets/types/complaintCategoryTree';
 
 const props = defineProps<{
   activeChip: SupplementChip;
@@ -72,15 +77,80 @@ const complaintMarkOpts = computed(() =>
   allowedComplaintMarks.value.map((v) => ({ label: v, value: v })),
 );
 const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v }));
-const complaintL2Options = computed(() =>
-  (COMPLAINT_L2_MAP[props.form.complaintCat1] ?? []).map((v) => ({ label: v, value: v })),
-);
-const complaintL3Options = computed(() =>
-  (COMPLAINT_L3_MAP[props.form.complaintCat2] ?? []).map((v) => ({ label: v, value: v })),
-);
 const complainedRoleOptions = COMPLAINED_ROLE_OPTIONS.map((v) => ({ label: v, value: v }));
 const backendPushOptions = BACKEND_PUSH_OPTIONS.map((v) => ({ label: v, value: v }));
-const showComplainedRole = computed(() => needsComplainedRole(props.form.complaintCat3));
+
+function complaintL2OptionsOf(cat1: string) {
+  return (COMPLAINT_L2_MAP[cat1] ?? []).map((v) => ({ label: v, value: v }));
+}
+function complaintL3OptionsOf(cat2: string) {
+  return (COMPLAINT_L3_MAP[cat2] ?? []).map((v) => ({ label: v, value: v }));
+}
+function categoryRows(): ProcessComplaintCategoryRow[] {
+  const rows = props.form.complaintCategoryRows;
+  return rows?.length ? rows : [{ ...EMPTY_COMPLAINT_CATEGORY_ROW }];
+}
+function setCategoryRows(rows: ProcessComplaintCategoryRow[]) {
+  const needRole = rows.some((r) => needsComplainedRole(r.cat3));
+  update({
+    complaintCategoryRows: rows,
+    ...(needRole ? {} : { complainedRole: [] }),
+  });
+}
+function addCategoryRow() {
+  if (props.readonly) return;
+  setCategoryRows([...categoryRows(), { ...EMPTY_COMPLAINT_CATEGORY_ROW }]);
+}
+function removeCategoryRow(index: number) {
+  if (props.readonly) return;
+  const rows = categoryRows();
+  if (rows.length <= 1) {
+    setCategoryRows([{ ...EMPTY_COMPLAINT_CATEGORY_ROW }]);
+    return;
+  }
+  setCategoryRows(rows.filter((_, i) => i !== index));
+}
+function onRowCat1Change(index: number, v: string | number | string[] | undefined) {
+  const rows = [...categoryRows()];
+  rows[index] = { cat1: String(v ?? ''), cat2: '', cat3: '' };
+  setCategoryRows(rows);
+}
+function onRowCat2Change(index: number, v: string | number | string[] | undefined) {
+  const rows = [...categoryRows()];
+  const cat2 = String(v ?? '');
+  rows[index] = { ...rows[index], cat2, cat3: '' };
+  setCategoryRows(rows);
+}
+function onRowCat3Change(index: number, v: string | number | string[] | undefined) {
+  const rows = [...categoryRows()];
+  const cat3 = String(v ?? '');
+  rows[index] = { ...rows[index], cat3 };
+  setCategoryRows(rows);
+}
+function l3Required(cat2: string) {
+  return (COMPLAINT_L3_MAP[cat2] ?? []).length > 0;
+}
+function missRowCat1(index: number) {
+  if (props.readonly) return false;
+  const rows = categoryRows();
+  const row = rows[index];
+  if (row.cat1) return false;
+  if (index === 0 && !rows.some((r) => isComplaintCategoryRowFieldsComplete(r))) return true;
+  return complaintCategoryRowStarted(row);
+}
+function missRowCat2(index: number) {
+  if (props.readonly) return false;
+  const row = categoryRows()[index];
+  return !!row.cat1 && !row.cat2;
+}
+function missRowCat3(index: number) {
+  if (props.readonly) return false;
+  const row = categoryRows()[index];
+  return !!row.cat2 && l3Required(row.cat2) && !row.cat3;
+}
+const showComplainedRole = computed(() =>
+  categoryRows().some((r) => needsComplainedRole(r.cat3)),
+);
 function platformKey(p: { platform: string; complaintNo?: string }) {
   return `${p.platform}::${p.complaintNo ?? ''}`;
 }
@@ -145,6 +215,14 @@ function onComplaintMarkChange(v: string | number | string[] | undefined) {
   update({ complaintMark: String(v ?? '') });
 }
 
+function onBackendPushChange(v: string | number | string[] | undefined) {
+  const next = String(v ?? '');
+  update({
+    backendPush: next,
+    ...(next ? {} : { backendPushProgress: '', backendPushProgressAttachments: [] }),
+  });
+}
+
 watch(
   () => props.ticketSource,
   () => {
@@ -186,28 +264,7 @@ function onRiskLevelChange(v: string | number | string[] | undefined) {
   updateRiskSelfReport({ riskLevel: (v == null ? '' : String(v)) as RiskLevel | '' });
 }
 
-function onComplaintCat1Change(v: string | number | string[] | undefined) {
-  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '', complainedRole: [] });
-}
-
-function onComplaintCat2Change(v: string | number | string[] | undefined) {
-  update({ complaintCat2: String(v ?? ''), complaintCat3: '', complainedRole: [] });
-}
-
-function onComplaintCat3Change(v: string | number | string[] | undefined) {
-  const cat3 = String(v ?? '');
-  update({
-    complaintCat3: cat3,
-    ...(needsComplainedRole(cat3) ? {} : { complainedRole: [] }),
-  });
-}
-
 const missComplaintMark = computed(() => !props.readonly && !props.form.complaintMark);
-const missComplaintCat1 = computed(() => !props.readonly && !props.form.complaintCat1);
-const missComplaintCat2 = computed(() => !props.readonly && !!props.form.complaintCat1 && !props.form.complaintCat2);
-const missComplaintCat3 = computed(
-  () => !props.readonly && !!props.form.complaintCat2 && !props.form.complaintCat3,
-);
 const missComplainedRole = computed(
   () => !props.readonly && showComplainedRole.value && !props.form.complainedRole?.length,
 );
@@ -304,87 +361,139 @@ const riskMonitorDiff = computed(() => {
 <template>
   <!-- 投诉分类 -->
   <div v-if="activeChip === 'complaint'" class="chip-panel">
-    <div class="complaint-cat-row complaint-top-row">
-      <div class="cat-item" :class="{ 'is-missing': missComplaintMark }">
-        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉标记</label>
-        <FormSelect
-          class="cat-select"
-          :class="{ 'ctrl-missing': missComplaintMark }"
-          :value="form.complaintMark || undefined"
-          :options="complaintMarkOpts"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          @update:value="onComplaintMarkChange"
-        />
-        <p v-if="missComplaintMark" class="field-err">请选择</p>
+    <div class="complaint-categories-block">
+      <div class="complaint-cat-row complaint-top-row">
+        <div class="cat-item" :class="{ 'is-missing': missComplaintMark }">
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉标记</label>
+          <FormSelect
+            class="cat-select"
+            :class="{ 'ctrl-missing': missComplaintMark }"
+            :value="form.complaintMark || undefined"
+            :options="complaintMarkOpts"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            @update:value="onComplaintMarkChange"
+          />
+          <p v-if="missComplaintMark" class="field-err">请选择</p>
+        </div>
+        <div class="cat-item">
+          <label class="field-label-sm">需后端推动</label>
+          <FormSelect
+            class="cat-select"
+            :value="form.backendPush || undefined"
+            :options="backendPushOptions"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            allow-clear
+            @update:value="onBackendPushChange"
+          />
+        </div>
+        <div class="cat-item cat-item--pad" aria-hidden="true" />
+        <span class="cat-row-actions-spacer" aria-hidden="true" />
       </div>
-      <div class="cat-item">
-        <label class="field-label-sm">需后端推动</label>
-        <FormSelect
-          class="cat-select"
-          :value="form.backendPush || undefined"
-          :options="backendPushOptions"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          allow-clear
-          @update:value="(v) => update({ backendPush: String(v ?? '') })"
+      <div v-if="form.backendPush" class="field backend-push-progress-field">
+        <label>需推动问题描述</label>
+        <OpTextareaAttach
+          class="attach-ctrl"
+          :model-value="form.backendPushProgress"
+          :attachments="form.backendPushProgressAttachments"
+          :min-input-height="40"
+          :maxlength="500"
+          :readonly="readonly"
+          :shell-background="readonly ? '#f5f5f5' : '#fff'"
+          :placeholder="readonly ? '' : '请填写需推动的问题描述（选填）'"
+          @update:model-value="(v) => update({ backendPushProgress: v })"
+          @update:attachments="(v) => update({ backendPushProgressAttachments: v })"
         />
+        <div class="cn-foot">
+          <span></span>
+          <span>{{ (form.backendPushProgress ?? '').length }}/500</span>
+        </div>
       </div>
-    </div>
-    <div class="complaint-cat-row">
-      <div class="cat-item" :class="{ 'is-missing': missComplaintCat1 }">
-        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类一</label>
-        <FormSelect
-          class="cat-select"
-          :class="{ 'ctrl-missing': missComplaintCat1 }"
-          :value="form.complaintCat1 || undefined"
-          :options="complaintL1Options"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          @update:value="onComplaintCat1Change"
-        />
-        <p v-if="missComplaintCat1" class="field-err">请选择</p>
-      </div>
-      <div class="cat-item" :class="{ 'is-missing': missComplaintCat2 }">
-        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类二</label>
-        <FormSelect
-          class="cat-select"
-          :class="{ 'ctrl-missing': missComplaintCat2 }"
-          :value="form.complaintCat2 || undefined"
-          :options="complaintL2Options"
-          :disabled="readonly || !form.complaintCat1"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          @update:value="onComplaintCat2Change"
-        />
-        <p v-if="missComplaintCat2" class="field-err">请选择</p>
-      </div>
-      <div class="cat-item" :class="{ 'is-missing': missComplaintCat3 }">
-        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类三</label>
-        <FormSelect
-          class="cat-select"
-          :class="{ 'ctrl-missing': missComplaintCat3 }"
-          :value="form.complaintCat3 || undefined"
-          :options="complaintL3Options"
-          :disabled="readonly || !form.complaintCat2"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          @update:value="onComplaintCat3Change"
-        />
-        <p v-if="missComplaintCat3" class="field-err">请选择</p>
+      <div
+        v-for="(row, rowIndex) in form.complaintCategoryRows"
+        :key="`cc-${rowIndex}`"
+        class="complaint-cat-row"
+      >
+        <div class="cat-item" :class="{ 'is-missing': missRowCat1(rowIndex) }">
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类一</label>
+          <FormSelect
+            class="cat-select"
+            :class="{ 'ctrl-missing': missRowCat1(rowIndex) }"
+            :value="row.cat1 || undefined"
+            :options="complaintL1Options"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            @update:value="(v) => onRowCat1Change(rowIndex, v)"
+          />
+          <p v-if="missRowCat1(rowIndex)" class="field-err">请选择</p>
+        </div>
+        <div class="cat-item" :class="{ 'is-missing': missRowCat2(rowIndex) }">
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类二</label>
+          <FormSelect
+            class="cat-select"
+            :class="{ 'ctrl-missing': missRowCat2(rowIndex) }"
+            :value="row.cat2 || undefined"
+            :options="complaintL2OptionsOf(row.cat1)"
+            :disabled="readonly || !row.cat1"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            @update:value="(v) => onRowCat2Change(rowIndex, v)"
+          />
+          <p v-if="missRowCat2(rowIndex)" class="field-err">请选择</p>
+        </div>
+        <div class="cat-item" :class="{ 'is-missing': missRowCat3(rowIndex) }">
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类三</label>
+          <FormSelect
+            class="cat-select"
+            :class="{ 'ctrl-missing': missRowCat3(rowIndex) }"
+            :value="row.cat3 || undefined"
+            :options="complaintL3OptionsOf(row.cat2)"
+            :disabled="readonly || !row.cat2 || !l3Required(row.cat2)"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            @update:value="(v) => onRowCat3Change(rowIndex, v)"
+          />
+          <p v-if="missRowCat3(rowIndex)" class="field-err">请选择</p>
+        </div>
+        <div v-if="!readonly" class="cat-row-actions">
+          <button
+            v-if="form.complaintCategoryRows.length > 1"
+            type="button"
+            class="cp-del"
+            title="移除该组分类"
+            @click="removeCategoryRow(rowIndex)"
+          >
+            <CloseOutlined />
+          </button>
+          <button
+            v-if="rowIndex === 0"
+            type="button"
+            class="cp-add"
+            @click="addCategoryRow"
+          >
+            <PlusOutlined />添加分类
+          </button>
+          <span v-else class="cp-add-spacer" aria-hidden="true" />
+        </div>
+        <span v-else class="cat-row-actions-spacer" aria-hidden="true" />
       </div>
       <div
         v-if="showComplainedRole"
-        class="cat-item"
-        :class="{ 'is-missing': missComplainedRole }"
+        class="complaint-cat-row complained-role-row"
       >
-        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>被投诉角色</label>
-        <FormSelect
-          mode="multiple"
-          class="cat-select complained-role-select"
-          :class="{ 'ctrl-missing': missComplainedRole }"
-          :value="form.complainedRole"
-          :options="complainedRoleOptions"
-          :placeholder="readonly ? '' : '请选择或搜索'"
-          :max-tag-count="2"
-          @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
-        />
-        <p v-if="missComplainedRole" class="field-err">请选择</p>
+        <div class="cat-item" :class="{ 'is-missing': missComplainedRole }">
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>被投诉角色</label>
+          <FormSelect
+            mode="multiple"
+            class="cat-select complained-role-select"
+            :class="{ 'ctrl-missing': missComplainedRole }"
+            :value="form.complainedRole"
+            :options="complainedRoleOptions"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            :max-tag-count="2"
+            @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
+          />
+          <p v-if="missComplainedRole" class="field-err">请选择</p>
+        </div>
+        <div class="cat-item cat-item--pad" aria-hidden="true" />
+        <div class="cat-item cat-item--pad" aria-hidden="true" />
+        <span class="cat-row-actions-spacer" aria-hidden="true" />
       </div>
     </div>
     <div class="field">
@@ -514,34 +623,58 @@ const riskMonitorDiff = computed(() => {
 .inline-row { flex-direction: row; align-items: center; gap: 12px; }
 .inline-row .field-label-sm { flex: none; white-space: nowrap; }
 .flex1 { flex: 1; min-width: 0; }
-/* 投诉标记行 + 分类行：同一套三列栅格，两行控件左缘与宽度对齐（被投诉角色折到第三行首列） */
+/* 投诉标记行 + 分类行：三列字段 + 右侧操作列（与「添加分类」等宽），列左缘对齐 */
 .complaint-cat-row {
+  --cat-actions-w: 118px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--cat-actions-w);
   align-items: start;
   gap: 10px;
   min-width: 0;
 }
-/* 标签与控件同一行（key–value），标签等宽右对齐；缺填提示折到控件下方 */
+.cat-item--pad {
+  visibility: hidden;
+  min-height: 28px;
+  pointer-events: none;
+}
+.backend-push-progress-field {
+  margin-top: 4px;
+}
+.cat-row-actions-spacer {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+}
+.cat-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 28px;
+  align-self: center;
+}
+/* 标签与控件同一行（key–value），标签左对齐、与 value 间距收紧 */
 .cat-item {
   min-width: 0;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  column-gap: 4px;
+  row-gap: 4px;
 }
-.cat-item .field-label-sm {
-  flex: 0 0 72px;
-  width: 72px;
-  text-align: right;
+/* 与「投诉分类一」同宽：五字标签 + 必填星，各行左缘一致 */
+.complaint-categories-block .cat-item .field-label-sm {
+  flex: 0 0 76px;
+  width: 76px;
+  text-align: left;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: #374151;
 }
-.cat-item .cat-select { flex: 1 1 0; min-width: 0; width: auto; }
-.cat-item .field-err { flex: 1 1 100%; padding-left: 80px; }
+.complaint-categories-block .cat-item .cat-select { flex: 1 1 0; min-width: 0; width: auto; }
+.complaint-categories-block .cat-item .field-err { flex: 1 1 100%; padding-left: 80px; }
 .cat-select { width: 100%; }
 .cat-select :deep(.ant-select-selector) {
   height: 28px;
@@ -559,6 +692,11 @@ const riskMonitorDiff = computed(() => {
 @media (max-width: 960px) {
   .complaint-cat-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .complaint-cat-row .cat-row-actions,
+  .complaint-cat-row .cat-row-actions-spacer {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 .complained-role-select {
@@ -581,6 +719,75 @@ const riskMonitorDiff = computed(() => {
 .complained-role-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
   line-height: 24px;
+}
+.complaint-categories-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.complaint-categories-block .complaint-cat-row {
+  width: 100%;
+}
+.complained-role-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--cat-actions-w);
+}
+.cp-add {
+  flex: none;
+  box-sizing: border-box;
+  width: 86px;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a6fff;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  align-self: center;
+}
+.cp-add:hover {
+  border-color: #1a6fff;
+  background: #f5f9ff;
+}
+.cp-add :deep(.anticon) {
+  font-size: 10px;
+}
+.cp-add-spacer {
+  flex: none;
+  box-sizing: border-box;
+  width: 86px;
+  height: 28px;
+  align-self: center;
+}
+.cp-del {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #b0b4bb;
+  cursor: pointer;
+  font-size: 11px;
+}
+.cp-del:hover {
+  color: #f56c6c;
+  background: #fef2f2;
 }
 
 .req {

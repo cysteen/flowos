@@ -168,8 +168,13 @@ export interface TicketDetailMeta {
   escalatedFromNo?: string;
   /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
-  /** 产研反馈单号（关联成功后） */
+  /** 产研反馈单号（关联成功后，信息板展示） */
   feishuFeedbackNo?: string;
+  /**
+   * 飞书项目工作项编号（详情链接末段，纯数字，如 20252642）。
+   * 与反馈单号不是同一个值：信息板仍展示反馈单号，链接用本编号拼接。
+   */
+  feishuWorkItemId?: string;
   /** 关联失败原因（failed 时） */
   feishuFailReason?: string;
   /** 「产研反馈」Tab 时间线（建关联 / 关联失败 / 预反馈 / 关单 / 二次激活） */
@@ -551,6 +556,11 @@ export const TIMELINE: TimelineEntry[] = [
   {
     id: 'e6', category: 'comm', action: 'phone', who: '张三', role: '二线专员',
     how: '电话外呼', when: '今天 10:40', recording: '03:25',
+    callSpan: {
+      startedAt: '2026-11-10 10:40:02',
+      connectedAt: '2026-11-10 10:40:08',
+      endedAt: '2026-11-10 10:43:33',
+    },
     what: '致电客户确认故障细节，记录复现步骤，承诺 2 小时内反馈。',
     asr: [
       { speaker: '客户', text: '在线歌单老是自己跳过，重启也没用……' },
@@ -648,12 +658,18 @@ export const DEFAULT_PROCESS_DRAFT = {
   conclusion: '已解决：技术方案解决',
   serviceSolution: '',
   concessionPlan: '',
-  complaintCat1: '产品问题',
-  complaintCat2: '产品质量',
-  complaintCat3: '质量事故（烧毁、烧焦等）',
+  complaintCategoryRows: [
+    {
+      cat1: '产品问题',
+      cat2: '产品质量',
+      cat3: '质量事故（烧毁、烧焦等）',
+    },
+  ],
   complainedRole: [] as string[],
   complaintMark: '有效投诉',
   backendPush: '',
+  backendPushProgress: '',
+  backendPushProgressAttachments: [] as string[],
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],
   platformFollowups: [] as {

@@ -136,6 +136,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       operator: '叶爱凤',
       when: '2026-09-17 09:38:10',
       summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:22',
+      callSpan: { startedAt: '2026-09-17 09:38:10', endedAt: '2026-09-17 09:38:32' },
     },
     {
       id: 'c-nc2',
@@ -145,6 +146,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       operator: '叶爱凤',
       when: '2026-09-17 09:37:50',
       summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:35',
+      callSpan: { startedAt: '2026-09-17 09:37:50', endedAt: '2026-09-17 09:38:25' },
     },
     {
       id: 'c-nc3',
@@ -154,6 +156,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       operator: '叶爱凤',
       when: '2026-08-31 18:05:33',
       summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:45',
+      callSpan: { startedAt: '2026-08-31 18:05:33', endedAt: '2026-08-31 18:06:18' },
     },
     {
       id: 'c1',
@@ -163,6 +166,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       operator: '陈伟',
       when: '2026-06-18 14:35:22',
       summary: '呼叫号码: 13812345678 | 状态: 接通 | 时长: 02:18',
+      callSpan: { startedAt: '2026-06-18 14:35:22', connectedAt: '2026-06-18 14:35:29', endedAt: '2026-06-18 14:37:47' },
       recording: { progress: '01:05 / 02:18', progressPercent: 47 },
       asr: [
         { speaker: '客户', text: '录音笔充不进去电，换了两根线都不行。' },
@@ -188,6 +192,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       operator: '陈伟',
       when: '2026-06-18 09:23:15',
       summary: '呼叫号码: 13812345678 | 状态: 接通 | 时长: 05:42',
+      callSpan: { startedAt: '2026-06-18 09:23:15', connectedAt: '2026-06-18 09:23:22', endedAt: '2026-06-18 09:29:04' },
       recording: { progress: '02:15 / 05:42', progressPercent: 39 },
       asr: [
         { speaker: '客户', text: '想确认一下电池检测大概什么时候能有结果？' },
@@ -204,6 +209,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       source: '一线',
       channel: '热线',
       summary: '呼叫号码: 138****8000 | 状态: 接通 | 时长: 04:12',
+      callSpan: { startedAt: '2026-06-18 09:00:12', endedAt: '2026-06-18 09:04:24' },
       recording: { progress: '01:10 / 04:12', progressPercent: 28 },
       note: '客户对多次未解决表示强烈不满，要求升级为投诉；一线关闭原咨询单、建投诉 B 单并同步本次通话。',
     },
@@ -217,6 +223,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       source: '一线',
       channel: '热线',
       summary: '呼叫号码: 138****8000 | 状态: 接通 | 时长: 02:36',
+      callSpan: { startedAt: '2026-06-18 08:30:18', endedAt: '2026-06-18 08:32:54' },
       recording: { progress: '00:40 / 02:36', progressPercent: 26 },
       note: '客户来电催促处理进度，情绪较急；已安抚并告知预计今日反馈，客户表示理解。',
     },
@@ -231,6 +238,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       channel: 'IM',
       summary: '客户在线催问：“麻烦加急处理，明天要用。”',
       im: { sessionDuration: '03:12', messageCount: 6 },
+      imSpan: { joinedAt: '2026-06-18 08:20:05', offlineAt: '2026-06-18 08:23:17' },
     },
     {
       id: 'c4',
@@ -261,6 +269,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       channel: 'IM',
       summary: '客户补充：故障在充电时更明显，已上传故障录屏与设置截图。',
       im: { sessionDuration: '08:20', messageCount: 12 },
+      imSpan: { joinedAt: '2026-06-17 15:45:00', offlineAt: '2026-06-17 15:53:20' },
     },
     {
       id: 'c10',
@@ -272,6 +281,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       source: '一线',
       channel: '热线',
       summary: '呼叫号码: 138****8000 | 状态: 接通 | 时长: 01:48',
+      callSpan: { startedAt: '2026-06-17 15:30:40', endedAt: '2026-06-17 15:32:28' },
       recording: { progress: '00:30 / 01:48', progressPercent: 28 },
       note: '客户补充：重启后可短暂使用，随后又黑屏；已补记到工单，供二线判断。',
     },
@@ -285,6 +295,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       source: '一线',
       channel: '热线',
       summary: '呼叫号码: 138****8000 | 状态: 接通 | 时长: 05:42',
+      callSpan: { startedAt: '2026-06-17 09:10:30', endedAt: '2026-06-17 09:16:12' },
       recording: { progress: '01:20 / 05:42', progressPercent: 23 },
       note: '客户反馈学习机无法开机，此前已尝试长按电源与充电均无效；初判为主板或电源问题，建单转二线处理。',
     },
@@ -299,6 +310,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       channel: 'IM',
       summary: '客户在线咨询：学习机开不了机，充电也没反应。',
       im: { sessionDuration: '06:05', messageCount: 9 },
+      imSpan: { joinedAt: '2026-06-17 09:05:10', offlineAt: '2026-06-17 09:11:15' },
     },
   ],
   notifyRecords: [

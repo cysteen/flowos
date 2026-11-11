@@ -543,6 +543,11 @@ function feishuFeedbackNo(): string {
   return `FS-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 9000) + 1000)}`;
 }
 
+/** 飞书项目工作项编号：详情链接末段，8 位纯数字，如 20252642 */
+function feishuWorkItemId(): string {
+  return String(20000000 + Math.floor(Math.random() * 8000000));
+}
+
 /** 生成模拟售后工单号（售后系统回传，AS = After-Sales） */
 function aftersaleNo(): string {
   const d = new Date();
@@ -925,9 +930,10 @@ export function applyOpAction(
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
         how: '提交挂起申请',
-        what: `挂起原因：${reason}${note ? `；${trimEndPunct(note)}` : ''}${resumeAt ? `，预计 ${resumeAt} 恢复` : ''}。`
+        what: `预计恢复时间：${resumeAt}。挂起原因：${reason}${note ? `；${trimEndPunct(note)}` : ''}。`
           + `服务类型/方式：${serviceType} · ${serviceMethod}。已提交 ${group} 审批，`
           + `审批通过后工单挂起、SLA 停表；审批期间 SLA 继续计时。`,
+        resumeAt,
       });
       return { opState: 'review', suspendInfo: null, message: `挂起申请已提交，等待${group}审批` };
     }
@@ -944,8 +950,10 @@ export function applyOpAction(
       // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
       if (channel === FEISHU_ESCALATE_CHANNEL) {
         const feedbackNo = feishuFeedbackNo();
+        const workItemId = feishuWorkItemId();
         detail.feishuSync = 'closed';
         detail.feishuFeedbackNo = feedbackNo;
+        detail.feishuWorkItemId = workItemId;
         detail.feishuFailReason = undefined;
         detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
         detail.status = '已升级产研';

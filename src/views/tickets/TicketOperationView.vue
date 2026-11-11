@@ -1278,6 +1278,11 @@ watch(
     if (prev.status === 'dialing') return;
     const endedAt = Date.now();
     const connected = prev.status === 'connected' && prev.connectedAt != null;
+    const stamp = (ms: number) => {
+      const d = new Date(ms);
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    };
     tabData.value.contactRecords.unshift({
       id: `c-${Date.now()}`,
       kind: 'call',
@@ -1286,6 +1291,11 @@ watch(
       operator: user.name || '当前坐席',
       when: formatNow(),
       summary: buildCallContactSummary(prev.phone, prev, endedAt),
+      callSpan: {
+        startedAt: stamp(prev.startedAt),
+        connectedAt: connected && prev.connectedAt ? stamp(prev.connectedAt) : undefined,
+        endedAt: stamp(endedAt),
+      },
     });
     syncContactedAfterOutreach();
     processTabsRef.value?.switchTab('contact');

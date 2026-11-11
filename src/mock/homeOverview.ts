@@ -805,7 +805,7 @@ function mockPeerValue(cardKey: string, rank: number, myRank: number, myValue: s
 
 export const HOME_QUICK_LINKS = [
   { key: 'create', label: '新建工单', icon: 'plus', color: '#1A6FFF' },
-  { key: 'pool', label: '工单池领单', icon: 'inbox', color: '#06B6D4' },
+  { key: 'pool', label: '工单池', icon: 'inbox', color: '#06B6D4' },
   { key: 'mine', label: '我的工单', icon: 'list', color: '#1A6FFF' },
   { key: 'kb', label: '知识库', icon: 'book', color: '#10B981' },
   { key: 'customer', label: '查询中心', icon: 'idcard', color: '#F59E0B' },

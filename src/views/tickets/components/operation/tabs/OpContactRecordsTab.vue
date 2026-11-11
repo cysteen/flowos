@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import type { ContactRecord } from '@/views/tickets/types/operationTabs';
+import { formatCallDuration } from '@/stores/cti';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import RecordingPlayer from '../RecordingPlayer.vue';
 
@@ -43,6 +44,99 @@ function jumpFirstline() {
  * 2026-10-07 裁决拿它当全页签时刻展示的**参照样式**，故格式与位置都保持不变；
  * 时刻仍过一道 formatOpTime，让精度不齐的那几条（只到分钟的）也排进同一个宽度。
  */
+/** 与短信 / 邮件摘要一致：`字段: 值 | 字段: 值` */
+const DETAIL_SEP = ' | ';
+
+function joinDetailLine(...segments: string[]): string {
+  return segments.filter(Boolean).join(DETAIL_SEP);
+}
+
+function summaryFields(summary: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const part of summary.split('|')) {
+    const m = part.trim().match(/^([^:]+):\s*(.+)$/);
+    if (m) map.set(m[1].trim(), m[2].trim());
+  }
+  return map;
+}
+
+function spanRingDuration(startedAt: string, endedAt: string): string {
+  const ms = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
+  return formatCallDuration(ms);
+}
+
+function isOutboundCallRecord(r: ContactRecord): boolean {
+  return r.kind === 'call' && !!r.callSpan && r.channel !== '热线';
+}
+
+function outboundRingDuration(r: ContactRecord): string {
+  const span = r.callSpan!;
+  const seg = summaryFields(r.summary);
+  const ringEnd = span.connectedAt ?? span.endedAt;
+  return (
+    seg.get('振铃时长')
+    ?? (ringEnd ? spanRingDuration(span.startedAt, ringEnd) : '—')
+  );
+}
+
+function outboundTalkDuration(r: ContactRecord): string {
+  const span = r.callSpan!;
+  const seg = summaryFields(r.summary);
+  const fromSummary = seg.get('时长') ?? seg.get('通话时长');
+  if (fromSummary) return fromSummary;
+  if (span.connectedAt) return spanRingDuration(span.connectedAt, span.endedAt);
+  return '—';
+}
+
+/** 外呼第一行：呼叫号码 | 状态 | 振铃时长 | 通话时长 */
+function callOutboundLine1(r: ContactRecord): string {
+  const seg = summaryFields(r.summary);
+  const parts = [
+    `呼叫号码: ${seg.get('呼叫号码') ?? '—'}`,
+    `状态: ${seg.get('状态') ?? '—'}`,
+    `振铃时长: ${outboundRingDuration(r)}`,
+    `通话时长: ${outboundTalkDuration(r)}`,
+  ];
+  const hold = seg.get('保持');
+  if (hold) parts.push(`保持: ${hold}`);
+  return joinDetailLine(...parts);
+}
+
+/** 外呼第二行：呼叫时间 | 振铃时间 | 接通时间 | 挂机时间 */
+function callOutboundLine2(r: ContactRecord): string {
+  const span = r.callSpan!;
+  const dialAt = formatOpTime(span.startedAt);
+  const connected = span.connectedAt ? formatOpTime(span.connectedAt) : '—';
+  return joinDetailLine(
+    `呼叫时间: ${dialAt}`,
+    `振铃时间: ${dialAt}`,
+    `接通时间: ${connected}`,
+    `挂机时间: ${formatOpTime(span.endedAt)}`,
+  );
+}
+
+/** 联系记录卡：摘要 + 时刻（短信 / 邮件仍只用 summary） */
+function contactDetailLine(r: ContactRecord): string {
+  if (r.kind === 'im' || r.channel === 'IM') {
+    if (!r.imSpan) return r.summary;
+    return joinDetailLine(
+      r.summary,
+      `接入: ${formatOpTime(r.imSpan.joinedAt)}`,
+      `离线: ${formatOpTime(r.imSpan.offlineAt)}`,
+    );
+  }
+  if (r.kind !== 'call' || !r.callSpan) return r.summary;
+  const span = r.callSpan;
+  if (r.channel === '热线') {
+    return joinDetailLine(
+      r.summary,
+      `呼入: ${formatOpTime(span.startedAt)}`,
+      `挂断: ${formatOpTime(span.endedAt)}`,
+    );
+  }
+  return `${callOutboundLine1(r)}\n${callOutboundLine2(r)}`;
+}
+
 function metaLabel(r: ContactRecord) {
   const prefix = r.metaPrefix ?? '操作人';
   let s = `${prefix}: ${r.operator} | ${formatOpTime(r.when)}`;
@@ -80,7 +174,17 @@ function metaLabel(r: ContactRecord) {
           查看详情<ExportOutlined />
         </button>
       </div>
-      <div v-else class="summary">{{ r.summary }}</div>
+      <div
+        v-else-if="isOutboundCallRecord(r)"
+        class="summary summary-call-metrics"
+        :title="contactDetailLine(r)"
+      >
+        <div class="summary-line summary-oneline">{{ callOutboundLine1(r) }}</div>
+        <div class="summary-line summary-oneline">{{ callOutboundLine2(r) }}</div>
+      </div>
+      <div v-else class="summary summary-oneline" :title="contactDetailLine(r)">
+        {{ contactDetailLine(r) }}
+      </div>
 
       <!-- 通话：录音 + 转写 -->
       <template v-if="r.kind === 'call' && r.recording">
@@ -190,6 +294,17 @@ function metaLabel(r: ContactRecord) {
   color: #111827;
   line-height: 20px;
   min-width: 0;
+}
+.summary-call-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.summary-oneline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 .card-meta {
   font-size: 11px;

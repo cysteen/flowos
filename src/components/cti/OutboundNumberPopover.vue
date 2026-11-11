@@ -2,7 +2,12 @@
 import { computed, ref } from 'vue';
 import PhoneBook from '@/components/cti/PhoneBook.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
-import type { OutboundNumberOption } from '@/mock/outboundNumbers';
+import { useUserStore } from '@/stores/user';
+import {
+  getOutboundNumbersForTeam,
+  resolveAgentTeamKey,
+  type OutboundNumberOption,
+} from '@/mock/outboundNumbers';
 
 const props = defineProps<{
   phone: string;
@@ -11,7 +16,11 @@ const props = defineProps<{
 }>();
 
 const open = ref(false);
+const user = useUserStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
+const defaultSelectedId = computed(
+  () => getOutboundNumbersForTeam(resolveAgentTeamKey(user.roleKey))[0]?.id ?? '',
+);
 
 /** 不可外呼时的拦截原因；null 表示可展开号码簿 */
 const callBlocked = computed(() => checkCanCall());
@@ -40,7 +49,7 @@ function onPick(entry: OutboundNumberOption) {
     :overlay-inner-style="{ padding: '0' }"
   >
     <template #content>
-      <PhoneBook @select="onPick" />
+      <PhoneBook :selected-id="defaultSelectedId" @select="onPick" />
     </template>
     <span class="outbound-popover-trigger">
       <slot />

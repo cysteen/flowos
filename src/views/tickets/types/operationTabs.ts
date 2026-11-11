@@ -160,6 +160,13 @@ export interface ContactRecord {
   note?: string;
   /** IM 会话元信息（消息条数、会话时长） */
   im?: { sessionDuration: string; messageCount: number };
+  /**
+   * 通话时刻。外呼用开始 / 接通 / 挂机；客户呼入热线只用开始（呼入）和挂机。
+   * 未接通时 `connectedAt` 为空。
+   */
+  callSpan?: { startedAt: string; connectedAt?: string; endedAt: string };
+  /** 客户呼入 IM：接入时间、离线时间 */
+  imSpan?: { joinedAt: string; offlineAt: string };
 }
 
 export type NotifyKind =
@@ -221,8 +228,8 @@ export interface AttachmentLinkFile {
   note: string;
   uploadedAt: string;
   /**
-   * 客户是否已把这个已上传的文件撤回。
-   * 撤回后工单侧仍保留该条记录并标出，文件实体仍在、照常可下载。
+   * 客户是否已把这个已上传的文件撤回（弹窗「是否删除」＝ 是）。
+   * 记录仍保留并标出；查看、下载置灰，也不能勾进底部批量下载。
    */
   revoked: boolean;
 }

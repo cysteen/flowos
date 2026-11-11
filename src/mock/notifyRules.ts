@@ -515,6 +515,14 @@ export const NOTIFY_RULES: NotifyRule[] = [
     conditions: [{ field: 'isFlash', op: 'eq', value: ['是'] }],
     recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {},
     enabled: true },
+  // 建议单下送后向客户发送感谢短信（产品中心口径）
+  { id: 'R20', name: '建议工单下送感谢短信', event: 'ticket.forward', audience: 'external',
+    conditions: [{ field: 'ticketType', op: 'eq', value: ['建议'] }],
+    recipients: [{ type: 'customer' }],
+    channels: ['短信'],
+    templates: { 短信: 'SMS_SUGGESTION_FORWARD_THANK' },
+    contents: {},
+    enabled: true },
   { id: 'R03', name: '组内来单（调剂）', event: 'ticket.transfer', audience: 'internal',
     conditions: [], recipients: [{ type: 'targetUser' }], channels: ['IM'], templates: { IM: 'IM_WO_DISPATCH' }, contents: {}, enabled: true },
   { id: 'R05', name: '委派提醒', event: 'ticket.delegate', audience: 'internal',
@@ -713,6 +721,11 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
   ],
   短信: [
     { code: 'SMS_WO_ACCEPTED', name: '建单受理通知', body: '【科大讯飞】尊敬的用户您好，您反馈的${productName}问题已收到，工单号为 ${ticketNo}，我们已安排专人跟进处理。处理进度会通过短信或0551开头的电话同步给您，烦请保持手机畅通，耐心等待。感谢您的信任与支持' },
+    {
+      code: 'SMS_SUGGESTION_FORWARD_THANK',
+      name: '建议工单下送感谢',
+      body: '【科大讯飞】尊敬用户，您好，您提出的关于${productName}的建议，对我们不断改进非常重要，很感谢您对我们的关注，祝您生活愉快！',
+    },
   ],
 };
 
