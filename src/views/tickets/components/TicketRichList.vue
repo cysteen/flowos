@@ -48,8 +48,10 @@ import {
 import { latestWhenText } from '@/views/tickets/utils/ticketOverview';
 import {
   latestHandlingLineText,
+  useLatestHandlingList,
   useLatestHandlingPreview,
 } from '@/views/tickets/composables/latestHandlingPreview';
+import type { LatestHandlingItem } from '@/views/tickets/types/operation';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import TicketTitleCell from './TicketTitleCell.vue';
 
@@ -171,6 +173,8 @@ const props = withDefaults(
 const user = useUserStore();
 /** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
 const latestPreview = useLatestHandlingPreview();
+/** 悬停卡「处理结果」：可多条、按时间正序（贴近一线在外部系统里看到的处理结果区） */
+const handlingTrail = useLatestHandlingList();
 /** 摘要悬停卡「放大」：仅一块区域定高 → 展开读全文 */
 const summaryPopExpandedId = ref<string | null>(null);
 
@@ -182,20 +186,22 @@ function toggleSummaryPopExpand(id: string) {
   summaryPopExpandedId.value = summaryPopExpandedId.value === id ? null : id;
 }
 
-/** 悬停卡时间：对齐参考稿 MM-DD HH:mm */
-function summaryPopWhen(when: string) {
-  const full = latestWhenText(when);
-  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(full);
-  if (m) return `${m[2]}-${m[3]} ${m[4]}`;
-  const today = /^今天\s+(\d{2}:\d{2})/.exec(full);
-  if (today) {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${mm}-${dd} ${today[1]}`;
-  }
-  return full.length > 16 ? full.slice(5, 16) : full;
+/** 处理结果日志行：保留完整日期时间，便于对照外呼/CRM 记录 */
+function summaryPopLogWhen(when: string) {
+  return latestWhenText(when);
 }
+
+/** 悬停卡里展示的处理结果条目（时间正序，旧在上、新在下） */
+function summaryHandlingEntries(t: Ticket): LatestHandlingItem[] {
+  return [...handlingTrail(t)].reverse();
+}
+
+function summaryHandlingFootTip(t: Ticket): string {
+  const n = summaryHandlingEntries(t).length;
+  if (n > 1) return `共 ${n} 条处理结果，可在上方区域内滚动`;
+  return '内容过长可在上方区域内滚动';
+}
+
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -735,24 +741,36 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                   <span class="sp-headline" :title="summaryPopHeadline(t)">{{ summaryPopHeadline(t) }}</span>
                 </div>
                 <div class="sp-scroll">
-                  <section v-if="t.type !== '建议' && t.type !== '商机'" class="sp-section">
+                  <section
+                    v-if="t.type !== '建议' && t.type !== '商机'"
+                    class="sp-section sp-section--problem"
+                    :class="{ 'is-compact': summaryHandlingEntries(t).length > 1 }"
+                  >
                     <div class="sp-section-label">问题描述</div>
                     <div class="sp-section-body">{{ t.problemDesc || '—' }}</div>
                   </section>
-                  <section class="sp-section">
-                    <div v-if="latestPreview(t)" class="sp-handle-head">
-                      <span class="sp-section-label handle">最新处理</span>
-                      <span class="sp-who">{{ latestPreview(t)!.who }}</span>
-                      <span class="sp-when">{{ summaryPopWhen(latestPreview(t)!.when) }}</span>
+                  <section class="sp-section sp-section--results">
+                    <div class="sp-section-label handle">
+                      处理结果
+                      <span v-if="summaryHandlingEntries(t).length" class="sp-result-meta">
+                        共 {{ summaryHandlingEntries(t).length }} 条
+                      </span>
                     </div>
-                    <div v-else class="sp-section-label handle">最新处理</div>
-                    <div class="sp-section-body">
-                      {{ latestPreview(t)?.text || '暂无处理记录' }}
+                    <div v-if="summaryHandlingEntries(t).length" class="sp-result-list">
+                      <p
+                        v-for="(h, idx) in summaryHandlingEntries(t)"
+                        :key="`${t.id}-handle-${idx}`"
+                        class="sp-result-item"
+                      >
+                        <time class="sp-result-time">{{ summaryPopLogWhen(h.when) }}</time>
+                        <span class="sp-result-text">{{ h.text }}</span>
+                      </p>
                     </div>
+                    <div v-else class="sp-section-body">暂无处理记录</div>
                   </section>
                 </div>
                 <div class="sp-foot">
-                  <span class="sp-foot-tip">内容过长可在上方区域内滚动</span>
+                  <span class="sp-foot-tip">{{ summaryHandlingFootTip(t) }}</span>
                   <button
                     type="button"
                     class="sp-expand"
@@ -1388,14 +1406,14 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 <style>
 .ticket-summary-popover .ant-popover-inner { padding: 10px 12px; }
 .summary-pop {
-  width: 344px;
-  max-width: min(344px, 90vw);
-  height: 300px;
+  width: min(420px, 92vw);
+  max-width: min(420px, 92vw);
+  height: min(360px, 56vh);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.summary-pop.is-expanded { height: min(520px, 72vh); }
+.summary-pop.is-expanded { height: min(640px, 78vh); }
 .summary-pop .sp-title-row {
   flex: none;
   display: flex;
@@ -1449,29 +1467,55 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   color: #374151;
 }
 .summary-pop .sp-section-label.handle { color: #111827; }
-.summary-pop .sp-handle-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.summary-pop .sp-who {
-  font-size: 12px;
-  font-weight: 600;
-  color: #111827;
-}
-.summary-pop .sp-when {
-  margin-left: auto;
+.summary-pop .sp-result-meta {
+  margin-left: 6px;
   font-size: 11px;
+  font-weight: 500;
   color: #9ca3af;
-  white-space: nowrap;
+}
+.summary-pop .sp-section--problem.is-compact .sp-section-body {
+  max-height: 4.8em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 .summary-pop .sp-section-body {
   font-size: 12px;
   color: #4b5563;
   line-height: 1.65;
   word-break: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+.summary-pop .sp-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.summary-pop .sp-result-item {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #374151;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.summary-pop .sp-result-time {
+  display: inline;
+  margin-right: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.summary-pop .sp-result-text {
+  color: #4b5563;
+}
+.summary-pop .sp-section--results {
+  flex: 1;
+  min-height: 0;
 }
 .summary-pop .sp-foot {
   flex: none;
