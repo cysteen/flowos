@@ -45,13 +45,12 @@ import {
   ticketStatusDisplayName,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-import { latestWhenText, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
+import { latestWhenText } from '@/views/tickets/utils/ticketOverview';
 import {
   latestHandlingLineText,
-  useLatestHandlingList,
   useLatestHandlingPreview,
 } from '@/views/tickets/composables/latestHandlingPreview';
-import { ticketProductIssue } from '@/views/tickets/utils/ticketOverview';
+import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import TicketTitleCell from './TicketTitleCell.vue';
 
 const props = withDefaults(
@@ -172,7 +171,31 @@ const props = withDefaults(
 const user = useUserStore();
 /** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
 const latestPreview = useLatestHandlingPreview();
-const latestList = useLatestHandlingList();
+/** 摘要悬停卡「放大」：仅一块区域定高 → 展开读全文 */
+const summaryPopExpandedId = ref<string | null>(null);
+
+function summaryPopHeadline(t: Ticket) {
+  return [t.product, t.title, ticketListSourceLabel(t)].filter(Boolean).join(' · ');
+}
+
+function toggleSummaryPopExpand(id: string) {
+  summaryPopExpandedId.value = summaryPopExpandedId.value === id ? null : id;
+}
+
+/** 悬停卡时间：对齐参考稿 MM-DD HH:mm */
+function summaryPopWhen(when: string) {
+  const full = latestWhenText(when);
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(full);
+  if (m) return `${m[2]}-${m[3]} ${m[4]}`;
+  const today = /^今天\s+(\d{2}:\d{2})/.exec(full);
+  if (today) {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${mm}-${dd} ${today[1]}`;
+  }
+  return full.length > 16 ? full.slice(5, 16) : full;
+}
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -703,58 +726,41 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
               </div>
             </div>
             <template #content>
-              <div class="summary-pop">
-                <div class="sp-head">
-                  <div class="sp-title">
-                    <span class="sp-type">{{ ticketTypeLabel(t) }}</span>{{ t.title }}
-                  </div>
-                  <div class="sp-meta">
-                    <span
-                      class="sp-status"
-                      :style="statusStyle(t.nodeStatus)"
-                    >{{ ticketStatusDisplayName(t) }}</span>
-                    <span class="sp-prio">
-                      <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }" />
-                      {{ t.priority }}
-                    </span>
-                    <span class="sp-no">{{ t.no }}</span>
-                  </div>
-                  <div class="sp-facts">
-                    <span class="sp-fact">{{ t.customer || '—' }}</span>
-                    <span class="sp-sep">·</span>
-                    <span class="sp-fact">{{ t.product || '—' }}</span>
-                  </div>
-                  <div class="sp-subfacts">
-                    <span v-if="ticketProductIssue(t)">{{ ticketProductIssue(t) }}</span>
-                    <span v-if="t.assignee" class="sp-assignee">当前处理：{{ t.assignee }}</span>
-                    <span v-if="t.updatedAt" class="sp-updated">更新 {{ t.updatedAt }}</span>
-                  </div>
+              <div
+                class="summary-pop"
+                :class="{ 'is-expanded': summaryPopExpandedId === t.id }"
+              >
+                <div class="sp-title-row">
+                  <span class="sp-type">{{ ticketTypeLabel(t) }}</span>
+                  <span class="sp-headline" :title="summaryPopHeadline(t)">{{ summaryPopHeadline(t) }}</span>
                 </div>
-                <div v-if="t.type !== '建议' && t.type !== '商机'" class="sp-block">
-                  <div class="hi-meta">
-                    <span class="hi-label">问题描述</span>
-                  </div>
-                  <div class="hi-text sp-problem">{{ t.problemDesc || '—' }}</div>
-                </div>
-                <div class="sp-block sp-block--trail">
-                  <div class="sp-block-title">
-                    <span class="hi-label handle">最新处理</span>
-                    <span v-if="latestList(t).length > 1" class="sp-trail-count">{{ latestList(t).length }} 条</span>
-                  </div>
-                  <div v-if="!latestList(t).length" class="hi-text muted">暂无处理记录</div>
-                  <div
-                    v-for="(h, i) in latestList(t)"
-                    :key="`${t.id}-lh-${i}`"
-                    class="sp-handle-item"
-                  >
-                    <div class="hi-meta">
-                      <span class="hi-who">{{ h.who }}</span>
-                      <span v-if="h.role" class="hi-role">{{ h.role }}</span>
-                      <span class="hi-action">{{ resolveLatestHandlingAction(h) }}</span>
-                      <span class="hi-when">{{ latestWhenText(h.when) }}</span>
+                <div class="sp-scroll">
+                  <section v-if="t.type !== '建议' && t.type !== '商机'" class="sp-section">
+                    <div class="sp-section-label">问题描述</div>
+                    <div class="sp-section-body">{{ t.problemDesc || '—' }}</div>
+                  </section>
+                  <section class="sp-section">
+                    <div v-if="latestPreview(t)" class="sp-handle-head">
+                      <span class="sp-section-label handle">最新处理</span>
+                      <span class="sp-who">{{ latestPreview(t)!.who }}</span>
+                      <span class="sp-when">{{ summaryPopWhen(latestPreview(t)!.when) }}</span>
                     </div>
-                    <div class="hi-text">{{ h.text }}</div>
-                  </div>
+                    <div v-else class="sp-section-label handle">最新处理</div>
+                    <div class="sp-section-body">
+                      {{ latestPreview(t)?.text || '暂无处理记录' }}
+                    </div>
+                  </section>
+                </div>
+                <div class="sp-foot">
+                  <span class="sp-foot-hint" aria-hidden="true">…</span>
+                  <button
+                    type="button"
+                    class="sp-expand"
+                    :title="summaryPopExpandedId === t.id ? '收起' : '放大查看'"
+                    @click.stop="toggleSummaryPopExpand(t.id)"
+                  >
+                    {{ summaryPopExpandedId === t.id ? '⤡' : '⤢' }}
+                  </button>
                 </div>
               </div>
             </template>
@@ -1380,57 +1386,122 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 
 <!-- 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->
 <style>
-.ticket-summary-popover .ant-popover-inner { padding: 12px 14px; }
-.summary-pop { width: 360px; max-width: min(360px, 88vw); display: flex; flex-direction: column; gap: 10px; }
-.summary-pop .sp-head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #f3f4f6; }
-.summary-pop .sp-title {
-  font-size: 13px; font-weight: 600; color: #111827; line-height: 1.45;
-  display: flex; align-items: baseline; gap: 6px;
+.ticket-summary-popover .ant-popover-inner { padding: 10px 12px; }
+.summary-pop {
+  width: 344px;
+  max-width: min(344px, 90vw);
+  height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.summary-pop.is-expanded { height: min(520px, 72vh); }
+.summary-pop .sp-title-row {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
 }
 .summary-pop .sp-type {
-  flex: none; font-size: 11px; font-weight: 600; color: #4b5563;
-  background: #f3f4f6; border-radius: 3px; padding: 1px 6px;
+  flex: none;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 2px 6px;
 }
-.summary-pop .sp-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.summary-pop .sp-status {
-  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 4px;
+.summary-pop .sp-headline {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.summary-pop .sp-prio {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 600; color: #374151;
+.summary-pop.is-expanded .sp-headline {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
-.summary-pop .sp-prio .prio-dot { width: 6px; height: 6px; border-radius: 50%; }
-.summary-pop .sp-no { font-size: 11px; color: #6b7280; font-family: ui-monospace, Consolas, monospace; }
-.summary-pop .sp-facts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: #111827; font-weight: 500; }
-.summary-pop .sp-sep { color: #d1d5db; }
-.summary-pop .sp-subfacts {
-  display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: #6b7280; line-height: 1.5;
+.summary-pop .sp-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 2px;
 }
-.summary-pop .sp-assignee { color: #1a6fff; font-weight: 500; }
-.summary-pop .sp-updated { margin-left: auto; color: #9ca3af; }
-.summary-pop .sp-block { display: flex; flex-direction: column; gap: 4px; }
-.summary-pop .sp-block--trail {
-  max-height: min(220px, 40vh); overflow-y: auto; scrollbar-width: thin;
-  padding-right: 2px; gap: 8px;
+.summary-pop .sp-section { display: flex; flex-direction: column; gap: 6px; }
+.summary-pop .sp-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
 }
-.summary-pop .sp-block-title { display: flex; align-items: center; gap: 8px; }
-.summary-pop .sp-trail-count {
-  font-size: 10px; font-weight: 500; color: #6b7280; background: #f3f4f6;
-  border-radius: 8px; padding: 0 6px;
+.summary-pop .sp-section-label.handle { color: #111827; }
+.summary-pop .sp-handle-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.summary-pop .sp-handle-item {
-  padding: 6px 8px; border-radius: 8px; background: #f9fafb; border: 1px solid #f3f4f6;
-  display: flex; flex-direction: column; gap: 4px;
+.summary-pop .sp-who {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
 }
-.summary-pop .sp-problem { max-height: 88px; overflow-y: auto; scrollbar-width: thin; }
-.summary-pop .hi-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
-.summary-pop .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
-.summary-pop .hi-role { font-size: 11px; color: #9ca3af; }
-.summary-pop .hi-action { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
-.summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; white-space: nowrap; }
-.summary-pop .hi-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
-.summary-pop .hi-text.muted { color: #9ca3af; }
+.summary-pop .sp-when {
+  margin-left: auto;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+.summary-pop .sp-section-body {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.65;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.summary-pop .sp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  border-top: 1px solid #f3f4f6;
+}
+.summary-pop .sp-foot-hint {
+  font-size: 14px;
+  color: #9ca3af;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+.summary-pop .sp-expand {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: inherit;
+  line-height: 1;
+}
+.summary-pop .sp-expand:hover {
+  color: #1a6fff;
+  background: #eff6ff;
+}
 .group-pop {
   display: flex;
   flex-wrap: wrap;
