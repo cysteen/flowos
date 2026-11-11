@@ -723,6 +723,14 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                 class="summary-pop"
                 :class="{ 'is-expanded': summaryPopExpandedId === t.id }"
               >
+                <button
+                  type="button"
+                  class="sp-expand"
+                  :title="summaryPopExpandedId === t.id ? '收起' : '放大查看'"
+                  @click.stop="toggleSummaryPopExpand(t.id)"
+                >
+                  {{ summaryPopExpandedId === t.id ? '⤡' : '⤢' }}
+                </button>
                 <div class="sp-title-row">
                   <span class="sp-type">{{ ticketTypeLabel(t) }}</span>
                   <span class="sp-headline" :title="summaryPopHeadline(t)">{{ summaryPopHeadline(t) }}</span>
@@ -744,16 +752,6 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                     >{{ processResultBody(t) }}</div>
                     <div v-else class="sp-section-body">暂无处理记录</div>
                   </section>
-                </div>
-                <div class="sp-foot">
-                  <button
-                    type="button"
-                    class="sp-expand"
-                    :title="summaryPopExpandedId === t.id ? '收起' : '放大查看'"
-                    @click.stop="toggleSummaryPopExpand(t.id)"
-                  >
-                    {{ summaryPopExpandedId === t.id ? '⤡' : '⤢' }}
-                  </button>
                 </div>
               </div>
             </template>
@@ -1381,6 +1379,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 <style>
 .ticket-summary-popover .ant-popover-inner { padding: 10px 12px; }
 .summary-pop {
+  position: relative;
   width: min(420px, 92vw);
   max-width: min(420px, 92vw);
   height: min(360px, 56vh);
@@ -1394,6 +1393,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  padding-right: 26px;
   padding-bottom: 8px;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -1464,15 +1464,11 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   flex: 1;
   min-height: 0;
 }
-.summary-pop .sp-foot {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-top: 4px;
-  border-top: 1px solid #f3f4f6;
-}
 .summary-pop .sp-expand {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
   border: none;
   background: transparent;
   font-size: 14px;
