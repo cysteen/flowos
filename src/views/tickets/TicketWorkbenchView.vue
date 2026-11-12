@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { isFlashTicket } from '@/views/tickets/types/flash';
+import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
+import { REGISTRATION_TEMPLATES, isBusinessRegistrationTicket, WIRELESS_REGISTRATION_TEMPLATE_ID } from '@/views/tickets/types/businessRegistration';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
@@ -55,6 +57,8 @@ import {
   MODE_TAG_STYLE, STD_TIP_PROPS, claimDisabledTip, modeTagOf, waitMinutesOf, waitText,
 } from './composables/dispatchUi';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
+import { useRegistrationQueryCatalog } from './composables/useRegistrationQueryCatalog';
+import { useOpenUnifiedCreate } from './composables/unifiedCreateEntry';
 import { poolEntryQuery } from './composables/poolClaim';
 import { useTicketColumns } from './composables/useTicketColumns';
 import { useMineQueryFields } from './composables/useMineQueryFields';
@@ -68,8 +72,16 @@ import type { CreateTicketPrefill, Ticket } from './types/ticket';
 
 const user = useUserStore();
 const router = useRouter();
+const openUnifiedCreate = useOpenUnifiedCreate();
 const route = useRoute();
 const wb = useTicketWorkbench();
+const registrations = useBusinessRegistrationStore();
+const { productCatalog, registrationSources } = useRegistrationQueryCatalog(wb.formTemplateId);
+const registrationTemplates = computed(() => REGISTRATION_TEMPLATES.filter((template) => registrations.canCreate(template.id)));
+function openRegistrationView(scope: 'mine' | 'team' = 'mine') { wb.setRegistrationView(scope); }
+watch(() => route.query.template, (template) => {
+  if (template === WIRELESS_REGISTRATION_TEMPLATE_ID && registrations.canCreate(template)) wb.setRegistrationView();
+}, { immediate: true });
 const flashStore = useFlashStore();
 const headerTabCounts = wb.headerTabCounts;
 const riskReports = useRiskReportStore();
@@ -366,7 +378,7 @@ const toolbarSelectedCount = computed(() =>
   flashPoolTabOpen.value ? flashSelectedCount.value : wb.selectedCount.value,
 );
 const toolbarShowBatch = computed(
-  () => !delegateTabOpen.value && (flashPoolTabOpen.value || showBatchToolbar.value),
+  () => !delegateTabOpen.value && !wb.formTemplateId.value && (flashPoolTabOpen.value || showBatchToolbar.value),
 );
 const toolbarBatchActions = computed(() =>
   flashPoolTabOpen.value ? ['领取'] : batchActions.value,
@@ -422,6 +434,14 @@ const opReturnCount = computed(() => {
 });
 
 function openOpDialog(action: '调剂' | '退回', tickets: Ticket[]) {
+  const registration = tickets.find(isBusinessRegistrationTicket);
+  if (registration) {
+    if (action !== '调剂' || tickets.length !== 1) { message.info('登记类工单请进入处理页逐单办理组内调剂'); return; }
+    if (!registrations.canTransfer(registration.no)) { message.warning('仅同组成员可调剂未结案工单'); return; }
+    void router.push(`/tickets/${registration.no}`);
+    message.info('请在处理页选择组内接收人完成调剂');
+    return;
+  }
   if (!tickets.length) {
     message.info(`请先选择要${action}的工单`);
     return;
@@ -532,7 +552,10 @@ watch(
 // —— 草稿 ——（非「我的任务」Tab 下「草稿」chip 选中时渲染草稿列表）
 const editingDraftId = ref<string | null>(null);
 const isDraftView = computed(() => wb.isDraftView.value);
-function openCreate() { editingDraftId.value = null; createPrefill.value = null; createOpen.value = true; }
+function openCreate() {
+  editingDraftId.value = null; createPrefill.value = null;
+  openUnifiedCreate('general', wb.formTemplateId.value || 'general');
+}
 /**
  * 「新建小智工单」（1130 小智工单 D3；按钮名照一·补 B22）：与通用「新建工单」两枚并存。
  * 入口置位 `xiaozhiScene`，建单弹窗据此切小智表单（工单类型锁咨询、业务类型锁教育、来源锁 IM）。
@@ -687,6 +710,12 @@ function onTakeoverOk() {
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
+  if (isBusinessRegistrationTicket(t)) {
+    if (label === '调剂' && !registrations.canTransfer(t.no)) { message.warning('仅同组成员可调剂未结案工单'); return; }
+    void router.push(`/tickets/${t.no}`);
+    if (label === '调剂') message.info('请在处理页选择组内接收人完成调剂');
+    return;
+  }
   if (label === '认领') {
     claimDelegateTask(t);
     return;
@@ -878,6 +907,19 @@ function onConfirmSaveFilter(name: string) {
     </div>
 
     <div v-else class="workbench-body">
+      <div v-if="!flashPoolTabOpen && !delegateTabOpen && registrationTemplates.length" class="registration-view-filter">
+        <label>业务表单
+          <select v-model="wb.formTemplateId.value" aria-label="按业务表单筛选">
+            <option value="">全部表单</option>
+            <option v-for="template in registrationTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
+          </select>
+        </label>
+        <button type="button" :class="{ active: wb.formTemplateId.value === WIRELESS_REGISTRATION_TEMPLATE_ID }" @click="openRegistrationView()">无线音乐自建单</button>
+        <template v-if="wb.formTemplateId.value">
+          <button type="button" :class="{ active: wb.registrationScope.value === 'mine' }" @click="openRegistrationView('mine')">我的待办</button>
+          <button type="button" :class="{ active: wb.registrationScope.value === 'team' }" @click="openRegistrationView('team')">本组记录</button>
+        </template>
+      </div>
       <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示；草稿箱视图下照常展示，点其他 chip 回列表） -->
       <div v-if="delegateTabOpen && delegateTab === DELEGATE_POOL_TAB" class="filter-row-unified">
         <TicketFilterBar
@@ -908,6 +950,8 @@ function onConfirmSaveFilter(name: string) {
           :variant="structuredFilterVariant"
           :pool-groups="wb.poolGroups.value"
           :optional-visible="optionalVisible"
+          :product-catalog="productCatalog"
+          :registration-sources="registrationSources"
           @update:model-value="wb.setStructuredQuery"
           @search="wb.applyStructuredQuery"
           @save-filter="onRequestSaveFilter"
@@ -926,7 +970,7 @@ function onConfirmSaveFilter(name: string) {
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
           :show-filter-toggle="!flashPoolTabOpen && !delegateTabOpen && wb.usesStructuredFilter.value"
-          :show-sort="!flashPoolTabOpen && !delegateTabOpen"
+          :show-sort="!flashPoolTabOpen && !delegateTabOpen && !wb.formTemplateId.value"
           :filter-expanded="structuredFilterExpanded"
           :show-column-settings="true"
           @batch="onBatch"
@@ -1082,7 +1126,7 @@ function onConfirmSaveFilter(name: string) {
                     : 'default'
             "
             :row-actions-fn="isPoolPendingTab ? poolPendingRowActions : wb.isPoolTab.value ? poolRowActionsDispatch : undefined"
-            :selectable="wb.isPoolTab.value ? false : undefined"
+            :selectable="wb.formTemplateId.value || wb.isPoolTab.value ? false : undefined"
             :show-appointment-column="wb.showAppointmentColumn.value"
             :extra-columns="listExtraColumns"
             :visible-columns="visibleColumns"
@@ -1130,7 +1174,7 @@ function onConfirmSaveFilter(name: string) {
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
-              <span v-if="wb.isMineTab.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+              <span v-if="wb.isMineTab.value && !wb.formTemplateId.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
           </div>
         </template>
@@ -1231,6 +1275,10 @@ function onConfirmSaveFilter(name: string) {
 </template>
 
 <style scoped>
+.registration-view-filter { display:flex; align-items:center; gap:8px; padding:10px 0; flex-wrap:wrap; }
+.registration-view-filter label { display:flex; align-items:center; gap:8px; color:#687a94; font-size:12px; margin-right:8px; }
+.registration-view-filter select, .registration-view-filter button { border:1px solid #dce5f0; border-radius:4px; background:#fff; padding:5px 9px; font-size:12px; color:#62738c; cursor:pointer; }
+.registration-view-filter button.active { color:#1a6fff; border-color:#c1d8ff; background:#f0f6ff; }
 .workbench {
   display: flex;
   flex-direction: column;

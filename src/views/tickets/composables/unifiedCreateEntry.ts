@@ -14,15 +14,19 @@ export type UnifiedCreateScene = 'general' | 'xiaozhi';
  * 带 query 会让「回到已打开的页签」落到另一个组件实例上。
  */
 export const unifiedCreateScene = ref<UnifiedCreateScene>('general');
+/** Selected business form shares the same workspace tab and draft lifetime. */
+export const unifiedCreateTemplateId = ref<string>('general');
 
 /** 打开统一建单页签；已打开时回到该页签，已填内容不动 */
 export function useOpenUnifiedCreate() {
   const router = useRouter();
   const tabs = useWorkspaceTabsStore();
-  return function openUnifiedCreate(scene: UnifiedCreateScene = 'general') {
+  return function openUnifiedCreate(scene: UnifiedCreateScene = 'general', templateId = 'general') {
     const opened = tabs.tabs.some((t) => t.key === UNIFIED_CREATE_PATH);
-    if (!opened) unifiedCreateScene.value = scene;
-    else if (unifiedCreateScene.value !== scene) {
+    if (!opened) {
+      unifiedCreateScene.value = scene;
+      unifiedCreateTemplateId.value = templateId;
+    } else if (unifiedCreateScene.value !== scene || unifiedCreateTemplateId.value !== templateId) {
       message.info('已有打开的统一建单，请先完成或关闭');
     }
     void router.push(UNIFIED_CREATE_PATH);

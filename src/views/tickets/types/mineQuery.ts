@@ -7,6 +7,7 @@ import { prototypeDayEnd } from '@/config/prototypeDate';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
+import type { RegistrationRecord } from '@/views/tickets/types/businessRegistration';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -54,6 +55,10 @@ export interface MineQueryFilter {
   problemL2: string;
   problemL3: string;
   groupName: string;
+  /** 业务表单专用查询；可选以兼容已保存的通用筛选器。 */
+  registrationFeedback?: string;
+  registrationSource?: string;
+  registrationTimeField?: 'createdAt' | 'accessTime';
 }
 
 export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
@@ -221,14 +226,16 @@ export function resolveMineTimeRange(q: MineQueryFilter): { from: number; to: nu
   return { from: start.getTime(), to: end.getTime() };
 }
 
-export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
+export function matchMineQuery(t: Ticket, q: MineQueryFilter, registration?: RegistrationRecord): boolean {
+  if (q.registrationFeedback && registration?.values.feedback !== q.registrationFeedback) return false;
+  if (q.registrationSource && registration?.values.specificSource !== q.registrationSource) return false;
   if (q.ticketNo) {
     const kw = q.ticketNo.trim().toLowerCase();
     const hay = `${t.no} ${t.title}`.toLowerCase();
     if (!hay.includes(kw)) return false;
   }
   if (q.phone) {
-    const phone = t.customerPhone ?? '';
+    const phone = `${t.customerPhone ?? ''} ${t.businessPhone ?? ''} ${t.contactPhone ?? ''}`;
     if (!matchesSearchText(phone, q.phone) && !includes(t.customer, q.phone)) return false;
   }
   if (q.sn && !(t.sn && includes(t.sn, q.sn))) return false;
@@ -267,8 +274,10 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
 
   const range = resolveMineTimeRange(q);
   if (range) {
-    const updated = ticketUpdatedTime(t);
-    if (!updated || updated < range.from || updated > range.to) return false;
+    const time = registration
+      ? ts(q.registrationTimeField === 'accessTime' ? registration.values.accessTime : registration.createdAt)
+      : ticketUpdatedTime(t);
+    if (!time || time < range.from || time > range.to) return false;
   }
 
   return true;
@@ -300,6 +309,8 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.problemL2
     || q.problemL3
     || q.groupName
+    || q.registrationFeedback
+    || q.registrationSource
   );
 }
 

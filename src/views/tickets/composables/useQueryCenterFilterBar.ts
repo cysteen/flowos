@@ -26,6 +26,7 @@ export function useQueryCenterFilterBar(
    * 摆在 chip 上的数本就该是"没选它时有多少条"。
    */
   rowFilter?: Ref<((t: Ticket) => boolean) | null>,
+  queryMatcher: (t: Ticket, q: MineQueryFilter) => boolean = matchMineQuery,
 ) {
   const passesRowFilter = (t: Ticket) => !rowFilter?.value || rowFilter.value(t);
   const savedFilters = useSavedFilters();
@@ -56,20 +57,20 @@ export function useQueryCenterFilterBar(
     for (const chip of chips.value) {
       if (chip.key === 'all') {
         map.all = baseRows.value.filter(
-          (t) => passesRowFilter(t) && matchMineQuery(t, query.value),
+          (t) => passesRowFilter(t) && queryMatcher(t, query.value),
         ).length;
         continue;
       }
       if (chip.key === 'soon' || chip.key === 'overdue') {
         const slaKey = chip.key;
         map[slaKey] = baseRows.value.filter(
-          (t) => passesRowFilter(t) && matchSlaChip(t, slaKey) && matchMineQuery(t, query.value),
+          (t) => passesRowFilter(t) && matchSlaChip(t, slaKey) && queryMatcher(t, query.value),
         ).length;
         continue;
       }
       const sf = savedFilters.findByChipKey(chip.key);
       map[chip.key] = sf
-        ? baseRows.value.filter((t) => passesRowFilter(t) && matchMineQuery(t, sf.query)).length
+        ? baseRows.value.filter((t) => passesRowFilter(t) && queryMatcher(t, sf.query)).length
         : 0;
     }
     return map;

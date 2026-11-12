@@ -368,6 +368,7 @@ export const PROCESSING_GROUPS = [
   '硬件缺陷组',
   '教育支持组',
   '技术支持组',
+  '无线音乐处理组',
 ] as const;
 
 /** 各处理组班组长（原型 Mock；一组可配多名，展示时用顿号连接） */
@@ -379,6 +380,7 @@ export const PROCESSING_GROUP_LEADERS: Record<string, string | string[]> = {
   技术支持组: ['杨帆'],
   一线客服组: ['王芳'],
   二线技术支持组: ['李强'],
+  无线音乐处理组: ['王组长'],
 };
 
 function formatLeaderNames(leaders?: string | string[]): string {
@@ -394,6 +396,7 @@ const GROUP_ID_TO_PROCESSING: Record<string, string> = {
   'cs-2': '受理二组',
   tech: '技术支持组',
   edu: '教育支持组',
+  'wireless-music': '无线音乐处理组',
 };
 
 /** 展示格式：组名（班组长名1、班组长名2）；提交时 strip 括号段取组名路由审批 */

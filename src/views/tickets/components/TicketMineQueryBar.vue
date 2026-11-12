@@ -21,6 +21,7 @@ import {
   type MineTimePreset,
 } from '@/views/tickets/types/mineQuery';
 import { fieldsForVariant, type MineFilterFieldKey } from '@/views/tickets/types/mineQueryFields';
+import type { RegistrationQuerySources } from '@/views/tickets/composables/useRegistrationQueryCatalog';
 import type { NodeStatus, PoolGroupMeta, Priority, SlaFilterKey } from '@/views/tickets/types/ticket';
 import { BASELINE_STATUSES, SLA_FILTER_OPTIONS, statusDisplayName } from '@/views/tickets/types/ticket';
 import { REFUND_STATUS_SYSTEM } from '@/views/tickets/types/refund';
@@ -34,6 +35,9 @@ const props = withDefaults(
     variant?: 'mine' | 'done' | 'pool';
     poolGroups?: PoolGroupMeta[];
     optionalVisible: Record<string, boolean>;
+    /** 未提供时沿用通用产品目录；业务表单可传入含停用及历史值的独立目录。 */
+    productCatalog?: readonly { category: string; name: string }[];
+    registrationSources?: RegistrationQuerySources;
   }>(),
   { expanded: false, variant: 'mine', poolGroups: () => [] },
 );
@@ -47,9 +51,16 @@ const emit = defineEmits<{
 
 const pickerOpen = ref(false);
 
-const activeFields = computed(() =>
-  fieldsForVariant(props.variant, props.optionalVisible),
-);
+const activeFields = computed(() => {
+  const fields = fieldsForVariant(props.variant, props.optionalVisible);
+  if (!props.registrationSources) return fields;
+  const supported = ['phone', 'productCategory', 'productName', 'nodeStatus', 'assignee', 'timePreset'];
+  const registrationFields = fields.filter((field) => supported.includes(field.key));
+  if (!registrationFields.some((field) => field.key === 'assignee')) {
+    registrationFields.splice(-1, 0, { key: 'assignee', label: '处理人', fixed: true });
+  }
+  return registrationFields;
+});
 
 const priorities: { value: '' | Priority; label: string }[] = [
   { value: '', label: '请选择' },
@@ -75,9 +86,19 @@ const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
     .flatMap((o) => (o.value === '未认领' ? [o, { value: '排队中' as NodeStatus, label: '排队中' }] : [o])),
 ];
 
-const productNameOptions = computed(() =>
-  productNamesForCategory(props.modelValue.productCategory),
-);
+function namesForCategory(category: string): string[] {
+  if (!props.productCatalog) return productNamesForCategory(category);
+  return [...new Set(props.productCatalog.filter((product) => !category || product.category === category)
+    .map((product) => product.name).filter(Boolean))];
+}
+const productNameOptions = computed(() => namesForCategory(props.modelValue.productCategory));
+const registrationFeedbackOptions = computed(() => props.registrationSources?.feedback ?? []);
+const registrationSourceOptions = computed(() => {
+  const selected = props.modelValue.registrationFeedback;
+  return [...new Map((props.registrationSources?.specificSource ?? [])
+    .filter((source) => !selected || source.parentValue === selected)
+    .map((source) => [source.value, source])).values()];
+});
 
 /** 问题分类只读引用后台「问题分类」：不分产品的并集（含停用，历史工单要能筛到） */
 const problemTags = useProblemTagsStore();
@@ -158,13 +179,18 @@ function patch<K extends keyof MineQueryFilter>(key: K, value: MineQueryFilter[K
 }
 
 function onCategoryChange(value: string) {
-  const names = productNamesForCategory(value);
+  const names = namesForCategory(value);
   const kept = names.includes(props.modelValue.productName) ? props.modelValue.productName : '';
   emit('update:modelValue', {
     ...props.modelValue,
     productCategory: value,
     productName: kept,
   });
+  emit('search');
+}
+
+function onFeedbackChange(value: string) {
+  emit('update:modelValue', { ...props.modelValue, registrationFeedback: value, registrationSource: '' });
   emit('search');
 }
 
@@ -223,7 +249,8 @@ const priorityOptions = computed(() =>
 );
 
 const nodeStatusOptions = computed(() =>
-  nodeStatuses.filter((s) => s.value).map((s) => ({ value: s.value, label: s.label })),
+  props.registrationSources ? toStrOpts(['处理中', '已结案'])
+    : nodeStatuses.filter((s) => s.value).map((s) => ({ value: s.value, label: s.label })),
 );
 
 const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
@@ -234,7 +261,8 @@ const xiaozhiMarkOptions = flashMarkOptions;
 /** 个册退费标识筛选（1120 PRD 第 8 章）：同一套是 / 否选项 */
 const refundMarkOptions = flashMarkOptions;
 const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
-const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
+const productCategoryOptions = computed(() => toStrOpts(props.productCatalog
+  ? [...new Set(props.productCatalog.map((product) => product.category).filter(Boolean))] : PRODUCT_CATEGORIES));
 const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
 const problemL1SelectOptions = computed(() => toStrOpts(problemL1Options.value));
 const problemL2SelectOptions = computed(() => toStrOpts(problemL2Options.value));
@@ -245,6 +273,16 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
   <div v-show="expanded" class="mine-query">
     <div class="query-filters">
       <div class="filter-scroll">
+        <template v-if="registrationSources">
+          <label class="filter-item">
+            <span class="fi-label">反馈平台</span>
+            <MineFilterSelect :model-value="modelValue.registrationFeedback || ''" :options="registrationFeedbackOptions" @update:model-value="onFeedbackChange" />
+          </label>
+          <label class="filter-item filter-item-wide">
+            <span class="fi-label">具体来源</span>
+            <MineFilterSelect :model-value="modelValue.registrationSource || ''" :options="registrationSourceOptions" @update:model-value="patch('registrationSource', $event)" />
+          </label>
+        </template>
         <template v-for="f in activeFields" :key="f.key">
           <label v-if="f.key === 'poolGroup'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('poolGroup') }}</span>
@@ -316,7 +354,11 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
           </label>
 
           <label v-else-if="f.key === 'timePreset'" class="filter-item filter-item-date">
-            <span class="fi-label">{{ fieldLabel('timePreset') }}</span>
+            <select v-if="registrationSources" class="fi-time-field" aria-label="查询时间字段" :value="modelValue.registrationTimeField || 'createdAt'" @change="patch('registrationTimeField', ($event.target as HTMLSelectElement).value as 'createdAt' | 'accessTime')">
+              <option value="createdAt">创建时间</option>
+              <option value="accessTime">接入时间</option>
+            </select>
+            <span v-else class="fi-label">{{ fieldLabel('timePreset') }}</span>
             <RangePicker
               :value="rangeValue"
               :presets="rangePresets"
@@ -459,6 +501,7 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
 
       <div class="filter-actions">
         <TicketFilterFieldPicker
+          v-if="!registrationSources"
           v-model:open="pickerOpen"
           :variant="variant"
           :optional-visible="optionalVisible"
@@ -474,6 +517,7 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
 </template>
 
 <style scoped>
+.fi-time-field { border: 0; background: transparent; color: #687a94; font-size: 12px; outline: none; cursor: pointer; }
 .mine-query {
   display: flex;
   flex-direction: column;

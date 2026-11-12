@@ -454,6 +454,14 @@ export function isSlaPaused(t: Pick<Ticket, 'slaState' | 'nodeStatus'>): boolean
 export interface Ticket {
   id: string;
   no: string;
+  /** Business form identity. Manual registrations remain normal, searchable platform tickets. */
+  formTemplateId?: string;
+  /** Ticket-local business/contact numbers are searchable without creating a customer identity. */
+  businessPhone?: string;
+  contactPhone?: string;
+  upstreamTicketNo?: string;
+  /** Some self-service forms record external task timing without participating in platform SLA. */
+  slaApplicable?: boolean;
   type: TicketType;
   channel: Channel;
   title: string;

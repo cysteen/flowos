@@ -9,8 +9,8 @@ export interface MockUser {
   /** 二线专员的分岗（客服 / 售后）。分岗是用户属性、不占 RoleKey，见基线 §3.0 */
   post?: AgentPost;
   /**
-   * 所在班组（一人可在多个组）。取值只用工单处理组的已有组名（`PROCESSING_GROUPS`，
-   * 即列表「分组名称」首项那五个），不新造组。催补待回「领取工单」弹窗的「领取后处理组」下拉取它。
+   * 所在班组（一人可在多个组）。取值与工单处理组名册一致。
+   * 通用登记表单使用实际入组关系授权，不能仅凭角色获得业务办理权限。
    */
   groups?: string[];
 }
@@ -21,9 +21,9 @@ export const MOCK_USERS: Record<RoleKey, MockUser> = {
   'agent-l1': { name: '刘一线', roleKey: 'agent-l1', groups: ['受理一组'] },
   // 1130 小智工单：小智工单处理组一个大组（D21），组名见 types/xiaozhi.ts XIAOZHI_POOL_GROUP_NAME
   'xiaozhi-agent': { name: '谭小智', domainAccount: 'afye', roleKey: 'xiaozhi-agent', groups: ['小智工单处理组'] },
-  'agent-l2': { name: '张三', roleKey: 'agent-l2', post: 'cs', groups: ['受理一组', '受理二组'] },
+  'agent-l2': { name: '张三', roleKey: 'agent-l2', post: 'cs', groups: ['受理一组', '受理二组', '无线音乐处理组'] },
   'tech-support': { name: '陈技支', roleKey: 'tech-support', groups: ['技术支持组'] },
-  'team-leader': { name: '王组长', roleKey: 'team-leader', groups: ['受理一组', '受理二组'] },
+  'team-leader': { name: '王组长', roleKey: 'team-leader', groups: ['受理一组', '受理二组', '无线音乐处理组'] },
   'complaint-handler': { name: '吴投诉', roleKey: 'complaint-handler', groups: ['受理一组', '受理二组', '教育支持组'] },
   'complaint-supervisor': { name: '秦督导', roleKey: 'complaint-supervisor', groups: ['受理一组', '受理二组', '硬件缺陷组'] },
   'ops-monitor': { name: '郑运营', roleKey: 'ops-monitor', groups: [...ALL_PROCESSING_GROUPS] },
