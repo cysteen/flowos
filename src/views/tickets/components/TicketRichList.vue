@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { isFlashTicket } from '@/views/tickets/types/flash';
-import { isBusinessRegistrationTicket } from '@/views/tickets/types/businessRegistration';
-import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
 import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
@@ -171,7 +169,6 @@ const props = withDefaults(
  */
 
 const user = useUserStore();
-const registrations = useBusinessRegistrationStore();
 /** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
 const latestPreview = useLatestHandlingPreview();
 /** 悬停卡「处理结果」：与处理页多行文本域同一段正文 */
@@ -292,14 +289,6 @@ const actDisabled = (a: RowAct) => a.disabled === true;
 const actTip = (a: RowAct) => a.tip;
 
 function actionsFor(t: Ticket): RowAct[] {
-  if (isBusinessRegistrationTicket(t)) {
-    const record = registrations.recordOf(t.no);
-    const editable = record?.status === '处理中' && registrations.canEdit(t.no);
-    return [
-      { label: editable ? '处理' : '查看', primary: true },
-      ...(registrations.canTransfer(t.no) ? [{ label: '调剂' }] : []),
-    ];
-  }
   // 调用方自带动作时整个接管，下面那套 variant 映射一个字没动（见 `rowActionsFn`）
   if (props.rowActionsFn) return props.rowActionsFn(t);
   // 刷机单（池页签除外）：行内操作按刷机门控的视角裁剪（930 教育刷机单 §5.5 / §9.4，M34）；老四类不经过这里
@@ -326,7 +315,6 @@ function actionsFor(t: Ticket): RowAct[] {
 }
 
 const showActionColumn = computed(() => {
-  if (props.rows.some(isBusinessRegistrationTicket)) return true;
   // 自带动作就必须有一列放它 —— 否则传了 `rowActionsFn` 却因为 variant 是 query 而整列不出，
   // 调用方会得到一张"动作凭空消失"的表
   if (props.rowActionsFn) return true;
@@ -631,7 +619,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         class="cell-cb row-leading"
         :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
       >
-        <div v-if="!isBusinessRegistrationTicket(t)" class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
+        <div class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
           <CheckOutlined v-if="selectedIds.has(t.id)" :style="{ color: '#fff', fontSize: '10px' }" />
         </div>
       </div>

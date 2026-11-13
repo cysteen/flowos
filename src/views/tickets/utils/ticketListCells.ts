@@ -204,7 +204,6 @@ function flashLine(r: SlaReading, remainMs: number): SlaLine {
  * /已达标(绿·时限内收口)/未达标(红·超时后收口)/已停表(深灰·中止，无结论)
  */
 export function slaResolveLine(t: Ticket, now: number = Date.now()): SlaLine {
-  if (t.slaApplicable === false) return IDLE_LINE;
   if (isFlashSlaIdle(t) || isXiaozhiSlaIdle(t)) return IDLE_LINE;
   // 刷机单走 SLA 账本（D-01）；老四类一律落到下方现有实现，口径一字未动
   const led = readSla(t, now);
@@ -222,7 +221,6 @@ export function slaResolveLine(t: Ticket, now: number = Date.now()): SlaLine {
 
 /** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
 export function slaFirstLine(t: Ticket, now: number = Date.now()): SlaLine {
-  if (t.slaApplicable === false) return IDLE_LINE;
   if (isFlashSlaIdle(t) || isXiaozhiSlaIdle(t)) return IDLE_LINE;
   if (isFirstResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
   // 刷机单首响行取账本的首响钟；此前这里无条件取 `t.slaText`，摆的其实是解决钟的数（D-01）

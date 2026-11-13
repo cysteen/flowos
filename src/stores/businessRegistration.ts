@@ -1,14 +1,11 @@
 import { defineStore } from 'pinia';
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { TICKETS } from '@/mock/tickets';
 import { MOCK_USERS } from '@/mock/users';
-import { makeTicketNo } from '@/constants/ticketNo';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
-import type { Ticket } from '@/views/tickets/types/ticket';
 import {
   WIRELESS_REGISTRATION_TEMPLATE_ID,
-  isBusinessRegistrationTicket,
+  makeRegistrationNo,
   normalizeRegistrationValues,
   registrationNow,
   registrationTemplateOf,
@@ -25,7 +22,7 @@ const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const eventId = () => `registration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const failed = (message: string): RegistrationOperationResult => ({ ok: false, message });
 
-/** Registration persistence and normal-ticket projection share one mutation boundary. */
+/** Independent self-service persistence; ordinary tickets are never read or written. */
 export const useBusinessRegistrationStore = defineStore('businessRegistration', () => {
   const user = useUserStore();
   const tenant = useTenantStore();
@@ -56,7 +53,7 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
   }
   function canView(recordOrNo: RegistrationRecord | string): boolean {
     const record = resolve(recordOrNo);
-    return !!record && (inGroup(record) || user.canAccess('query-center'));
+    return !!record && (inGroup(record) || user.canAccess('self-service'));
   }
   function membersFor(recordOrNo: RegistrationRecord | string): string[] {
     const record = resolve(recordOrNo);
@@ -68,44 +65,11 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
   function history(action: string, detail: string, changes?: RegistrationHistory['changes']): RegistrationHistory {
     return { id: eventId(), action, detail, actor: user.name, at: registrationNow(), ...(changes?.length ? { changes } : {}) };
   }
-  function ticketProjection(record: RegistrationRecord): Ticket {
-    const template = registrationTemplateOf(record.templateId)!;
-    const values = record.values;
-    return {
-      id: `registration-${record.no}`, no: record.no, formTemplateId: record.templateId,
-      type: template.ticketType, channel: 'APP', ticketSource: '人工登记',
-      title: [values.businessPhone, values.productName || template.name].filter(Boolean).join(' · '),
-      smartMarks: [], customer: '', customerPhone: undefined, businessPhone: values.businessPhone, contactPhone: values.contactPhone, upstreamTicketNo: values.upstreamNo, vip: false,
-      businessType: template.businessType, businessLine: values.businessLine,
-      productCategory: values.productCategory, product: values.productName,
-      problemL1: values.problemL1, problemL2: values.problemL2, problemDesc: values.description,
-      latestHandling: values.processResult, groupId: record.groupId, groupNames: [record.groupName],
-      assignee: record.handler, lastHandler: record.handler, lastHandlerGroup: record.groupName,
-      nodeStatus: record.status, nodeStep: 1, nodeTotal: 1, priority: 'P3',
-      closureMode: '正常流程', tab: record.status === '已结案' ? 'done' : 'mine',
-      // No platform SLA is started for a manually timed registration.
-      slaApplicable: false, slaText: '—', slaSub: '', slaState: 'ok', slaMinutes: Number.MAX_SAFE_INTEGER,
-      responded: true, createdAt: record.createdAt, updatedAt: record.updatedAt,
-      hasAppointment: !!record.reminder && !record.reminder.triggeredAt,
-      appointmentAt: record.reminder?.at, appointmentText: record.reminder?.at,
-    };
-  }
-  function syncRecord(record: RegistrationRecord) {
-    const projection = ticketProjection(record);
-    const index = TICKETS.findIndex((ticket) => ticket.no === record.no);
-    if (index >= 0) Object.assign(TICKETS[index]!, projection);
-    else TICKETS.unshift(projection);
-  }
   function readPersisted(): RegistrationRecord[] {
     const cache = JSON.parse(localStorage.getItem(cacheKey.value) ?? 'null') as { version?: number; records?: RegistrationRecord[] } | null;
     return cache?.version === CACHE_VERSION && Array.isArray(cache.records)
       ? cache.records.filter((record) => !!registrationTemplateOf(record.templateId) && !!record.no && !!record.values?.businessPhone && ['处理中', '已结案'].includes(record.status))
       : [];
-  }
-  function syncAll() {
-    const have = new Set(records.value.map((record) => record.no));
-    for (let index = TICKETS.length - 1; index >= 0; index -= 1) if (isBusinessRegistrationTicket(TICKETS[index]) && !have.has(TICKETS[index]!.no)) TICKETS.splice(index, 1);
-    records.value.forEach(syncRecord);
   }
   function commit(record: RegistrationRecord, message: string, creating = false): RegistrationOperationResult {
     let persisted: RegistrationRecord[];
@@ -123,7 +87,6 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
       return failed('本地保存失败，请检查浏览器存储空间后重试');
     }
     records.value = next;
-    syncAll();
     revision.value += 1;
     return { ok: true, message, record: recordOf(record.no) };
   }
@@ -131,7 +94,6 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
     try {
       records.value = readPersisted();
     } catch { records.value = []; }
-    syncAll();
     revision.value += 1;
   }
   function create(values: RegistrationValues, options: { close?: boolean; templateId?: string } = {}): RegistrationOperationResult {
@@ -141,12 +103,13 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
     const normalized = normalizeRegistrationValues(values);
     const errors = validateRegistrationValues(normalized, options.close ? 'close' : 'create', templateId);
     if (Object.keys(errors).length) return { ok: false, message: '请补齐必填信息', errors };
-    const now = registrationNow();
-    const prefix = makeTicketNo(template.ticketType, 1).slice(0, -5);
+    const createdAt = new Date();
+    const now = registrationNow(createdAt);
+    const prefix = makeRegistrationNo(1, createdAt).slice(0, -5);
     let persisted: RegistrationRecord[];
     try { persisted = readPersisted(); } catch { return failed('本地缓存读取失败，请刷新后重试'); }
-    const sequence = Math.max(0, ...[...TICKETS, ...persisted].filter((ticket) => ticket.no.startsWith(prefix)).map((ticket) => Number(ticket.no.slice(-5)) || 0)) + 1;
-    const no = makeTicketNo(template.ticketType, sequence);
+    const sequence = Math.max(0, ...persisted.filter((record) => record.no.startsWith(prefix)).map((record) => Number(record.no.slice(-5)) || 0)) + 1;
+    const no = makeRegistrationNo(sequence, createdAt);
     normalized.replyTime = now;
     const record: RegistrationRecord = {
       no, templateId, values: normalized, status: options.close ? '已结案' : '处理中',

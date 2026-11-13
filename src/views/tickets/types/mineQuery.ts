@@ -7,7 +7,6 @@ import { prototypeDayEnd } from '@/config/prototypeDate';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
-import type { RegistrationRecord } from '@/views/tickets/types/businessRegistration';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -55,10 +54,6 @@ export interface MineQueryFilter {
   problemL2: string;
   problemL3: string;
   groupName: string;
-  /** 业务表单专用查询；可选以兼容已保存的通用筛选器。 */
-  registrationFeedback?: string;
-  registrationSource?: string;
-  registrationTimeField?: 'createdAt' | 'accessTime';
 }
 
 export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
@@ -205,12 +200,11 @@ function dayEnd(ymd: string): number {
   return new Date(`${ymd}T23:59:59.999`).getTime() || 0;
 }
 
-/** 解析日期区间；真实业务记录可传当前日，普通样例默认保留原型日期锚点。 */
-export function resolveMineTimeRange(q: MineQueryFilter, referenceDay?: Date): { from: number; to: number } | null {
+/** 解析结构化筛选的时间区间（按工单更新时间） */
+export function resolveMineTimeRange(q: MineQueryFilter): { from: number; to: number } | null {
   if (!q.timePreset) return null;
 
-  const end = referenceDay ? new Date(referenceDay) : prototypeDayEnd();
-  end.setHours(23, 59, 59, 999);
+  const end = prototypeDayEnd();
 
   if (q.timePreset === 'custom') {
     if (!q.dateFrom && !q.dateTo) return null;
@@ -227,16 +221,14 @@ export function resolveMineTimeRange(q: MineQueryFilter, referenceDay?: Date): {
   return { from: start.getTime(), to: end.getTime() };
 }
 
-export function matchMineQuery(t: Ticket, q: MineQueryFilter, registration?: RegistrationRecord): boolean {
-  if (q.registrationFeedback && registration?.values.feedback !== q.registrationFeedback) return false;
-  if (q.registrationSource && registration?.values.specificSource !== q.registrationSource) return false;
+export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.ticketNo) {
     const kw = q.ticketNo.trim().toLowerCase();
     const hay = `${t.no} ${t.title}`.toLowerCase();
     if (!hay.includes(kw)) return false;
   }
   if (q.phone) {
-    const phone = `${t.customerPhone ?? ''} ${t.businessPhone ?? ''} ${t.contactPhone ?? ''}`;
+    const phone = t.customerPhone ?? '';
     if (!matchesSearchText(phone, q.phone) && !includes(t.customer, q.phone)) return false;
   }
   if (q.sn && !(t.sn && includes(t.sn, q.sn))) return false;
@@ -273,12 +265,10 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter, registration?: Reg
     if (!names.some((n) => includes(n, q.groupName))) return false;
   }
 
-  const range = resolveMineTimeRange(q, registration ? new Date() : undefined);
+  const range = resolveMineTimeRange(q);
   if (range) {
-    const time = registration
-      ? ts(q.registrationTimeField === 'accessTime' ? registration.values.accessTime : registration.createdAt)
-      : ticketUpdatedTime(t);
-    if (!time || time < range.from || time > range.to) return false;
+    const updated = ticketUpdatedTime(t);
+    if (!updated || updated < range.from || updated > range.to) return false;
   }
 
   return true;
@@ -310,8 +300,6 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.problemL2
     || q.problemL3
     || q.groupName
-    || q.registrationFeedback
-    || q.registrationSource
   );
 }
 

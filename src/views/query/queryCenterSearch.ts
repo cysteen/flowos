@@ -6,7 +6,6 @@
  * 两处各写一份判定必然漂（改版前就漂成了：顶栏把手机号送去查客户、页内又多一条候选人分支）。
  */
 import { detectQueryKind, QUERY_KIND_LABEL, type QueryKind } from '@/mock/customerInsight';
-import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
 import { TICKETS } from '@/mock/tickets';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { isSearchableTicket, type Ticket } from '@/views/tickets/types/ticket';
@@ -155,7 +154,6 @@ function matchTicketsByNo(q: string) {
  */
 function searchableSource(): Ticket[] {
   try {
-    useBusinessRegistrationStore();
     return [...TICKETS, ...useDerivedTicketStore().tickets];
   } catch {
     return TICKETS;

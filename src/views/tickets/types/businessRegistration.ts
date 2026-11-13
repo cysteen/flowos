@@ -1,11 +1,17 @@
-import type { Ticket, TicketType } from './ticket';
+import type { TicketType } from './ticket';
 import { getActivePinia } from 'pinia';
 import { useFormCatalogsStore } from '@/stores/formCatalogs';
 
-/** A registration is a normal platform ticket whose business form supplies the self-service rules. */
+/** Independent self-service records reuse platform field controls and account context. */
 export const WIRELESS_REGISTRATION_TEMPLATE_ID = 'wireless-operator';
 export const WIRELESS_REGISTRATION_GROUP_ID = 'wireless-music';
 export const WIRELESS_REGISTRATION_GROUP_NAME = '无线音乐处理组';
+
+/** New registrations use their own sequence; existing cached numbers remain unchanged. */
+export function makeRegistrationNo(sequence: number, when = new Date()): string {
+  const date = [when.getFullYear(), String(when.getMonth() + 1).padStart(2, '0'), String(when.getDate()).padStart(2, '0')].join('');
+  return `IFLYZJ-${date}-${String(sequence).padStart(5, '0')}`;
+}
 
 export interface RegistrationValues {
   businessPhone: string;
@@ -233,11 +239,3 @@ export interface RegistrationRecord {
   reminder?: RegistrationReminder;
 }
 export interface RegistrationOperationResult { ok: boolean; message: string; record?: RegistrationRecord; errors?: RegistrationValidationErrors }
-export function isBusinessRegistrationTicket(ticket: { formTemplateId?: string } | null | undefined): boolean {
-  return !!ticket?.formTemplateId && REGISTRATION_TEMPLATES.some((template) => template.id === ticket.formTemplateId);
-}
-/** Only the common consultation metric excludes registrations; total tickets and unified queries include them. */
-export function isGeneralConsultationTicket(ticket: Pick<Ticket, 'type' | 'formTemplateId'>): boolean {
-  const template = ticket.formTemplateId ? registrationTemplateOf(ticket.formTemplateId) : undefined;
-  return ticket.type === '咨询' && template?.includeInGeneralConsultationCount !== false;
-}

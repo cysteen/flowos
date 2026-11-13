@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, nextTick, onActivated, onDeactivated, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
 import { useUserStore } from '@/stores/user';
@@ -11,13 +11,13 @@ import {
   WIRELESS_REGISTRATION_TEMPLATE_ID, type RegistrationFieldKey, type RegistrationOperationResult,
   type RegistrationValidationErrors, type RegistrationValues,
 } from '@/views/tickets/types/businessRegistration';
-import { UNIFIED_CREATE_PATH } from '@/views/tickets/composables/unifiedCreateEntry';
 import RegistrationFields from './RegistrationFields.vue';
 import { registrationEditorSections } from './registrationEditorConfig';
 
 const props = defineProps<{ ticketNo?: string; templateId?: string }>();
 const emit = defineEmits<{ 'dirty-change': [dirty: boolean] }>();
 const router = useRouter();
+const route = useRoute();
 const store = useBusinessRegistrationStore();
 const user = useUserStore();
 const tenant = useTenantStore();
@@ -33,6 +33,15 @@ const editingRevision = ref(false);
 const saving = ref(false);
 const uploading = ref(false);
 const activeTab = ref('process');
+const active = ref(false);
+onActivated(() => { active.value = true; });
+onDeactivated(() => {
+  active.value = false;
+  transferOpen.value = false;
+  reminderOpen.value = false;
+  contactOpen.value = false;
+  materialOpen.value = false;
+});
 const initialSnapshot = ref('');
 const snapshotRevision = ref(0);
 const snapshotStatus = ref('');
@@ -69,7 +78,7 @@ function loadValues(resetView = true) {
   editingRevision.value = false;
   pendingFiles.value = [];
   if (resetView) activeTab.value = 'process';
-  if (props.ticketNo && record.value) tabs.updateTitle(`/tickets/${props.ticketNo}`, title.value);
+  if (props.ticketNo && record.value) tabs.updateTitle(`/self-service/${props.ticketNo}`, title.value);
 }
 watch(() => [props.ticketNo, props.templateId, tenant.currentTenantId], () => loadValues(), { immediate: true });
 watch(() => user.name, () => loadValues());
@@ -148,14 +157,14 @@ async function commitValues(close: boolean) {
       if (tenant.currentTenantId !== submittingTenant) return;
       initialSnapshot.value = JSON.stringify(values);
       emit('dirty-change', false);
-      await router.push(`/tickets/${result.record.no}`);
-      tabs.close(UNIFIED_CREATE_PATH);
+      await router.push(`/self-service/${result.record.no}`);
+      tabs.close('/self-service/new');
     } else {
       Object.assign(values, result.record.values);
       captureSnapshot();
       editingRevision.value = false;
       errors.value = {};
-      tabs.updateTitle(`/tickets/${result.record.no}`, title.value);
+      tabs.updateTitle(`/self-service/${result.record.no}`, title.value);
     }
   } finally { saving.value = false; }
 }
@@ -183,7 +192,8 @@ function submit(close = false) {
 
 function leave() {
   const go = () => {
-    void router.push('/tickets').then(() => { if (isNew.value) tabs.close(UNIFIED_CREATE_PATH); });
+    loadValues();
+    void router.push('/self-service').then(() => { if (isNew.value) tabs.close('/self-service/new'); });
   };
   if (dirty.value && editable.value) Modal.confirm({ title: '放弃本次未保存的填写？', content: '已保存的工单记录会保留。', okText: '放弃并返回', cancelText: '继续填写', onOk: go });
   else go();
@@ -201,6 +211,11 @@ function openTransfer() {
   transferReason.value = '';
   transferOpen.value = true;
 }
+watch(() => [active.value, route.fullPath, record.value?.no], () => {
+  if (!active.value || route.name !== 'self-service-operation' || String(route.params.ticketNo ?? '') !== props.ticketNo
+    || route.query.action !== 'transfer' || !record.value || !canTransfer.value) return;
+  openTransfer();
+}, { immediate: true });
 function transfer() {
   if (!record.value || !transferTarget.value) { message.warning('请选择组内接收人'); return; }
   if (store.canEdit(record.value) && dirty.value) {
@@ -264,14 +279,15 @@ async function copyNo() {
   try { await navigator.clipboard.writeText(record.value.no); message.success('工单号已复制'); }
   catch { message.info(record.value.no); }
 }
+defineExpose({ reset: () => loadValues() });
 </script>
 
 <template>
-  <div v-if="!template || (!isNew && !record)" class="registration-empty"><a-empty description="未找到这张业务登记工单" /><a-button @click="router.push('/tickets')">返回工作台</a-button></div>
-  <div v-else-if="!allowedToView" class="registration-empty"><a-result status="403" title="暂无这张工单的查看权限" /><a-button @click="router.push('/tickets')">返回工作台</a-button></div>
+  <div v-if="!template || (!isNew && !record)" class="registration-empty"><a-empty description="未找到这张自建单" /><a-button @click="router.push('/self-service')">返回自建单工作台</a-button></div>
+  <div v-else-if="!allowedToView" class="registration-empty"><a-result status="403" title="暂无这张工单的查看权限" /><a-button @click="router.push('/self-service')">返回自建单工作台</a-button></div>
   <main v-else ref="root" class="registration-editor" :class="{ 'is-new': isNew }">
     <header class="registration-header">
-      <button type="button" class="back-link" @click="leave">‹ 返回工作台</button>
+      <button type="button" class="back-link" @click="leave">‹ 返回自建单工作台</button>
       <div class="heading-main">
         <div class="heading-line"><h1>{{ title }}</h1><span v-if="!isNew" class="status-chip" :class="{ closed: isClosed }">{{ record?.status }}</span><span class="type-chip">{{ template.ticketType }}</span><span class="template-chip">{{ template.name }}</span></div>
         <div v-if="record" class="heading-meta"><span>建单人：{{ record.builder }}</span><span>建单时间：{{ record.createdAt }}</span><span>单号：{{ record.no }} <button type="button" class="copy-link" aria-label="复制工单号" @click="copyNo">▣</button></span></div>

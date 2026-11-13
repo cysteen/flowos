@@ -8,6 +8,9 @@ import AftersaleWorkbenchView from '@/views/aftersale/AftersaleWorkbenchView.vue
 import TeamBoardView from '@/views/team-board/TeamBoardView.vue';
 import ApprovalWorkspaceView from '@/views/approval/ApprovalWorkspaceView.vue';
 import { useUserStore } from '@/stores/user';
+import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
+import { TICKETS } from '@/mock/tickets';
+import { clearLegacyRegistrationProjections } from '@/views/self-service/legacyRegistrationProjection';
 import { firstMenuPath } from '@/config/navigation';
 import { adminHomePath, canAccessAdminItem } from '@/config/roles';
 import {
@@ -135,6 +138,24 @@ const routes: RouteRecordRaw[] = [
         name: 'tickets',
         component: TicketWorkbenchView,
         meta: { menu: 'tickets', title: '工单工作台' },
+      },
+      {
+        path: 'self-service',
+        name: 'self-service',
+        component: () => import('@/views/self-service/SelfServiceWorkbenchView.vue'),
+        meta: { menu: 'self-service', title: '自建单工作台' },
+      },
+      {
+        path: 'self-service/new',
+        name: 'self-service-create',
+        component: () => import('@/views/self-service/SelfServiceCreateView.vue'),
+        meta: { menu: 'self-service', title: '新建自建单' },
+      },
+      {
+        path: 'self-service/:ticketNo',
+        name: 'self-service-operation',
+        component: () => import('@/views/self-service/SelfServiceOperationView.vue'),
+        meta: { menu: 'self-service', title: '自建单处理' },
       },
       {
         path: 'query',
@@ -269,6 +290,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
+clearLegacyRegistrationProjections(TICKETS);
 const router = createRouter({
   history: createWebHistory('/flowos/'),
   routes,
@@ -305,6 +327,16 @@ router.beforeEach((to) => {
 
   if (!user.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } };
+  }
+
+  // Compatibility for previously shared links; business pages now live in their own module.
+  if (['tickets', 'query-center', 'unified-create'].includes(String(to.name))
+    && to.query.template === 'wireless-operator') {
+    return { path: to.name === 'unified-create' ? '/self-service/new' : '/self-service', query: typeof to.query.kw === 'string' ? { kw: to.query.kw } : {} };
+  }
+  if (to.name === 'ticket-operation') {
+    const no = String(to.params.ticketNo ?? '');
+    if (useBusinessRegistrationStore().recordOf(no)) return { path: `/self-service/${encodeURIComponent(no)}` };
   }
 
   if (to.meta.adminOnly && !user.hasAdminEntry) {

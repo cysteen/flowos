@@ -72,8 +72,8 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   const created = store.create(values());
   const no = created.record?.no;
   check('01 number-only formal create and self handling', () => { assert.equal(created.ok, true); assert.equal(created.record.handler, actor.name); assert.equal(created.record.status, '处理中'); });
-  check('02 number projection is not customer identity', () => { const ticket = tickets.find(ticket => ticket.no === no); assert.equal(ticket.businessPhone, '13800000000'); assert.equal(ticket.customer, ''); assert.equal(ticket.customerPhone, undefined); });
-  check('03 registration bypasses SLA and common consultation metric', () => { assert.equal(tickets[0].slaApplicable, false); assert.equal(types.isGeneralConsultationTicket(tickets[0]), false); assert.equal(types.isGeneralConsultationTicket({ type: seed.ticketType }), true); });
+  check('02 independent record retains business phone without creating a normal ticket', () => { assert.equal(created.record.values.businessPhone, '13800000000'); assert.deepEqual(tickets, []); });
+  check('03 independent numbering and consultation classification do not mix data domains', () => { assert.match(no, /^IFLYZJ-\d{8}-\d{5}$/); assert.equal(seed.ticketType, '咨询'); assert.equal(seed.includeInGeneralConsultationCount, false); assert.deepEqual(tickets, []); });
   check('04 incomplete close rejected', () => assert.equal(save(no, values(), { close: true }).ok, false));
   const future = types.registrationNow(new Date(Date.now() + 3600000)).replace(' ', 'T');
   check('05 future reminder set', () => assert.equal(store.setReminder(no, future, 'example').ok, true));
@@ -110,7 +110,7 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   global.FileReader = class { readAsDataURL() { finishRead = () => { this.result = 'data:text/plain;base64,YQ=='; this.onload(); }; } };
   const uploading = store.addAttachments(openNo, [{ name: 'example.txt', size: 1, type: 'text/plain' }]);
   tenant.currentTenantId = 'source-check-b'; await vue.nextTick();
-  check('15 tenant switch clears records and ticket projection', () => { assert.equal(store.records.length, 0); assert.equal(tickets.length, 0); });
+  check('15 tenant switch clears independent records without publishing any ticket projection', () => { assert.equal(store.records.length, 0); assert.equal(tickets.length, 0); });
   const otherTenant = store.create(values('13800000002'));
   finishRead(); const uploadResult = await uploading;
   check('16 async attachment cannot cross tenant', () => { assert.equal(uploadResult.ok, false); assert.equal(otherTenant.ok, true); assert.equal(store.recordOf(otherTenant.record.no).attachments.length, 0); });
@@ -158,5 +158,17 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   setActor('team-leader');
   check('34 disabled historical dictionary value can complete closure', () => { const result = save(historicalNo, { ...fullValues('13800000003'), feedback: 'custom-feedback' }, { close: true }); assert.equal(result.ok, true); });
   check('35 disabled historical dictionary value remains editable after closure', () => { const before = copy(store.recordOf(historicalNo)); assert.equal(save(historicalNo, { ...before.values, description: 'closed historic option retained' }, { revision: true }).ok, true); assert.equal(store.recordOf(historicalNo).values.feedback, 'custom-feedback'); assert.equal(store.recordOf(historicalNo).closedAt, before.closedAt); assert.equal(store.recordOf(historicalNo).values.replyTime, before.values.replyTime); });
+  const { clearLegacyRegistrationProjections } = load('src/views/self-service/legacyRegistrationProjection.ts', { '@/views/tickets/types/businessRegistration': types });
+  const legacy = { id: `registration-${no}`, no, formTemplateId: templateId };
+  const ordinarySameNo = { id: 'ordinary-same-no', no, formTemplateId: templateId, type: '咨询' };
+  const unknownForm = { id: `registration-${no}`, no, formTemplateId: 'unrelated-form' };
+  check('36 legacy cleanup removes only explicit registration projections, retaining same-number ordinary tickets', () => { const rows = [ordinarySameNo, legacy, unknownForm]; assert.equal(clearLegacyRegistrationProjections(rows), 1); assert.deepEqual(rows, [ordinarySameNo, unknownForm]); assert.equal(clearLegacyRegistrationProjections(rows), 0); });
+  const oldCache = JSON.parse(localStorage.getItem(businessKey()));
+  const oldRecord = { ...copy(store.recordOf(historicalNo)), no: 'IFLYZX-20261112-80012', handler: leader, attachments: [{ id: 'old-file', name: 'proof.txt', uploadedBy: leader, uploadedAt: '2026-11-12 18:00:00', url: 'data:text/plain;base64,YQ==', size: 1, type: 'text/plain' }], reminder: { id: 'old-reminder', recipient: leader, at: future }, history: [{ id: 'old-history', action: '创建工单', actor: leader, at: '2026-11-12 17:00:00', detail: 'preserved' }] };
+  oldCache.records.push(oldRecord); localStorage.setItem(businessKey(), JSON.stringify(oldCache)); store.hydrate();
+  check('37 workspace separation restores old number, attachments, history and reminder without rewriting cache', () => { assert.deepEqual(copy(store.recordOf(oldRecord.no)), oldRecord); assert.deepEqual(JSON.parse(localStorage.getItem(businessKey())).records.find(record => record.no === oldRecord.no), oldRecord); });
+  check('38 new independent sequence never publishes into ordinary ticket collection', () => { const result = store.create(values('13800000006')); assert.equal(result.ok, true); assert.match(result.record.no, /^IFLYZJ-/); assert.deepEqual(tickets, []); });
+  setActor('tech-support');
+  check('39 read access uses self-service permission rather than the ordinary query-center menu', () => { actor.canAccess = key => key === 'query-center'; assert.equal(store.canView(oldRecord.no), false); actor.canAccess = key => key === 'self-service'; assert.equal(store.canView(oldRecord.no), true); });
   console.log(`ALL ${count} SOURCE CHECKS PASSED`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -35,7 +35,7 @@ function checkDue() {
   } finally { checking = false; }
 }
 function dismiss(id: string) { visible.value = visible.value.filter((item) => item.id !== id); }
-function open(item: VisibleReminder) { dismiss(item.id); void router.push(`/tickets/${item.no}`); }
+function open(item: VisibleReminder) { dismiss(item.id); void router.push(`/self-service/${item.no}`); }
 watch(() => user.name, () => { visible.value = []; checkDue(); });
 watch(() => store.revision, checkDue);
 onMounted(() => { checkDue(); timer = setInterval(checkDue, 1000); });

@@ -8,8 +8,6 @@ import {
   type Ticket,
 } from '@/views/tickets/types/ticket';
 import { useUserStore } from '@/stores/user';
-import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
-import { isBusinessRegistrationTicket } from '@/views/tickets/types/businessRegistration';
 import {
   matchesSearchText,
   parseBatchTicketQuery,
@@ -39,10 +37,6 @@ const VISIBLE_POOL_GROUPS = POOL_GROUPS.map((g) => g.id);
 
 /** 工作台数据域：本人名下 + 本组池（与 useTicketWorkbench 的 mine / pool 两档同源） */
 function inWorkbenchScope(t: Ticket): boolean {
-  if (isBusinessRegistrationTicket(t)) {
-    const record = useBusinessRegistrationStore().recordOf(t.no);
-    return !!record && useUserStore().groups.includes(record.groupName);
-  }
   // 本人＝当前登录人（【1215】B1）
   return inMineTaskScope(t, useUserStore().name) || inGroupPoolScope(t, VISIBLE_POOL_GROUPS);
 }
@@ -55,9 +49,7 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
 }
 
 export function useTicketList(scope: TicketListScope = 'workbench') {
-  const registrations = useBusinessRegistrationStore();
   const all = ref<Ticket[]>([...TICKETS]);
-  watch(() => registrations.revision, () => { all.value = [...TICKETS]; });
 
   const query = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
   /** 顶栏综合搜索（工单号 / 标题 / 客户） */
@@ -90,7 +82,7 @@ export function useTicketList(scope: TicketListScope = 'workbench') {
       const order = new Map(orderedTickets.map((t, i) => [t.id, i]));
       return orderedTickets.filter((t) => {
         if (extraFilter.value && !extraFilter.value(t)) return false;
-        return matchMineQuery(t, query.value, registrations.recordOf(t.no));
+        return matchMineQuery(t, query.value);
       }).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     }
 
@@ -98,10 +90,10 @@ export function useTicketList(scope: TicketListScope = 'workbench') {
       if (extraFilter.value && !extraFilter.value(t)) return false;
       if (kw) {
         // 检索键覆盖 §3.2 的四类：工单号 / 客户（名 + 手机号）/ 设备 SN / 关键词（标题、摘要）
-        const hay = `${t.no} ${t.title} ${t.customer} ${t.customerPhone ?? ''} ${t.businessPhone ?? ''} ${t.contactPhone ?? ''} ${t.upstreamTicketNo ?? ''} ${t.sn ?? ''} ${t.problemDesc ?? ''}`;
+        const hay = `${t.no} ${t.title} ${t.customer} ${t.customerPhone ?? ''} ${t.sn ?? ''} ${t.problemDesc ?? ''}`;
         if (!matchesSearchText(hay, kw)) return false;
       }
-      return matchMineQuery(t, query.value, registrations.recordOf(t.no));
+      return matchMineQuery(t, query.value);
     });
   });
 

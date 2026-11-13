@@ -24,6 +24,10 @@ export function resolveTicketTabTitle(
 
 /** 工作区路由 → 页签标题 */
 export function resolveWorkspaceTabTitle(path: string, metaTitle?: string): string {
+  if (path === '/self-service' || path.startsWith('/self-service?')) return '自建单工作台';
+  if (path === '/self-service/new') return '新建自建单';
+  const selfServiceMatch = path.match(/^\/self-service\/([^/?#]+)\/?$/);
+  if (selfServiceMatch) return metaTitle || selfServiceMatch[1];
   if (path === '/query' || path.startsWith('/query?')) return '查询中心';
   const ticketMatch = path.match(/^\/tickets\/([^/?#]+)\/?$/);
   if (ticketMatch) {

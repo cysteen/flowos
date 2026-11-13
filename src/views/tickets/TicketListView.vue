@@ -1,9 +1,6 @@
 <script setup lang="ts">
 
 import { computed, onMounted, ref, watch, watchEffect } from 'vue';
-import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
-import { useOpenUnifiedCreate } from './composables/unifiedCreateEntry';
-import { REGISTRATION_TEMPLATES, REGISTRATION_FIELD_DEFINITIONS, isBusinessRegistrationTicket, isGeneralConsultationTicket, registrationTemplateOf } from './types/businessRegistration';
 
 import { useRoute, useRouter } from 'vue-router';
 
@@ -41,7 +38,6 @@ import { isRefundTicket } from './types/refund';
 import { isFlashTicket, type FlashActor } from './types/flash';
 
 import { useTicketList } from './composables/useTicketList';
-import { useRegistrationQueryCatalog } from './composables/useRegistrationQueryCatalog';
 
 import { useTicketColumns } from './composables/useTicketColumns';
 
@@ -65,7 +61,7 @@ import {
 
 import { useQueryCenterColumns } from '@/views/query/useQueryCenterColumns';
 
-import { EMPTY_MINE_QUERY, hasMineQuery, matchMineQuery, type MineQueryFilter } from './types/mineQuery';
+import { hasMineQuery, type MineQueryFilter } from './types/mineQuery';
 
 import {
 
@@ -105,29 +101,10 @@ const emit = defineEmits<{ 'open-customer': [q: string] }>();
 
 
 const router = useRouter();
-const openUnifiedCreate = useOpenUnifiedCreate();
 
 const route = useRoute();
 
 const user = useUserStore();
-const registrations = useBusinessRegistrationStore();
-const registrationFormTemplate = ref(typeof route.query.template === 'string' ? route.query.template : '');
-const { productCatalog, registrationSources } = useRegistrationQueryCatalog(registrationFormTemplate);
-const selectedRegistrationTemplate = computed(() => registrationFormTemplate.value ? registrationTemplateOf(registrationFormTemplate.value) : undefined);
-const generalConsultationCount = computed(() => list.filtered.value.filter(isGeneralConsultationTicket).length);
-watch(() => route.query.template, (template) => { registrationFormTemplate.value = typeof template === 'string' ? template : ''; });
-function createFromList() { openUnifiedCreate('general', registrationFormTemplate.value || 'general'); }
-function exportRegistrationRows() {
-  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - 3);
-  const rows = list.filtered.value.map((ticket) => registrations.recordOf(ticket.no)).filter((record) => !!record && new Date(record.createdAt.replace(' ', 'T')).getTime() >= cutoff.getTime());
-  if (!rows.length) { message.info('当前筛选下暂无近三个月的登记工单明细'); return; }
-  const cell = (value: unknown) => { const text = String(value ?? ''); return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`; };
-  const header = ['工单号', '状态', '处理组', '建单人', '处理人', '创建时间', '更新时间', '结案时间', '计入通用咨询工单量', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.label)];
-  const body = rows.map((record) => [record!.no, record!.status, record!.groupName, record!.builder, record!.handler, record!.createdAt, record!.updatedAt, record!.closedAt ?? '', isGeneralConsultationTicket({ type: '咨询', formTemplateId: record!.templateId }) ? '是' : '否', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => record!.values[field.key])]);
-  const blob = new Blob(['\uFEFF' + [header, ...body].map((row) => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = '无线音乐工单明细.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  message.success(`已导出 ${rows.length} 条近三个月工单明细`);
-}
 
 
 
@@ -166,19 +143,13 @@ const { optionalVisible, applyOptionalVisible } = useMineQueryFields();
  * 「全部 17」而清单里躺着 15。
  */
 const routeScopePredicate = ref<((t: Ticket) => boolean) | null>(null);
-const queryFormRows = computed(() => list.baseRows.value.filter((ticket) => !registrationFormTemplate.value || ticket.formTemplateId === registrationFormTemplate.value));
 
 const qcFilterBar = useQueryCenterFilterBar(
-  queryFormRows,
+  list.baseRows,
   list.query,
   applyOptionalVisible,
   routeScopePredicate,
-  (ticket, query) => matchMineQuery(ticket, query, registrations.recordOf(ticket.no)),
 );
-watch(registrationFormTemplate, () => {
-  qcFilterBar.setChip('all');
-  list.setQuery(EMPTY_MINE_QUERY());
-});
 
 
 
@@ -212,9 +183,8 @@ const showChipRow = computed(() => props.embedded);
 watchEffect(() => {
   const sla = props.embedded ? qcFilterBar.slaPredicate.value : null;
   const scope = routeScopePredicate.value;
-  const template = registrationFormTemplate.value;
-  list.extraFilter.value = (sla || scope || template)
-    ? (t: Ticket) => (!sla || sla(t)) && (!scope || scope(t)) && (!template || t.formTemplateId === template)
+  list.extraFilter.value = (sla || scope)
+    ? (t: Ticket) => (!sla || sla(t)) && (!scope || scope(t))
     : null;
 });
 
@@ -497,12 +467,6 @@ function queryActor(): FlashActor {
 }
 
 function onAction(label: string, t: Ticket) {
-  if (isBusinessRegistrationTicket(t)) {
-    if (label === '调剂' && !registrations.canTransfer(t.no)) { message.warning('仅同组成员可调剂未结案工单'); return; }
-    openOperation(t);
-    if (label === '调剂') message.info('请在处理页选择组内接收人完成调剂');
-    return;
-  }
 
   if (label === '调剂') {
 
@@ -554,7 +518,6 @@ function onSearch() {
 
 
 function onReset() {
-  registrationFormTemplate.value = '';
 
   list.resetFilters();
 
@@ -651,16 +614,6 @@ function onClearFilters() {
 <template>
 
   <div class="ticket-list" :class="{ embedded: embedded }">
-    <div class="registration-query-filter">
-      <label>业务表单
-        <select v-model="registrationFormTemplate" aria-label="查询业务表单">
-          <option value="">全部表单</option>
-          <option v-for="template in REGISTRATION_TEMPLATES" :key="template.id" :value="template.id">{{ template.name }}</option>
-        </select>
-      </label>
-      <button v-if="registrationFormTemplate" type="button" @click="exportRegistrationRows">导出登记明细</button>
-      <span v-if="selectedRegistrationTemplate" class="registration-metric-note">本表单 {{ list.total.value }} 单 · {{ selectedRegistrationTemplate.includeInGeneralConsultationCount ? '计入通用咨询工单量' : '不计入通用咨询工单量' }}（当前筛选计入 {{ generalConsultationCount }} 单）</span>
-    </div>
 
     <div v-if="embedded" class="list-controls">
       <div
@@ -681,7 +634,7 @@ function onClearFilters() {
         <TicketListToolRow
           embedded
           :can-create="canCreateTicket"
-          @create="createFromList"
+          @create="createOpen = true"
           @columns="columnSettingsOpen = true"
         />
       </div>
@@ -697,8 +650,6 @@ function onClearFilters() {
         variant="mine"
 
         :optional-visible="optionalVisible"
-        :product-catalog="productCatalog"
-        :registration-sources="registrationSources"
 
         @update:model-value="onUpdateQuery"
 
@@ -747,8 +698,6 @@ function onClearFilters() {
         variant="mine"
 
         :optional-visible="optionalVisible"
-        :product-catalog="productCatalog"
-        :registration-sources="registrationSources"
 
         @update:model-value="onUpdateQuery"
 
@@ -891,10 +840,6 @@ function onClearFilters() {
 
 
 <style scoped>
-.registration-query-filter { display:flex; align-items:center; gap:12px; padding:10px 0; font-size:12px; color:#687a94; }
-.registration-query-filter label { display:flex; align-items:center; gap:8px; }
-.registration-query-filter select, .registration-query-filter button { border:1px solid #dce5f0; border-radius:4px; background:#fff; padding:5px 9px; color:#62738c; cursor:pointer; }
-.registration-metric-note { font-size:11px; color:#8a98ad; }
 
 .ticket-list {
 

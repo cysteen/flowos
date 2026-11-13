@@ -2,8 +2,6 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { useRefundStore } from '@/stores/refund';
-import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
-import { isBusinessRegistrationTicket, WIRELESS_REGISTRATION_TEMPLATE_ID } from '@/views/tickets/types/businessRegistration';
 import { useDispatchStore } from '@/stores/dispatch';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { computed, ref, watch } from 'vue';
@@ -66,11 +64,6 @@ import {
 
 /** 「我的任务」筛选末尾的草稿箱入口（选中后列表区换成草稿列表） */
 const DRAFT_CHIP: ChipMeta = { key: 'draft', label: '草稿箱' };
-const REGISTRATION_CHIPS: ChipMeta[] = [
-  { key: 'all', label: '全部' },
-  { key: 'registration-processing', label: '处理中' },
-  { key: 'registration-closed', label: '已结案' },
-];
 
 function savedFilterTab(tab: TabKey): SavedFilterTab | null {
   if (tab === 'mine' || tab === 'done' || tab === 'pool') return tab;
@@ -81,12 +74,7 @@ export function useTicketWorkbench() {
   // 个册退费单快照与产线结果定时查询（1120）：须在取工单库快照之前装载 ——
   // 本会话新建的个册退费单只在快照里，晚于下一行装载则刷新后工作台各页签都取不到它
   const refundStore = useRefundStore();
-  const registrations = useBusinessRegistrationStore();
   const all = ref<Ticket[]>([...TICKETS]);
-  watch(() => registrations.revision, () => {
-    all.value = [...TICKETS];
-    selectedIds.value = new Set();
-  });
   // 其他页签新建的个册退费单经快照同步进工单库后，并入本工作台数据源
   watch(() => refundStore.revisions, () => {
     const have = new Set(all.value.map((t) => t.no));
@@ -97,13 +85,6 @@ export function useTicketWorkbench() {
   const savedFilters = useSavedFilters();
 
   const activeTab = ref<TabKey>('mine');
-  const formTemplateId = ref('');
-  const registrationScope = ref<'mine' | 'team'>('mine');
-  function setRegistrationView(scope: 'mine' | 'team' = 'mine') {
-    formTemplateId.value = WIRELESS_REGISTRATION_TEMPLATE_ID;
-    registrationScope.value = scope;
-    activeTab.value = 'mine'; activeChip.value = 'all'; selectedIds.value = new Set();
-  }
   const activeChip = ref<ChipKey | string>('all');
   const searchText = ref('');
   const mineQuery = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
@@ -113,28 +94,6 @@ export function useTicketWorkbench() {
   const selectedIds = ref<Set<string>>(new Set());
   const aiBarVisible = ref(true);
   const dismissedAiIds = ref<Set<string>>(new Set());
-  watch(formTemplateId, () => {
-    activeChip.value = 'all';
-    selectedIds.value = new Set();
-    mineQuery.value = EMPTY_MINE_QUERY();
-    doneQuery.value = DEFAULT_DONE_QUERY();
-    poolQuery.value = EMPTY_MINE_QUERY();
-  });
-
-  function matchSelectedForm(t: Ticket): boolean {
-    return !formTemplateId.value || t.formTemplateId === formTemplateId.value;
-  }
-  function matchQuery(t: Ticket, q: MineQueryFilter): boolean {
-    return matchMineQuery(t, q, registrations.recordOf(t.no));
-  }
-  function matchActiveChip(t: Ticket, key: string): boolean {
-    if (formTemplateId.value) {
-      if (key === 'registration-processing') return registrations.recordOf(t.no)?.status === '处理中';
-      if (key === 'registration-closed') return registrations.recordOf(t.no)?.status === '已结案';
-      if (key === 'all' || isSavedFilterChipKey(key)) return true;
-    }
-    return matchChip(t, key as ChipKey, activeTab.value);
-  }
 
   const user = useUserStore();
   const flash = useFlashStore();
@@ -186,10 +145,6 @@ export function useTicketWorkbench() {
    * 一线坐席 / 二线专员的刷机单按本人已领 + 本人建取（§9.4 / M71），其余角色的刷机单沿用老口径。
    */
   function inMineTabScope(t: Ticket): boolean {
-    if (isBusinessRegistrationTicket(t)) {
-      const record = registrations.recordOf(t.no);
-      return !!record && record.status === '处理中' && record.handler === user.name && user.groups.includes(record.groupName);
-    }
     if (isFlashTicket(t) && (user.roleKey === 'agent-l1' || user.roleKey === 'agent-l2')) {
       return inFlashMineScope(t, user.roleKey, flashHandler.value, flash.creatorNameOf(t.no));
     }
@@ -205,12 +160,6 @@ export function useTicketWorkbench() {
   }
   /** 已办数据域：按当前登录人判「我」 */
   function inDoneTabScope(t: Ticket): boolean {
-    if (isBusinessRegistrationTicket(t)) {
-      const record = registrations.recordOf(t.no);
-      if (!record || !user.groups.includes(record.groupName)) return false;
-      return (record.status === '已结案' && record.handler === user.name)
-        || (record.handler !== user.name && record.history.some((entry) => entry.actor === user.name && ['创建工单', '保存处理记录', '结案', '调剂'].includes(entry.action)));
-    }
     return inDoneScope(t, flashHandler.value);
   }
 
@@ -225,9 +174,6 @@ export function useTicketWorkbench() {
 
   // 当前 Tab 数据域
   const tabRows = computed(() => {
-    if (formTemplateId.value && registrationScope.value === 'team' && activeTab.value === 'mine') {
-      return all.value.filter((ticket) => isBusinessRegistrationTicket(ticket) && !!registrations.recordOf(ticket.no) && user.groups.includes(registrations.recordOf(ticket.no)!.groupName));
-    }
     if (activeTab.value === 'mine') {
       return all.value.filter(inMineTabScope);
     }
@@ -249,29 +195,29 @@ export function useTicketWorkbench() {
     const kw = searchText.value.trim().toLowerCase();
     const structuredTab = isWorkbenchSearchTab(activeTab.value);
     return tabRows.value.filter((t) => {
-      if (!matchSelectedForm(t)) return false;
+      const chipKey = activeChip.value as ChipKey;
       if (
         activeTab.value !== 'pool'
         && !isSavedFilterChipKey(activeChip.value)
-        && !matchActiveChip(t, activeChip.value)
+        && !matchChip(t, chipKey, activeTab.value)
       ) {
         return false;
       }
       if (activeTab.value === 'mine') {
-        if (!matchQuery(t, mineQuery.value)) return false;
+        if (!matchMineQuery(t, mineQuery.value)) return false;
       } else if (activeTab.value === 'done') {
-        if (!matchQuery(t, doneQuery.value)) return false;
+        if (!matchMineQuery(t, doneQuery.value)) return false;
       } else if (activeTab.value === 'pool' || activeTab.value === 'poolPending') {
-        if (!matchQuery(t, poolQuery.value)) return false;
+        if (!matchMineQuery(t, poolQuery.value)) return false;
         if (activeTab.value === 'pool' && !matchPoolDispatchFilter(t)) return false;
       }
       if (kw) {
         if (structuredTab) {
           const matchNo = t.no.toLowerCase().includes(kw);
-          const phone = `${t.customerPhone ?? ''} ${t.businessPhone ?? ''} ${t.contactPhone ?? ''} ${t.upstreamTicketNo ?? ''}`.toLowerCase();
+          const phone = (t.customerPhone ?? '').toLowerCase();
           if (!matchNo && !phone.includes(kw)) return false;
         } else {
-          const hay = `${t.no} ${t.customer} ${t.title} ${t.businessPhone ?? ''} ${t.contactPhone ?? ''} ${t.upstreamTicketNo ?? ''}`.toLowerCase();
+          const hay = `${t.no} ${t.customer} ${t.title}`.toLowerCase();
           if (!hay.includes(kw)) return false;
         }
       }
@@ -282,9 +228,6 @@ export function useTicketWorkbench() {
   // 排序
   const sorted = computed(() => {
     const list = [...filtered.value];
-    if (formTemplateId.value) {
-      return list.sort((a, b) => compareByMineSort(a, b, 'updated_desc'));
-    }
     if (activeTab.value === 'mine') {
       if (mineSortRule.value === 'sla_urgency') {
         list.sort(slaUrgencyCompare);
@@ -307,12 +250,6 @@ export function useTicketWorkbench() {
   const tabCounts = computed<Record<TabKey, number>>(() => {
     const map: Record<TabKey, number> = { mine: 0, done: 0, pool: 0, poolPending: 0, cc: 0, review: 0 };
     for (const t of all.value) {
-      if (!matchSelectedForm(t)) continue;
-      if (isBusinessRegistrationTicket(t)) {
-        if (inMineTabScope(t)) map.mine++;
-        if (inDoneTabScope(t)) map.done++;
-        continue;
-      }
       // 我的任务单独数：一线坐席 / 二线专员本人建的刷机单可能不在 mine 页（§9.4 / M71）
       if (inMineTabScope(t)) map.mine++;
       if (t.tab === 'done') {
@@ -328,19 +265,19 @@ export function useTicketWorkbench() {
   });
 
   const activeChips = computed(() => {
-    const builtin = formTemplateId.value ? REGISTRATION_CHIPS : chipsForTab(activeTab.value);
+    const builtin = chipsForTab(activeTab.value);
     const sfTab = savedFilterTab(activeTab.value);
     const chips = sfTab ? [...builtin, ...savedFilters.chipsForTab(sfTab)] : builtin;
     // 草稿箱入口（PRD-04 §存草稿 / 630：草稿落工作台草稿箱）：「我的任务」筛选末尾，与「新建工单」同处可见（F19）
-    return activeTab.value === 'mine' && !formTemplateId.value ? [...chips, DRAFT_CHIP] : chips;
+    return activeTab.value === 'mine' ? [...chips, DRAFT_CHIP] : chips;
   });
 
   /** 与列表一致：chip 计数也叠加当前 Tab 的结构化筛选（含已办默认 30 天窗） */
   function matchActiveStructuredQuery(t: Ticket): boolean {
-    if (activeTab.value === 'mine') return matchQuery(t, mineQuery.value);
-    if (activeTab.value === 'done') return matchQuery(t, doneQuery.value);
+    if (activeTab.value === 'mine') return matchMineQuery(t, mineQuery.value);
+    if (activeTab.value === 'done') return matchMineQuery(t, doneQuery.value);
     if (activeTab.value === 'pool' || activeTab.value === 'poolPending') {
-      return matchQuery(t, poolQuery.value);
+      return matchMineQuery(t, poolQuery.value);
     }
     return true;
   }
@@ -354,13 +291,13 @@ export function useTicketWorkbench() {
       } else if (isSavedFilterChipKey(chip.key)) {
         const sf = savedFilters.findByChipKey(chip.key);
         if (sf) {
-          map[chip.key] = tabRows.value.filter((t) => matchSelectedForm(t) && matchQuery(t, sf.query)).length;
+          map[chip.key] = tabRows.value.filter((t) => matchMineQuery(t, sf.query)).length;
         } else {
           map[chip.key] = 0;
         }
       } else {
         map[chip.key] = tabRows.value.filter(
-          (t) => matchSelectedForm(t) && matchActiveChip(t, chip.key) && matchActiveStructuredQuery(t),
+          (t) => matchChip(t, chip.key as ChipKey, activeTab.value) && matchActiveStructuredQuery(t),
         ).length;
       }
     }
@@ -370,12 +307,6 @@ export function useTicketWorkbench() {
   /** 顶栏 Tab 徽章：当前 Tab 与「全部」chip 对齐（含结构化筛选后的可见量） */
   const headerTabCounts = computed<Record<TabKey, number>>(() => {
     const counts = { ...tabCounts.value };
-    if (formTemplateId.value) {
-      // 本组记录包含终态；“我的任务”徽标始终只统计本人未结案。
-      if (activeTab.value === 'mine') counts.mine = all.value.filter((t) => matchSelectedForm(t) && inMineTabScope(t) && matchActiveStructuredQuery(t)).length;
-      if (activeTab.value === 'done') counts.done = all.value.filter((t) => matchSelectedForm(t) && inDoneTabScope(t) && matchActiveStructuredQuery(t)).length;
-      return counts;
-    }
     const allChip = chipCounts.value.all;
     if (activeTab.value === 'poolPending' && typeof allChip === 'number') {
       counts.poolPending = allChip;
@@ -393,9 +324,8 @@ export function useTicketWorkbench() {
   const drafts = computed(() => draftStore.drafts);
 
   const selectedCount = computed(() => selectedIds.value.size);
-  const selectableRows = computed(() => paged.value.filter((ticket) => !isBusinessRegistrationTicket(ticket)));
   const allPageSelected = computed(
-    () => selectableRows.value.length > 0 && selectableRows.value.every((t) => selectedIds.value.has(t.id))
+    () => paged.value.length > 0 && paged.value.every((t) => selectedIds.value.has(t.id))
   );
 
   // AI 建议（PRD-02 §7②：扫描我的在处理单）
@@ -408,7 +338,7 @@ export function useTicketWorkbench() {
     emotion: aiSuggestions.value.filter((s) => s.kind === 'emotion').length,
     total: aiSuggestions.value.length,
   }));
-  const showAiBarForTab = computed(() => activeTab.value === 'mine' && !formTemplateId.value);
+  const showAiBarForTab = computed(() => activeTab.value === 'mine');
   const showAiBar = computed(
     () => showAiBarForTab.value && aiBarVisible.value && aiSummary.value.total > 0,
   );
@@ -524,15 +454,14 @@ export function useTicketWorkbench() {
     searchText.value = v;
   }
   function toggleSelect(id: string) {
-    if (all.value.some((ticket) => ticket.id === id && isBusinessRegistrationTicket(ticket))) return;
     const next = new Set(selectedIds.value);
     next.has(id) ? next.delete(id) : next.add(id);
     selectedIds.value = next;
   }
   function toggleSelectAllOnPage() {
     const next = new Set(selectedIds.value);
-    if (allPageSelected.value) selectableRows.value.forEach((t) => next.delete(t.id));
-    else selectableRows.value.forEach((t) => next.add(t.id));
+    if (allPageSelected.value) paged.value.forEach((t) => next.delete(t.id));
+    else paged.value.forEach((t) => next.add(t.id));
     selectedIds.value = next;
   }
   function clearSelection() {
@@ -722,7 +651,7 @@ export function useTicketWorkbench() {
   }
 
   return {
-    all, activeTab, activeChip, activeChips, poolGroups, formTemplateId, registrationScope, setRegistrationView,
+    all, activeTab, activeChip, activeChips, poolGroups,
     searchText, mineQuery, doneQuery, poolQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
     tabRows, filtered, sorted, paged, total, tabCounts, headerTabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
