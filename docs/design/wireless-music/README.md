@@ -2,6 +2,7 @@
 
 - [产品需求说明](PRD.md)
 - [技术设计](technical-design.md)
+- [验收走查链路](acceptance.md)
 - [评审与验证记录](review.md)
 - [通用融合方案及竞品参考](design.md)
 
