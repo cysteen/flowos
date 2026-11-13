@@ -36,7 +36,7 @@ onBeforeUnmount(() => tableObserver?.disconnect());
 const tableScrollY = computed(() => Math.max(160, tableHeight.value - 108));
 const visibleRecords = computed(() => store.records.filter((record) => store.canView(record)));
 const myRecords = computed(() => visibleRecords.value.filter((record) => record.status === '处理中' && record.handler === user.name));
-const scopeTabs = computed(() => [...(canCreate.value ? [{ key: 'mine', label: '我的待办' }] : []), { key: 'all', label: '全部记录' }]);
+const scopeTabs = computed(() => [...(canCreate.value ? [{ key: 'mine', label: '我的' }] : []), { key: 'all', label: '全部' }]);
 const scopedRecords = computed(() => scope.value === 'mine' ? myRecords.value : visibleRecords.value);
 const baseMatches = computed(() => filterRegistrationRecords(scopedRecords.value, { ...query, status: '' }));
 const rows = computed(() => filterRegistrationRecords(scopedRecords.value, query).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
@@ -188,7 +188,7 @@ function exportRows() {
             <template v-else-if="column.key === 'reminder'"><span class="time-text">{{ displayTime(record.reminder?.at) }}</span><small v-if="record.reminder" class="secondary-line">{{ record.reminder.triggeredAt ? '已提醒' : `提醒${record.reminder.recipient}` }}</small></template>
             <template v-else-if="column.key === 'action'"><div class="row-actions"><a-button type="link" size="small" @click="open(record)">{{ store.canEdit(record.no) && record.status === '处理中' ? '处理' : '查看' }}</a-button><a-button v-if="store.canTransfer(record.no)" type="link" size="small" @click="open(record, true)">调剂</a-button></div></template>
           </template>
-          <template #emptyText><div class="empty-records"><a-empty :description="scope === 'mine' ? '暂无我的待办自建单' : '暂无符合条件的自建单'" /></div></template>
+          <template #emptyText><div class="empty-records"><a-empty :description="scope === 'mine' ? '暂无我的自建单' : '暂无符合条件的自建单'" /></div></template>
         </a-table>
       </div>
     </div>
