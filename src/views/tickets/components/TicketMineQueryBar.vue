@@ -114,35 +114,30 @@ const problemL3Options = computed(() => {
   return problemTags.unionTree[problemL1]?.[problemL2] ?? [];
 });
 
-function buildPresetRange(days: number): [Dayjs, Dayjs] {
-  const end = dayjs().endOf('day');
-  const start = dayjs().subtract(days - 1, 'day').startOf('day');
-  return [start, end];
+function buildPresetRange(timePreset: '7d' | '30d' | '90d'): [Dayjs, Dayjs] {
+  const range = resolveMineTimeRange({ ...EMPTY_MINE_QUERY(), timePreset }, props.registrationSources ? new Date() : undefined)!;
+  return [dayjs(range.from), dayjs(range.to)];
 }
 
 // 必须是 computed 而非模块级常量：ant-design-vue 的 presets 只接受**数组**（不对函数求值，
 // 那是已废弃的 ranges 才有的能力），写成 `value: () => …` 点了不生效；
-// 而写成模块级常量会在加载时求值，跨零点的长驻页面会漂一天。
+// 快捷区间与当前表单的日期解析使用同一锚点。
 const rangePresets = computed(() => [
-  { label: '最近一周', value: buildPresetRange(7) },
-  { label: '最近一个月', value: buildPresetRange(30) },
-  { label: '最近三个月', value: buildPresetRange(90) },
+  { label: '最近一周', value: buildPresetRange('7d') },
+  { label: '最近一个月', value: buildPresetRange('30d') },
+  { label: '最近三个月', value: buildPresetRange('90d') },
 ]);
 
 const rangeValue = computed(() => {
-  const resolved = resolveMineTimeRange(props.modelValue);
+  const resolved = resolveMineTimeRange(props.modelValue, props.registrationSources ? new Date() : undefined);
   if (!resolved) return undefined;
   return [dayjs(resolved.from), dayjs(resolved.to)] as [Dayjs, Dayjs];
 });
 
 function detectTimePreset(start: Dayjs, end: Dayjs): MineTimePreset {
-  const pairs: [MineTimePreset, number][] = [
-    ['7d', 7],
-    ['30d', 30],
-    ['90d', 90],
-  ];
-  for (const [preset, days] of pairs) {
-    const [s, e] = buildPresetRange(days);
+  const presets = ['7d', '30d', '90d'] as const;
+  for (const preset of presets) {
+    const [s, e] = buildPresetRange(preset);
     if (s.isSame(start, 'day') && e.isSame(end, 'day')) return preset;
   }
   return 'custom';

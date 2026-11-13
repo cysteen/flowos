@@ -205,11 +205,12 @@ function dayEnd(ymd: string): number {
   return new Date(`${ymd}T23:59:59.999`).getTime() || 0;
 }
 
-/** 解析结构化筛选的时间区间（按工单更新时间） */
-export function resolveMineTimeRange(q: MineQueryFilter): { from: number; to: number } | null {
+/** 解析日期区间；真实业务记录可传当前日，普通样例默认保留原型日期锚点。 */
+export function resolveMineTimeRange(q: MineQueryFilter, referenceDay?: Date): { from: number; to: number } | null {
   if (!q.timePreset) return null;
 
-  const end = prototypeDayEnd();
+  const end = referenceDay ? new Date(referenceDay) : prototypeDayEnd();
+  end.setHours(23, 59, 59, 999);
 
   if (q.timePreset === 'custom') {
     if (!q.dateFrom && !q.dateTo) return null;
@@ -272,7 +273,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter, registration?: Reg
     if (!names.some((n) => includes(n, q.groupName))) return false;
   }
 
-  const range = resolveMineTimeRange(q);
+  const range = resolveMineTimeRange(q, registration ? new Date() : undefined);
   if (range) {
     const time = registration
       ? ts(q.registrationTimeField === 'accessTime' ? registration.values.accessTime : registration.createdAt)
