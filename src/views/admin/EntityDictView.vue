@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { REGISTRATION_TEMPLATES, type RegistrationFieldKey } from '@/views/tickets/types/businessRegistration';
+import { formCatalogFields, formCatalogParentField, useFormCatalogsStore } from '@/stores/formCatalogs';
+import DictManageView from './DictManageView.vue';
+import ProductManageView from './ProductManageView.vue';
 import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, ImportOutlined, EditOutlined, DeleteOutlined, InboxOutlined } from '@ant-design/icons-vue';
 
 // 流程实体字典（PRD-88）：分类（一级）→ 实体字段（二级），被表单/流程/工单类型引用。
 interface Cat { key: string; name: string; count: number; }
-interface Field { key: string; name: string; type: string; constraint: string; refs: number; status: '启用' | '停用'; }
+interface Field { key: string; name: string; type: string; constraint: string; refs: number; status: '启用' | '停用'; source?: string; parent?: string; }
+const route = useRoute();
+const catalogs = useFormCatalogsStore();
 
 const cats = ref<Cat[]>([
   { key: 'customer', name: '客户信息', count: 6 },
@@ -13,9 +20,15 @@ const cats = ref<Cat[]>([
   { key: 'problem', name: '问题描述', count: 4 },
   { key: 'process', name: '处理过程', count: 8 },
   { key: 'complaint', name: '投诉专属', count: 5 },
+  ...REGISTRATION_TEMPLATES.map((seed) => ({ key: `catalog:${seed.id}`, name: seed.name, count: formCatalogFields(seed).length + 1 })),
 ]);
-const selected = ref('process');
+const selected = ref(typeof route.query.template === 'string' && REGISTRATION_TEMPLATES.some((seed) => seed.id === route.query.template) ? `catalog:${route.query.template}` : 'process');
 const selName = computed(() => cats.value.find((c) => c.key === selected.value)?.name ?? '');
+const catalogSeed = computed(() => REGISTRATION_TEMPLATES.find((seed) => `catalog:${seed.id}` === selected.value));
+const catalogOpen = ref(false);
+const catalogField = ref<RegistrationFieldKey>('feedback');
+const catalogFieldLabel = computed(() => catalogSeed.value?.fields.find((field) => field.key === catalogField.value)?.label ?? '');
+function openCatalogField(field: Field) { catalogField.value = field.key as RegistrationFieldKey; catalogOpen.value = true; }
 
 const fieldMap: Record<string, Field[]> = reactive({
   process: [
@@ -56,18 +69,34 @@ const fieldMap: Record<string, Field[]> = reactive({
     { key: 'desc', name: '诉求描述', type: '多行文本', constraint: '必填', refs: 8, status: '启用' },
   ],
 });
-const fields = computed(() => fieldMap[selected.value] ?? []);
+const fields = computed<Field[]>(() => {
+  const seed = catalogSeed.value;
+  if (!seed) return fieldMap[selected.value] ?? [];
+  const keys = new Set([...formCatalogFields(seed).map((field) => field.key), 'productName']);
+  return seed.fields.filter((field) => keys.has(field.key)).map((field) => {
+    const parent = formCatalogParentField(field.key);
+    const options = field.key === 'productName' ? catalogs.productRows(seed) : catalogs.optionRows(seed, field.key);
+    const count = options.filter((option) => option.enabled).length;
+    const resolved = catalogs.resolve(seed);
+    const ready = field.key === 'productName' ? resolved.products.length : field.key === 'productCategory' ? Object.values(resolved.productCategoryOptions ?? {}).flat().length : count;
+    const pending = field.key === 'productName' ? catalogs.productRows(seed).filter((product) => !product.businessLine || !catalogs.optionRows(seed, 'productCategory').some((option) => option.value === product.category && option.parentValue === product.businessLine)).length : field.key === 'productCategory' ? catalogs.optionRows(seed, 'productCategory').filter((option) => !option.parentValue).length : 0;
+    const availability = field.key === 'productName' || field.key === 'productCategory' ? `${ready}项可选；${pending}项待补归属` : `${count}/${options.length} 项启用`;
+    return { key: field.key, name: field.label, type: '下拉', constraint: `${field.closeRequired ? '结案前必填；' : ''}${availability}${field.key === 'timeLimit' ? '；正整数分钟，工单留快照' : ''}`, source: field.key === 'productName' ? '产品名称目录（共享）' : `选项字典 · ${field.key}`, parent: seed.fields.find((item) => item.key === parent)?.label ?? '无（独立枚举）', refs: 1, status: '启用' };
+  });
+});
 
 const cols = [
   { title: '字段标识', dataIndex: 'key', key: 'key', width: 150 },
   { title: '字段名称', dataIndex: 'name', key: 'name', width: 140 },
   { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
   { title: '约束', dataIndex: 'constraint', key: 'constraint' },
+  { title: '枚举来源', dataIndex: 'source', key: 'source', width: 185 },
+  { title: '上级字段', dataIndex: 'parent', key: 'parent', width: 140 },
   { title: '引用', dataIndex: 'refs', key: 'refs', width: 80 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
-  { title: '操作', key: 'op', width: 110 },
+  { title: '操作', key: 'op', width: 120, fixed: 'right' as const },
 ];
-function pick(c: Cat) { selected.value = c.key; }
+function pick(c: Cat) { catalogOpen.value = false; selected.value = c.key; }
 
 const FIELD_TYPES = ['单行文本', '多行文本', '下拉', '单选', '级联', '日期时间', '附件', '复合', '只读', '数字'];
 
@@ -138,23 +167,32 @@ function doImport() { if (!importN.value) { message.warning('请先选择文件'
       <div class="panel-head">
         <span>{{ selName }} · 实体字段</span>
         <div class="head-btns">
-          <a-button size="small" @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
-          <a-button type="primary" size="small" @click="openAddField"><template #icon><PlusOutlined /></template>新增字段</a-button>
+          <a-button v-if="!catalogSeed" size="small" @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
+          <a-button v-if="!catalogSeed" type="primary" size="small" @click="openAddField"><template #icon><PlusOutlined /></template>新增字段</a-button>
         </div>
       </div>
-      <a-table :columns="cols" :data-source="fields" row-key="key" :pagination="false" size="middle">
+      <a-table :columns="cols" :data-source="fields" row-key="key" :pagination="false" :scroll="{ x: 1130 }" size="middle">
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'key'" class="mono">{{ (record as Field).key }}</span>
           <a-tag v-else-if="column.key === 'type'" color="blue">{{ (record as Field).type }}</a-tag>
           <span v-else-if="column.key === 'refs'" :class="(record as Field).refs > 0 ? 'ref-on' : 'ref-off'">{{ (record as Field).refs }} 处</span>
           <span v-else-if="column.key === 'status'" class="status" :class="(record as Field).status === '启用' ? 'on' : 'off'">● {{ (record as Field).status }}</span>
           <template v-else-if="column.key === 'op'">
-            <EditOutlined class="op-ic" @click="openEditField(record as Field)" /><DeleteOutlined class="op-ic danger" @click="delField(record as Field)" />
+            <a-button v-if="catalogSeed" type="link" size="small" @click="openCatalogField(record as Field)">配置选项</a-button>
+            <template v-else><EditOutlined class="op-ic" @click="openEditField(record as Field)" /><DeleteOutlined class="op-ic danger" @click="delField(record as Field)" /></template>
           </template>
         </template>
       </a-table>
-      <div class="tip">字段被表单/流程/工单类型按「字段标识」引用；引用数>0 改/删有风险（点引用数看引用方）。被引用字段禁止硬删，引导停用。</div>
+      <div v-if="catalogSeed" class="tip">业务线 → 产品线 → 产品名称；反馈平台 → 具体来源；问题分类一 → 问题分类二。配置选项与系统字典、产品管理共用同一数据，新建仅选启用且归属完整的选项；历史工单保留原值。</div>
+      <div v-else class="tip">字段被表单/流程/工单类型按「字段标识」引用；被引用字段禁止硬删，引导停用。</div>
     </div>
+
+    <a-drawer v-model:open="catalogOpen" :title="`${selName} · ${catalogFieldLabel} · 选项配置`" :width="1050" destroy-on-close>
+      <template v-if="catalogSeed">
+        <ProductManageView v-if="catalogField === 'productName'" :key="catalogSeed.id" :template-id="catalogSeed.id" embedded />
+        <DictManageView v-else :key="`${catalogSeed.id}:${catalogField}`" :template-id="catalogSeed.id" :field-key="catalogField" embedded />
+      </template>
+    </a-drawer>
 
     <!-- 新增分类 -->
     <a-modal v-model:open="catModalOpen" title="新增实体分类" :width="420" ok-text="创建" cancel-text="取消" @ok="saveCat">

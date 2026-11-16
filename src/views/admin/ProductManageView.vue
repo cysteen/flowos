@@ -26,18 +26,19 @@ const KIND_CLASS: Record<ProductTreeNode['kind'], string> = {
 
 const router = useRouter();
 const route = useRoute();
+const props = defineProps<{ templateId?: string; embedded?: boolean }>();
 const catalogs = useFormCatalogsStore();
 const tenant = useTenantStore();
-const catalogTemplateId = ref(typeof route.query.template === 'string' ? route.query.template : '');
+const catalogTemplateId = ref(props.templateId ?? (typeof route.query.template === 'string' ? route.query.template : ''));
 const catalogSeed = computed(() => REGISTRATION_TEMPLATES.find((template) => template.id === catalogTemplateId.value));
-const catalogScopeOptions = [{ value: '', label: '平台产品目录' }, ...REGISTRATION_TEMPLATES.map((template) => ({ value: template.id, label: `${template.name} · 独立目录` }))];
+const catalogScopeOptions = [{ value: '', label: '平台产品目录' }, ...REGISTRATION_TEMPLATES.map((template) => ({ value: template.id, label: `${template.name} · 表单引用目录` }))];
 const catalogKeyword = ref('');
 const catalogStatus = ref('');
 const catalogRows = computed(() => catalogSeed.value ? catalogs.productRows(catalogSeed.value).filter((product) => (!catalogKeyword.value.trim() || `${product.name} ${product.category} ${product.businessLine ?? ''}`.includes(catalogKeyword.value.trim())) && (!catalogStatus.value || (product.enabled ? 'enabled' : 'disabled') === catalogStatus.value)) : []);
 const catalogColumns = [
   { title: '产品名称', key: 'name', dataIndex: 'name', width: 260 },
   { title: '业务线', key: 'businessLine', dataIndex: 'businessLine', width: 220 },
-  { title: '产品分类', key: 'category', dataIndex: 'category', width: 190 },
+  { title: '产品线', key: 'category', dataIndex: 'category', width: 190 },
   { title: '状态', key: 'enabled', width: 100 },
   { title: '操作', key: 'op', width: 170 },
 ];
@@ -46,8 +47,15 @@ const catalogProductRevision = ref(0);
 const catalogProductForm = reactive({ id: '', name: '', category: '', businessLine: '', enabled: true });
 watch([catalogTemplateId, () => tenant.currentTenantId], () => { catalogProductOpen.value = false; });
 const catalogBusinessLines = computed(() => catalogSeed.value ? catalogs.optionRows(catalogSeed.value, 'businessLine', true).map((row) => ({ value: row.value, label: row.label })) : []);
-const catalogCategories = computed(() => catalogSeed.value ? catalogs.optionRows(catalogSeed.value, 'productCategory', true).map((row) => ({ value: row.value, label: row.label })) : []);
-watch(() => route.query.template, (template) => { catalogTemplateId.value = typeof template === 'string' ? template : ''; });
+const catalogCategories = computed(() => catalogSeed.value ? catalogs.optionRows(catalogSeed.value, 'productCategory', true).filter((row) => row.parentValue === catalogProductForm.businessLine).map((row) => ({ value: row.value, label: row.label })) : []);
+function catalogProductReady(product: FormCatalogProduct) {
+  return !!catalogSeed.value && !!product.businessLine
+    && catalogs.optionRows(catalogSeed.value, 'businessLine', true).some((row) => row.value === product.businessLine)
+    && catalogs.optionRows(catalogSeed.value, 'productCategory', true).some((row) => row.value === product.category && row.parentValue === product.businessLine);
+}
+watch(() => route.query.template, (template) => { if (!props.templateId) catalogTemplateId.value = typeof template === 'string' ? template : ''; });
+watch(() => props.templateId, (template) => { if (template) catalogTemplateId.value = template; });
+function changeCatalogBusinessLine() { catalogProductForm.category = ''; }
 function openCatalogProduct(product?: FormCatalogProduct) {
   if (catalogSeed.value) catalogProductRevision.value = catalogs.catalogOf(catalogSeed.value).revision;
   Object.assign(catalogProductForm, product ? { ...product, businessLine: product.businessLine ?? '' } : { id: '', name: '', category: '', businessLine: '', enabled: true });
@@ -132,15 +140,15 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
 </script>
 
 <template>
-  <div class="product-manage">
-    <AdminPageHeader title="产品管理" :subtitle="catalogSeed ? '维护业务表单的独立产品目录，配置产品分类、业务线归属及启停状态' : '按 BGBU/业务线/产品线/分类 维护五级产品体系；工单分类、路由与问题分类依此归属'">
+  <div class="product-manage" :class="{ 'product-manage--embedded': embedded }">
+    <AdminPageHeader v-if="!embedded" title="产品管理" :subtitle="catalogSeed ? '维护业务表单产品的业务线、产品线归属及启停状态，与实体字典共用数据' : '按 BGBU/业务线/产品线/分类 维护五级产品体系；工单分类、路由与问题分类依此归属'">
       <template #actions>
         <a-button v-if="!catalogSeed" @click="goRdMapping">产研产品关联</a-button>
         <a-button type="primary" @click="onCreate"><template #icon><PlusOutlined /></template>新建产品</a-button>
       </template>
     </AdminPageHeader>
 
-    <div class="catalog-scope"><span>产品目录</span><a-select v-model:value="catalogTemplateId" :options="catalogScopeOptions" style="width:350px" /><span v-if="catalogSeed" class="scope-note">供本业务表单引用，产品名称保持稳定</span></div>
+    <div v-if="!embedded" class="catalog-scope"><span>产品目录</span><a-select v-model:value="catalogTemplateId" :options="catalogScopeOptions" style="width:350px" /><span v-if="catalogSeed" class="scope-note">供本业务表单引用，产品名称保持稳定</span></div>
     <div v-if="!catalogSeed" class="cols">
       <!-- 左：产品树 -->
       <div class="left">
@@ -227,21 +235,21 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
     </div>
 
     <div v-if="catalogSeed" class="catalog-products">
-      <div class="catalog-toolbar"><a-input v-model:value="catalogKeyword" placeholder="搜索产品、分类或业务线" allow-clear style="width:300px" /><a-select v-model:value="catalogStatus" :options="[{value:'',label:'全部状态'},{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]" style="width:120px" /><span>共 {{ catalogRows.length }} 个产品</span></div>
+      <div class="catalog-toolbar"><a-input v-model:value="catalogKeyword" placeholder="搜索产品、产品线或业务线" allow-clear style="width:260px" /><a-select v-model:value="catalogStatus" :options="[{value:'',label:'全部状态'},{value:'enabled',label:'启用'},{value:'disabled',label:'停用'}]" style="width:120px" /><span>共 {{ catalogRows.length }} 个产品</span><a-button v-if="embedded" type="primary" @click="onCreate">新增产品</a-button></div>
       <a-table :columns="catalogColumns" :data-source="catalogRows" row-key="id" :pagination="{ pageSize: 15, showSizeChanger: false }" size="middle">
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'businessLine'" :class="{ 'pending-mapping': !(record as FormCatalogProduct).businessLine }">{{ (record as FormCatalogProduct).businessLine || '待补齐归属' }}</span>
-          <a-tag v-else-if="column.key === 'enabled'" :color="(record as FormCatalogProduct).enabled ? 'green' : 'default'">{{ (record as FormCatalogProduct).enabled ? '启用' : '停用' }}</a-tag>
+          <a-tag v-else-if="column.key === 'enabled'" :color="!(record as FormCatalogProduct).enabled ? 'default' : catalogProductReady(record as FormCatalogProduct) ? 'green' : 'orange'">{{ !(record as FormCatalogProduct).enabled ? '停用' : catalogProductReady(record as FormCatalogProduct) ? '启用' : '待配置' }}</a-tag>
           <template v-else-if="column.key === 'op'"><a-button type="link" size="small" @click="openCatalogProduct(record as FormCatalogProduct)">编辑归属</a-button><a-button type="link" size="small" @click="toggleCatalogProduct(record as FormCatalogProduct)">{{ (record as FormCatalogProduct).enabled ? '停用' : '启用' }}</a-button></template>
         </template>
       </a-table>
-      <div class="catalog-tip">停用产品不再供新选择，历史工单保留原值。选择产品时带出所属分类，已配置业务线归属的同时带出业务线；历史已填内容不会随目录调整自动变更。</div>
+      <div class="catalog-tip">先配置业务线下的产品线，再维护产品归属。未补齐完整归属或已停用的产品不供新建选择；历史工单保留原组合，不随配置调整自动变更。</div>
     </div>
     <a-modal v-model:open="catalogProductOpen" :title="catalogProductForm.id ? '编辑产品归属' : '新增产品'" :width="500" ok-text="保存" cancel-text="取消" @ok="saveCatalogProduct">
       <a-form layout="vertical">
         <a-form-item label="产品名称" required><a-input v-model:value="catalogProductForm.name" :disabled="!!catalogProductForm.id" placeholder="填写产品名称" /></a-form-item>
-        <a-form-item label="业务线" required><a-select v-model:value="catalogProductForm.businessLine" :options="catalogBusinessLines" placeholder="选择业务线" /></a-form-item>
-        <a-form-item label="产品分类" required><a-auto-complete v-model:value="catalogProductForm.category" :options="catalogCategories" placeholder="选择已有分类或填写新分类" /></a-form-item>
+        <a-form-item label="业务线" required><a-select v-model:value="catalogProductForm.businessLine" :options="catalogBusinessLines" placeholder="选择业务线" @change="changeCatalogBusinessLine" /></a-form-item>
+        <a-form-item label="产品线" required><a-select v-model:value="catalogProductForm.category" :options="catalogCategories" :disabled="!catalogProductForm.businessLine" placeholder="选择该业务线下已配置的产品线" /></a-form-item>
         <a-form-item label="状态"><a-radio-group v-model:value="catalogProductForm.enabled"><a-radio-button :value="true">启用</a-radio-button><a-radio-button :value="false">停用</a-radio-button></a-radio-group></a-form-item>
       </a-form>
     </a-modal>
@@ -259,6 +267,7 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
 
 <style scoped>
 .product-manage { padding: 20px 24px; }
+.product-manage--embedded { padding:0; }
 .catalog-scope { display:flex; align-items:center; gap:12px; margin:0 0 16px; color:#65758c; font-size:13px; }
 .scope-note { color:#94a0b1; font-size:12px; }
 .catalog-products { background:#fff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }

@@ -22,6 +22,7 @@ import {
   WIRELESS_REGISTRATION_TEMPLATE_ID,
   type RegistrationFieldKey,
   registrationPendingReopenNotice,
+  registrationDisplayValue,
   type RegistrationRecord,
 } from '@/views/tickets/types/businessRegistration';
 import {
@@ -481,7 +482,7 @@ function exportRows() {
   const header = ['工单号', '状态', '处理组', '建单人', '处理人', '创建时间', '更新时间', '结案时间', '预约提醒时间', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.unit ? `${field.label}（${field.unit}）` : field.label)];
   const body = exportable.map((record) => {
     const next = record.reminders?.filter((item) => !item.triggeredAt).sort((a, b) => a.at.localeCompare(b.at))[0];
-    return [record.no, record.status, record.groupName, record.builder, record.handler, record.createdAt, record.updatedAt, record.closedAt ?? '', next?.at ?? '', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.key === 'refundAmount' ? formatRegistrationAmount(record.values[field.key]) : record.values[field.key])];
+    return [record.no, record.status, record.groupName, record.builder, record.handler, record.createdAt, record.updatedAt, record.closedAt ?? '', next?.at ?? '', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.key === 'refundAmount' ? formatRegistrationAmount(record.values[field.key]) : registrationDisplayValue(record, field.key))];
   });
   const blob = new Blob(['\uFEFF', [header, ...body].map((row) => row.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob), link = document.createElement('a'), today = new Date();
