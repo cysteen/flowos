@@ -11,7 +11,7 @@ function onTabClick(key: string) {
 
 function onClose(e: Event, key: string) {
   e.stopPropagation();
-  tabsStore.close(key);
+  void tabsStore.close(key);
 }
 
 function onTabKeydown(e: KeyboardEvent, key: string) {

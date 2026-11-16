@@ -51,6 +51,8 @@ export type TlAction =
  */
 export type TlRole =
   | '客户'
+  /** 历史记录未保存岗位时的中性展示，不按当前角色倒推 */
+  | '处理人员'
   | '一线坐席'
   /** 1130 小智工单 D20：与一线坐席平级的新角色 */
   | '小智坐席'
@@ -209,6 +211,7 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
 /** 角色徽章配色（与事件色区分，PRD-03 §7 F4） */
 export const ROLE_BADGE: Record<TlRole, string> = {
   客户: '#6B7280',
+  处理人员: '#6B7280',
   一线坐席: '#2563EB',
   小智坐席: '#0D9488',
   二线专员: '#7C3AED',

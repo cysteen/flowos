@@ -43,6 +43,10 @@ const props = withDefaults(
     showSort?: boolean;
     /** 列设置入口（刷机池等固定列场景可关） */
     showColumnSettings?: boolean;
+    columnDefs?: { key: string; label: string }[];
+    fixedColumnDefs?: { key: string; label: string }[];
+    resolveColumnLabel?: (key: string) => string;
+    columnFooterHint?: string;
   }>(),
   {
     search: '',
@@ -107,6 +111,8 @@ function pickBatch(action: string, selectedCount: number) {
         />
       </div>
 
+      <slot name="before-filter" />
+
       <div
         v-if="showFilterToggle"
         class="wb-toolbar__btn wb-toolbar__btn--filter"
@@ -127,9 +133,10 @@ function pickBatch(action: string, selectedCount: number) {
           v-model:open="columnSettingsOpen"
           :visible-columns="visibleColumns ?? {}"
           :column-order="columnOrder"
-          :column-defs="TICKET_LIST_COLUMN_CATALOG"
-          :fixed-column-defs="TICKET_LIST_FIXED_COLUMN_DEFS"
-          :resolve-label="ticketListColumnLabel"
+          :column-defs="columnDefs ?? TICKET_LIST_COLUMN_CATALOG"
+          :fixed-column-defs="fixedColumnDefs ?? TICKET_LIST_FIXED_COLUMN_DEFS"
+          :resolve-label="resolveColumnLabel ?? ticketListColumnLabel"
+          :footer-hint="columnFooterHint"
           @set-visible="(key, visible) => emit('setColumnVisible', key, visible)"
           @reorder="(fromKey, toKey) => emit('reorderColumn', fromKey, toKey)"
           @reset="emit('resetColumns')"
@@ -180,6 +187,7 @@ function pickBatch(action: string, selectedCount: number) {
         </template>
       </a-dropdown>
 
+      <slot name="before-create" />
       <!--
         小智建单入口（1130 D3）。按钮名「**新建小智工单**」照一·补 B22
         （原名「一键创建小智工单」）—— 与右侧通用「新建工单」并列、同体例。

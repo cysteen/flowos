@@ -6,6 +6,7 @@
   "description": "iFLY FlowOS 工单系统 · 交互原型（Vue 3 + Ant Design Vue）",
   "scripts": {
     "dev": "vite --port 3000",
+    "dev:3011": "vite --port 3011 --host",
     "build": "node scripts/clean-dist.mjs && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && node deploy.mjs",

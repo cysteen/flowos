@@ -2,6 +2,7 @@ import type { Component } from 'vue';
 import {
   HomeOutlined,
   CustomerServiceOutlined,
+  FormOutlined,
   ToolOutlined,
   DashboardOutlined,
   FundProjectionScreenOutlined,
@@ -24,6 +25,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { key: 'home', label: '个人门户', path: '/home', icon: HomeOutlined }, // house
   { key: 'tickets', label: '工单工作台', path: '/tickets', icon: CustomerServiceOutlined }, // headset
+  { key: 'self-service', label: '自建单工作台', path: '/self-service', icon: FormOutlined },
   { key: 'query-center', label: '查询中心', path: '/query', icon: SearchOutlined },
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge
@@ -34,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** 取该角色第一个有权限菜单的路径（守卫 redirect 用） */
 export function firstMenuPath(menus: string[]): string {
-  const item = NAV_ITEMS.find((n) => menus.includes(n.key));
+  const item = NAV_ITEMS.find((n) => n.key !== 'self-service' && menus.includes(n.key))
+    ?? NAV_ITEMS.find((n) => menus.includes(n.key));
   return item ? item.path : '/home';
 }

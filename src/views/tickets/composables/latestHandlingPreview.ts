@@ -22,7 +22,8 @@ function processResultTextFromTimeline(entries: TimelineEntry[]): string {
   }
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
-    if (e.category === 'handle' && e.text?.trim()) return e.text.trim();
+    const text = e.what?.trim() || ('text' in e && typeof e.text === 'string' ? e.text.trim() : '');
+    if (e.category === 'handle' && text) return text;
   }
   return '';
 }

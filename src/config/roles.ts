@@ -142,7 +142,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'xiaozhi-agent': {
     key: 'xiaozhi-agent',
     name: '小智坐席',
-    menus: ['home', 'tickets', 'query-center'],
+    menus: ['home', 'tickets', 'self-service', 'query-center'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
   },
@@ -156,7 +156,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'agent-l2': {
     key: 'agent-l2',
     name: '二线专员',
-    menus: ['home', 'tickets', 'aftersale', 'query-center', 'approval'],
+    menus: ['home', 'tickets', 'aftersale', 'self-service', 'query-center', 'approval'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
     post: 'cs',
@@ -172,7 +172,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'tech-support': {
     key: 'tech-support',
     name: '技术支持',
-    menus: ['home', 'tickets', 'query-center', 'approval'],
+    menus: ['home', 'tickets', 'self-service', 'query-center', 'approval'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
   },
@@ -180,7 +180,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'team-leader': {
     key: 'team-leader',
     name: '二线班组长',
-    menus: ['home', 'tickets', 'aftersale', 'query-center', 'team-board', 'approval'],
+    menus: ['home', 'tickets', 'aftersale', 'self-service', 'query-center', 'team-board', 'approval'],
     hiddenTabs: ['riskReport'],
     hasAdminEntry: false,
   },
@@ -198,7 +198,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'complaint-handler': {
     key: 'complaint-handler',
     name: '客诉专员',
-    menus: ['home', 'tickets', 'query-center', 'ops-risk-monitor', 'approval'],
+    menus: ['home', 'tickets', 'self-service', 'query-center', 'ops-risk-monitor', 'approval'],
     hiddenTabs: [],
     hasAdminEntry: false,
     writableAfterTakeover: true,
@@ -225,7 +225,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'ops-monitor': {
     key: 'ops-monitor',
     name: '工单运营',
-    menus: ['query-center', 'team-board', 'ops-ticket-monitor'],
+    menus: ['self-service', 'query-center', 'team-board', 'ops-ticket-monitor'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: true,
     adminItems: ['problem-tags'],
@@ -248,7 +248,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'complaint-supervisor',
     name: '投诉督导',
     menus: [
-      'home', 'tickets', 'query-center', 'team-board',
+      'home', 'tickets', 'self-service', 'query-center', 'team-board',
       'ops-ticket-monitor', 'ops-risk-monitor', 'approval',
     ],
     hiddenTabs: [],
@@ -264,7 +264,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'qa': {
     key: 'qa',
     name: '质检',
-    menus: ['query-center', 'approval'],
+    menus: ['self-service', 'query-center', 'approval'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
     readonlyTickets: true,
@@ -286,7 +286,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'system-admin',
     name: '管理员',
     adminScopeLabel: '管理员 · 平台',
-    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
+    menus: ['home', 'tickets', 'self-service', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
     hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'platform',
@@ -295,7 +295,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'ops-admin',
     name: '管理员',
     adminScopeLabel: '管理员 · 运营',
-    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
+    menus: ['home', 'tickets', 'self-service', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
     hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'ops',
@@ -304,7 +304,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'tenant-admin',
     name: '管理员',
     adminScopeLabel: '管理员 · 租户',
-    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
+    menus: ['home', 'tickets', 'self-service', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
     hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'tenant',

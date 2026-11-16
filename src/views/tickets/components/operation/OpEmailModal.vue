@@ -9,6 +9,8 @@ const props = defineProps<{
   open: boolean;
   email: string;
   ctx: TemplateContext;
+  /** 无预填邮箱时允许在弹窗填写收件人 */
+  editableRecipient?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 const templateCode = ref<string>(MAIL_TEMPLATES[0].code);
 const subject = ref('');
 const body = ref('');
+const toDraft = ref('');
 
 const templateOptions = MAIL_TEMPLATES.map((t) => ({ value: t.code, label: t.name }));
 
@@ -32,6 +35,7 @@ watch(
   () => props.open,
   (v) => {
     if (!v) return;
+    toDraft.value = props.email.trim();
     templateCode.value = MAIL_TEMPLATES[0].code;
     applyTemplate(templateCode.value);
   },
@@ -39,7 +43,10 @@ watch(
 
 watch(templateCode, (code) => applyTemplate(code));
 
-const canSubmit = computed(() => !!subject.value.trim() && !!body.value.trim());
+const recipient = computed(() => (props.editableRecipient ? toDraft.value.trim() : props.email.trim()));
+const canSubmit = computed(
+  () => !!recipient.value && !!subject.value.trim() && !!body.value.trim(),
+);
 
 function close() {
   emit('update:open', false);
@@ -48,7 +55,7 @@ function close() {
 function onSubmit() {
   if (!canSubmit.value) return;
   emit('submit', {
-    to: props.email,
+    to: recipient.value,
     templateCode: templateCode.value,
     subject: subject.value.trim(),
     body: body.value,
@@ -73,7 +80,12 @@ function onSubmit() {
     <div class="op-form">
       <div class="op-field">
         <div class="op-label">收件人</div>
-        <div class="mail-readonly">{{ email }}</div>
+        <a-input
+          v-if="editableRecipient"
+          v-model:value="toDraft"
+          placeholder="请输入客户邮箱"
+        />
+        <div v-else class="mail-readonly">{{ email }}</div>
       </div>
 
       <div class="op-field">

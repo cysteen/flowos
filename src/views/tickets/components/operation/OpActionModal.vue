@@ -178,9 +178,14 @@ function onCancel() {
 }
 .op-field-h > .ant-select,
 .op-field-h > .ant-input,
+.op-field-h > .ant-input-textarea,
 .op-field-h > textarea.ant-input {
   flex: 1;
   min-width: 0;
+  width: 100%;
+}
+.op-field-h > .ant-input-textarea textarea.ant-input {
+  width: 100%;
 }
 .op-field-h-top { align-items: flex-start; }
 .op-field-h-top > .op-label { padding-top: 6px; }
