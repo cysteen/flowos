@@ -4,8 +4,30 @@ import {
   WIRELESS_REGISTRATION_TEMPLATE_ID,
   type RegistrationContact,
   type RegistrationRecord,
+  type RegistrationReminder,
   type RegistrationValues,
 } from '@/views/tickets/types/businessRegistration';
+
+export const REGISTRATION_DEMO_REMINDER_PACK_VERSION = 1;
+export const REGISTRATION_DEMO_REMINDER_TICKET_NO = 'IFLYZJ-20261113-00002';
+export type RegistrationSeedRecord = RegistrationRecord & { demoReminderPackVersion?: number };
+
+/** A stable overdue sequence for walking through a queue of reminders. */
+export const REGISTRATION_DEMO_REMINDER_PACK: RegistrationReminder[] = [
+  {
+    id: 'seed-reminder-00002', at: '2026-11-13 15:00:00',
+    note: '运营商承诺 15:00 前反馈核查结果', recipient: '张三',
+  },
+  ...[
+    '跟进咪咕侧局数据核查进度', '确认铃音配置是否已同步生效', '核实用户侧彩铃试听结果',
+    '跟进运营商补充的业务核查材料', '确认异常播放问题的处理方案', '核对渠道反馈与系统订购记录',
+    '跟进处理方案执行结果', '确认客户回访结论', '整理最终核查结果并回复运营商',
+  ].map((note, index) => ({
+    id: `seed-reminder-00002-${String(index + 2).padStart(2, '0')}`,
+    at: `2026-11-13 15:${String(index + 1).padStart(2, '0')}:00`,
+    note, recipient: '张三',
+  })),
+];
 
 type SeedSpec = {
   no: string;
@@ -18,6 +40,7 @@ type SeedSpec = {
   values: Partial<RegistrationValues>;
   reminders?: RegistrationRecord['reminders'];
   contacts?: RegistrationContact[];
+  demoReminderPackVersion?: number;
 };
 
 function fullValues(patch: Partial<RegistrationValues>): RegistrationValues {
@@ -50,7 +73,7 @@ function fullValues(patch: Partial<RegistrationValues>): RegistrationValues {
   return { ...base, ...patch };
 }
 
-function recordOf(spec: SeedSpec): RegistrationRecord {
+function recordOf(spec: SeedSpec): RegistrationSeedRecord {
   const values = fullValues(spec.values);
   if (!values.replyTime) values.replyTime = spec.updatedAt;
   if (!values.accessTime) values.accessTime = spec.createdAt.replace(' ', 'T');
@@ -80,11 +103,12 @@ function recordOf(spec: SeedSpec): RegistrationRecord {
     contacts: spec.contacts ?? [],
     notifications: [],
     reminders: spec.reminders,
+    ...(spec.demoReminderPackVersion ? { demoReminderPackVersion: spec.demoReminderPackVersion } : {}),
   };
 }
 
 /** 无线音乐自建单工作台演示数据（本地缓存为空时注入） */
-export const REGISTRATION_SEED_RECORDS: RegistrationRecord[] = [
+export const REGISTRATION_SEED_RECORDS: RegistrationSeedRecord[] = [
   recordOf({
     no: 'IFLYZJ-20261113-00001',
     status: '处理中',
@@ -158,12 +182,8 @@ export const REGISTRATION_SEED_RECORDS: RegistrationRecord[] = [
       description: '铃音设置后无法播放，需排查局数据。',
       processResult: '已登记并推送咪咕侧核查。',
     },
-    reminders: [{
-      id: 'seed-reminder-00002',
-      at: '2026-11-13 15:00:00',
-      note: '运营商承诺 15:00 前反馈核查结果',
-      recipient: '张三',
-    }],
+    reminders: REGISTRATION_DEMO_REMINDER_PACK.map((reminder) => ({ ...reminder })),
+    demoReminderPackVersion: REGISTRATION_DEMO_REMINDER_PACK_VERSION,
   }),
   recordOf({
     no: 'IFLYZJ-20261112-00003',

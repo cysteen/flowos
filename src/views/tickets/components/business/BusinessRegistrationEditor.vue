@@ -31,6 +31,7 @@ import RegistrationContactsTab from './RegistrationContactsTab.vue';
 import { registrationEditorSections, type RegistrationEditorSection } from './registrationEditorConfig';
 import { registrationHistoryToTimeline } from '@/views/tickets/utils/registrationTimeline';
 import { applyRegistrationPhoneInput } from '@/views/tickets/utils/registrationPhoneInput';
+import { registrationAmountError } from '@/views/tickets/utils/registrationAmount';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import { CROSS_GROUP_TIP, TRANSFER_REASON_MAX } from '@/views/tickets/components/operation/dispatch/useTransferOptions';
 import { useCtiStore } from '@/stores/cti';
@@ -210,6 +211,10 @@ function changeField(key: RegistrationFieldKey, value: string) {
     contactManuallyEdited.value = contact.manuallyEdited;
   }
   delete errors.value[key];
+  if (key === 'refundAmount') {
+    const amountError = registrationAmountError(value);
+    if (amountError) errors.value.refundAmount = amountError;
+  }
   if (key === 'feedback') values.specificSource = '';
   if (key === 'problemL1') values.problemL2 = '';
   if (key === 'productName') {
@@ -313,7 +318,7 @@ function submit(close = false) {
   const nextErrors = validateRegistrationValues(values, stage, template.value?.id, record.value?.values);
   if (Object.keys(nextErrors).length) {
     revealErrors(nextErrors);
-    message.warning('请补齐标注的必填信息');
+    message.warning('请检查标注的字段信息');
     return;
   }
   if (close && values.processResult.replace(/\s/g, '').includes('附件')) {

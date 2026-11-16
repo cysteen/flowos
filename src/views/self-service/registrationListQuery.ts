@@ -1,45 +1,32 @@
 import dayjs, { type Dayjs } from 'dayjs';
-import { PROTOTYPE_TODAY, prototypeDayEnd } from '@/config/prototypeDate';
 import type { RegistrationRecord } from '@/views/tickets/types/businessRegistration';
 import { registrationTimelinessRemainMs } from '@/views/self-service/registrationListTimeliness';
 
-/** 筛选条快捷时间；custom 表示范围选择器内自定义区间 */
-export type RegistrationListTimePreset = '' | 'today' | 'yesterday' | 'week' | '7d' | '30d' | '90d' | 'custom';
+/** 始终作用于创建时间，custom 保留秒级自定义能力。 */
+export type RegistrationListTimePreset = '3m' | 'today' | 'week' | 'month' | 'custom';
 
-/** RangePicker 左侧快捷项（对齐工单 TicketMineQueryBar，并扩展今天/本周） */
-export const REGISTRATION_TIME_QUICK_PRESETS: { value: Exclude<RegistrationListTimePreset, '' | 'custom'>; label: string }[] = [
+/** 与个人门户时间选择器采用相同快捷项，缺省窗口为近三个月。 */
+export const REGISTRATION_TIME_QUICK_PRESETS: { value: Exclude<RegistrationListTimePreset, 'custom'>; label: string }[] = [
+  { value: '3m', label: '近三个月' },
   { value: 'today', label: '今天' },
-  { value: 'yesterday', label: '昨天' },
   { value: 'week', label: '本周' },
-  { value: '7d', label: '最近一周' },
-  { value: '30d', label: '最近一个月' },
-  { value: '90d', label: '最近三个月' },
+  { value: 'month', label: '本月' },
 ];
 
 export function registrationListPresetToDayjsRange(
-  preset: Exclude<RegistrationListTimePreset, '' | 'custom'>,
+  preset: Exclude<RegistrationListTimePreset, 'custom'>,
+  now = new Date(),
 ): [Dayjs, Dayjs] {
-  const { from, to } = resolveRegistrationListTimeRange(preset);
+  const { from, to } = resolveRegistrationListTimeRange(preset, now);
   return [dayjs(from), dayjs(to)];
 }
 
 /** ant-design-vue RangePicker `presets`（须在 computed 内调用以保证与当前筛选模型一致） */
-export function buildRegistrationListRangePresets(): { label: string; value: [Dayjs, Dayjs] }[] {
+export function buildRegistrationListRangePresets(now = new Date()): { label: string; value: [Dayjs, Dayjs] }[] {
   return REGISTRATION_TIME_QUICK_PRESETS.map(({ value, label }) => ({
     label,
-    value: registrationListPresetToDayjsRange(value),
+    value: registrationListPresetToDayjsRange(value, now),
   }));
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-function formatRegistrationQueryDateTime(d: Date, upper = false): string {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  const day = pad2(d.getDate());
-  return upper ? `${y}-${m}-${day} 23:59:59` : `${y}-${m}-${day} 00:00:00`;
 }
 
 function startOfWeekMonday(anchor: Date): Date {
@@ -52,51 +39,22 @@ function startOfWeekMonday(anchor: Date): Date {
 }
 
 /**
- * 自建单列表 RangePicker 快捷时间窗；作用于当前 {@link RegistrationListQuery.timeField}。
- * 与工单「我的任务」一致，锚定在原型今日，避免本机日期漂移导致列表被静默滤空。
+ * 列表及导出共享实时创建时间窗：减三自然月的当日零点至当前时刻。
+ * Dayjs 的减月会在月末收敛到目标月最后一天，不使用固定90天或旧原型锚点。
  */
-export function resolveRegistrationListTimeRange(
-  preset: Exclude<RegistrationListTimePreset, '' | 'custom'>,
-): { from: string; to: string } {
-  const end = prototypeDayEnd();
-  const to = formatRegistrationQueryDateTime(end, true);
-
-  if (preset === 'today') {
-    const start = new Date(PROTOTYPE_TODAY);
-    start.setHours(0, 0, 0, 0);
-    return { from: formatRegistrationQueryDateTime(start), to };
-  }
-  if (preset === 'yesterday') {
-    const start = new Date(PROTOTYPE_TODAY);
-    start.setDate(start.getDate() - 1);
-    start.setHours(0, 0, 0, 0);
-    const endYesterday = new Date(start);
-    endYesterday.setHours(23, 59, 59, 999);
-    return {
-      from: formatRegistrationQueryDateTime(start),
-      to: formatRegistrationQueryDateTime(endYesterday, true),
-    };
-  }
-  if (preset === 'week') {
-    return { from: formatRegistrationQueryDateTime(startOfWeekMonday(PROTOTYPE_TODAY)), to };
-  }
-
-  const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-  const start = new Date(end);
-  start.setDate(start.getDate() - (days - 1));
-  start.setHours(0, 0, 0, 0);
-  return { from: formatRegistrationQueryDateTime(start), to };
+export function registrationListWindow(now = new Date()): { from: Date; to: Date } {
+  return { from: dayjs(now).subtract(3, 'month').startOf('day').toDate(), to: new Date(now) };
 }
 
-export function detectRegistrationListTimePreset(
-  query: Pick<RegistrationListQuery, 'timeField' | 'dateFrom' | 'dateTo'>,
-): RegistrationListTimePreset {
-  if (!query.dateFrom.trim() || !query.dateTo.trim()) return '';
-  for (const { value } of REGISTRATION_TIME_QUICK_PRESETS) {
-    const range = resolveRegistrationListTimeRange(value);
-    if (range.from === query.dateFrom.trim() && range.to === query.dateTo.trim()) return value;
-  }
-  return 'custom';
+export function resolveRegistrationListTimeRange(
+  preset: Exclude<RegistrationListTimePreset, 'custom'>,
+  now = new Date(),
+): { from: string; to: string } {
+  const start = preset === 'today' ? dayjs(now).startOf('day')
+    : preset === 'week' ? dayjs(startOfWeekMonday(now))
+      : preset === 'month' ? dayjs(now).startOf('month')
+        : dayjs(registrationListWindow(now).from);
+  return { from: start.format('YYYY-MM-DD HH:mm:ss'), to: dayjs(now).format('YYYY-MM-DD HH:mm:ss') };
 }
 
 export interface RegistrationListQuery {
@@ -119,7 +77,6 @@ export interface RegistrationListQuery {
   problemL2: string;
   complaintType: string;
   closedLoop: string;
-  timeField: 'createdAt' | 'updatedAt' | 'accessTime' | 'replyTime';
   /** Local dates or explicit local timestamps, inclusive at the supplied precision. */
   dateFrom: string;
   dateTo: string;
@@ -129,7 +86,7 @@ export const emptyRegistrationListQuery = (): RegistrationListQuery => ({
   keyword: '', ticketNo: '', businessPhone: '', contactPhone: '', status: '', handler: '', groupName: '',
   feedback: '', specificSource: '', channelDetail: '', operator: '', province: '', businessLine: '',
   productCategory: '', productName: '', problemL1: '', problemL2: '', complaintType: '', closedLoop: '',
-  timeField: 'createdAt', dateFrom: '', dateTo: '',
+  dateFrom: '', dateTo: '',
 });
 
 function timestamp(value: string | undefined, upper = false): number {
@@ -150,12 +107,28 @@ function timestamp(value: string | undefined, upper = false): number {
     ? date.getTime() : NaN;
 }
 
+/** 控件输入仍须校验，不能仅依靠日历禁选防止手输或秒级越界。 */
+export function registrationListRangeError(dateFrom: string, dateTo: string, now = new Date()): string | undefined {
+  if (!dateFrom.trim() || !dateTo.trim()) return '请选择完整的创建时间范围';
+  const from = timestamp(dateFrom), to = timestamp(dateTo);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) return '请选择有效的创建时间范围';
+  const window = registrationListWindow(now);
+  if (from < window.from.getTime() || to > window.to.getTime()) return '创建时间须在近三个月内，且不能晚于当前时间';
+  return undefined;
+}
+
+export function withinRegistrationListWindow(record: RegistrationRecord, now = new Date()): boolean {
+  const window = registrationListWindow(now), created = timestamp(record.createdAt);
+  return Number.isFinite(created) && created >= window.from.getTime() && created <= window.to.getTime();
+}
+
 function contains(value: string | undefined, filter: string): boolean {
   return (value ?? '').toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase());
 }
 
 /** Filters only the independent self-service records; it does not read normal tickets. */
-export function matchesRegistrationListQuery(record: RegistrationRecord, query: RegistrationListQuery): boolean {
+export function matchesRegistrationListQuery(record: RegistrationRecord, query: RegistrationListQuery, now = new Date()): boolean {
+  if (!withinRegistrationListWindow(record, now)) return false;
   const values = record.values;
   if (query.ticketNo && !contains(record.no, query.ticketNo)) return false;
   if (query.businessPhone && !contains(values.businessPhone, query.businessPhone)) return false;
@@ -177,20 +150,15 @@ export function matchesRegistrationListQuery(record: RegistrationRecord, query: 
     const from = dateFrom ? timestamp(dateFrom) : -Infinity;
     const to = dateTo ? timestamp(dateTo, true) : Infinity;
     if (Number.isNaN(from) || Number.isNaN(to) || from > to) return false;
-    const time = query.timeField === 'createdAt'
-      ? record.createdAt
-      : query.timeField === 'updatedAt'
-        ? record.updatedAt
-        : values[query.timeField];
-    const value = timestamp(time);
+    const value = timestamp(record.createdAt);
     if (!Number.isFinite(value)) return false;
     if (value < from || value > to) return false;
   }
   return true;
 }
 
-export function filterRegistrationRecords(records: readonly RegistrationRecord[], query: RegistrationListQuery): RegistrationRecord[] {
-  return records.filter((record) => matchesRegistrationListQuery(record, query));
+export function filterRegistrationRecords(records: readonly RegistrationRecord[], query: RegistrationListQuery, now = new Date()): RegistrationRecord[] {
+  return records.filter((record) => matchesRegistrationListQuery(record, query, now));
 }
 
 /** 列表排序用毫秒；缺省或非法时间返回 NaN（排序时置后）。 */

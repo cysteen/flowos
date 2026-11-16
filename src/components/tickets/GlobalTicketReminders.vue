@@ -16,6 +16,7 @@ interface VisibleReopen { id: string; no: string; title: string; note: string; a
 
 const REOPEN_CONTENT_PREFIX = '班组长退回重开：';
 const MAX_REOPEN_VISIBLE = 3;
+const MAX_APPOINTMENT_VISIBLE = 3;
 
 const store = useBusinessRegistrationStore();
 const user = useUserStore();
@@ -78,7 +79,11 @@ function syncAppointmentAlerts() {
       });
     }
   }
-  visible.value = next;
+  visible.value = next.sort((a, b) => (
+    parseRegistrationReminderAt(a.at) - parseRegistrationReminderAt(b.at)
+      || a.no.localeCompare(b.no)
+      || a.id.localeCompare(b.id)
+  ));
 }
 
 function checkDue() {
@@ -128,6 +133,8 @@ onMounted(() => { checkDue(); timer = setInterval(checkDue, 1000); });
 onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 
 const hasPanel = computed(() => visible.value.length > 0 || reopenVisible.value.length > 0);
+const appointmentShown = computed(() => visible.value.slice(0, MAX_APPOINTMENT_VISIBLE));
+const appointmentHiddenCount = computed(() => Math.max(0, visible.value.length - MAX_APPOINTMENT_VISIBLE));
 const reopenStacked = computed(() => reopenVisible.value.length > 1);
 const reopenHiddenCount = computed(() => Math.max(0, reopenVisible.value.length - MAX_REOPEN_VISIBLE));
 const reopenShown = computed(() => (
@@ -211,16 +218,18 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
     </section>
 
     <section v-if="visible.length" class="reminder-section appointment-section" aria-label="工单预约提醒">
+    <p v-if="appointmentHiddenCount > 0" class="appointment-more" role="status">
+      还有 <strong class="appointment-more-count">{{ appointmentHiddenCount }}</strong> 条待处理
+    </p>
     <article
-      v-for="item in visible"
-      :key="item.id"
+      v-for="item in appointmentShown"
+      :key="`${item.no}:${item.id}`"
       class="reminder-notice reminder-compact"
       role="alert"
     >
       <header>
         <span class="bell-mark">◷</span>
         <strong>工单预约提醒</strong>
-        <button type="button" aria-label="关闭提醒" @click="dismiss(item)">×</button>
       </header>
       <p class="reminder-title" :title="item.title || item.no">{{ item.title || item.no }}</p>
       <p class="reminder-summary" :title="reminderSummary(item.note).tip">{{ reminderSummary(item.note).line }}</p>
@@ -239,7 +248,7 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
   position: fixed;
   right: 24px;
   bottom: 80px;
-  width: 344px;
+  width: 300px;
   max-width: calc(100vw - 32px);
   max-height: 70vh;
   overflow: auto;
@@ -251,6 +260,8 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
 }
 
 .reminder-notice {
+  box-sizing: border-box;
+  min-width: 0;
   pointer-events: auto;
   border: 1px solid #e1e7f2;
   border-left: 4px solid #9273d0;
@@ -326,6 +337,7 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .reminder-title {
@@ -419,6 +431,44 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
 
 .reopen-more:hover {
   background: #fef3c7;
+}
+
+.appointment-more {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid #c4b5fd;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: linear-gradient(110deg, #eef2ff, #f5f3ff);
+  box-shadow: 0 2px 6px #6d5bd01a;
+  color: #4f46a8;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.appointment-more-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 6px;
+  background: #6d5bd0;
+  color: #fff;
+  font-weight: 700;
 }
 
 @media (max-width: 400px) {

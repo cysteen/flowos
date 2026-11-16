@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -15,6 +15,7 @@ import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
 import { useFormCatalogsStore } from '@/stores/formCatalogs';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
+import { formatRegistrationAmount } from '@/views/tickets/utils/registrationAmount';
 import {
   REGISTRATION_FIELD_DEFINITIONS,
   REGISTRATION_TEMPLATES,
@@ -30,7 +31,11 @@ import {
   REOPEN_TOAST_LS_PREFIX,
 } from '@/views/tickets/types/reopenReminderDedupe';
 import {
-  buildRegistrationListRangePresets,
+  REGISTRATION_TIME_QUICK_PRESETS,
+  registrationListRangeError,
+  registrationListWindow,
+  resolveRegistrationListTimeRange,
+  withinRegistrationListWindow,
   compareRegistrationByListSort,
   compareRegistrationDefault,
   emptyRegistrationListQuery,
@@ -38,6 +43,7 @@ import {
   type RegistrationListQuery,
   type RegistrationListSortDir,
   type RegistrationListSortKey,
+  type RegistrationListTimePreset,
 } from './registrationListQuery';
 import { useRegistrationQueryCatalog } from './useRegistrationQueryCatalog';
 
@@ -49,11 +55,32 @@ const templateId = ref(WIRELESS_REGISTRATION_TEMPLATE_ID);
 const seed = REGISTRATION_TEMPLATES.find((template) => template.id === templateId.value)!;
 const { productCatalog, registrationSources } = useRegistrationQueryCatalog(templateId);
 const query = reactive(emptyRegistrationListQuery());
+const timePreset = ref<RegistrationListTimePreset>('3m');
+const listNow = ref(new Date());
+const creationQuery = computed(() => {
+  const range = timePreset.value === 'custom' ? { from: query.dateFrom, to: query.dateTo }
+    : { from: resolveRegistrationListTimeRange(timePreset.value, listNow.value).from, to: '' };
+  return { ...query, dateFrom: range.from, dateTo: range.to };
+});
+const creationTimeOptions = REGISTRATION_TIME_QUICK_PRESETS;
+const customPanelOpen = ref(false);
+const customPickerOpen = ref(false);
+const customRangeError = ref('');
+const pickingDates = ref<[Dayjs | null, Dayjs | null] | []>([]);
+const customPickerValue = computed(() => (customPickerOpen.value ? pickingDates.value : dateValue.value) as [Dayjs, Dayjs] | undefined);
+watch(customPanelOpen, (open) => {
+  customRangeError.value = '';
+  if (open) {
+    pickingDates.value = [];
+    setTimeout(() => { customPickerOpen.value = customPanelOpen.value; }, 0);
+  } else customPickerOpen.value = false;
+});
+let clockTimer: ReturnType<typeof setInterval> | undefined;
 const canCreate = computed(() => store.canCreate(templateId.value));
 /** 会议口径：首屏默认「全部」，便于演示种子约 8 条；有建单权用户仍可切「我的」。 */
 const scope = ref<'mine' | 'all'>('all');
 const filterExpanded = ref(false), optionalOpen = ref(false);
-const current = ref(1), pageSize = ref(10), dateValue = ref();
+const current = ref(1), pageSize = ref(10), dateValue = ref<[Dayjs, Dayjs]>();
 const pagedRows = computed(() => {
   const start = (current.value - 1) * pageSize.value;
   return rows.value.slice(start, start + pageSize.value);
@@ -64,7 +91,10 @@ function setPage(page: number, size: number) {
   pageSize.value = size;
 }
 const visibleRecords = computed(() => store.records.filter((record) => store.canView(record)));
-const myRecords = computed(() => visibleRecords.value.filter((record) => {
+const timeVisibleRecords = computed(() => filterRegistrationRecords(visibleRecords.value, {
+  ...emptyRegistrationListQuery(), dateFrom: creationQuery.value.dateFrom, dateTo: creationQuery.value.dateTo,
+}, listNow.value));
+const myRecords = computed(() => timeVisibleRecords.value.filter((record) => {
   if (record.handler !== user.name && !(record.status === '草稿' && record.builder === user.name)) return false;
   return record.status === '处理中' || record.status === '草稿';
 }));
@@ -107,22 +137,26 @@ function pruneReopenBannerKeys() {
   }
 }
 onMounted(() => {
+  listNow.value = new Date();
+  clockTimer = setInterval(() => { listNow.value = new Date(); }, 60_000);
   pruneReopenBannerKeys();
   surfaceReopenReminders();
 });
 onActivated(() => {
+  listNow.value = new Date();
   pruneReopenBannerKeys();
   surfaceReopenReminders();
 });
+onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer); });
 watch(pendingReopenForMe, surfaceReopenReminders, { deep: true });
 watch(() => user.name, () => {
   pruneReopenBannerKeys();
   surfaceReopenReminders();
 });
-watch(() => store.revision, surfaceReopenReminders);
+watch(() => store.revision, () => { listNow.value = new Date(); surfaceReopenReminders(); });
 const scopeTabs = computed(() => [...(canCreate.value ? [{ key: 'mine', label: '我的' }] : []), { key: 'all', label: '全部' }]);
-const scopedRecords = computed(() => scope.value === 'mine' ? myRecords.value : visibleRecords.value);
-const baseMatches = computed(() => filterRegistrationRecords(scopedRecords.value, { ...query, status: '' }));
+const scopedRecords = computed(() => scope.value === 'mine' ? myRecords.value : timeVisibleRecords.value);
+const baseMatches = computed(() => filterRegistrationRecords(scopedRecords.value, { ...creationQuery.value, status: '' }, listNow.value));
 const listSortKey = ref<RegistrationListSortKey | null>(null);
 const listSortDir = ref<RegistrationListSortDir | null>(null);
 
@@ -147,7 +181,7 @@ function toggleListSort(key: RegistrationListSortKey) {
   listSortDir.value = null;
 }
 
-const filteredRecords = computed(() => filterRegistrationRecords(scopedRecords.value, query));
+const filteredRecords = computed(() => filterRegistrationRecords(scopedRecords.value, creationQuery.value, listNow.value));
 
 const rows = computed(() => {
   const list = [...filteredRecords.value];
@@ -265,9 +299,6 @@ const showSelectAllFilteredHint = computed(
 );
 const exportButtonLabel = computed(() => (selectedCount.value ? `导出所选（${selectedCount.value}）` : '导出全部'));
 
-// 须为 computed：ant-design-vue presets 需每次点开时求值（对齐 TicketMineQueryBar）
-const rangePresets = computed(() => buildRegistrationListRangePresets());
-
 function toggleSelect(id: string) {
   selectAllFiltered.value = false;
   const next = new Set(selectedIds.value);
@@ -299,12 +330,19 @@ function clearSelection() {
   selectedIds.value = new Set();
 }
 
-watch([query, scope, listSortKey, listSortDir], () => {
+watch([query, scope, timePreset, listSortKey, listSortDir], () => {
   current.value = 1;
   clearSelection();
 });
 watch(() => rows.value.length, (total) => { if ((current.value - 1) * pageSize.value >= total) current.value = 1; });
-watch(() => [user.name, tenant.currentTenantId], () => { reset(); scope.value = 'all'; });
+watch(() => [user.name, tenant.currentTenantId], () => {
+  reset(); timePreset.value = '3m'; query.dateFrom = ''; query.dateTo = ''; dateValue.value = undefined;
+  customPanelOpen.value = false; customPickerOpen.value = false; scope.value = 'all'; listNow.value = new Date();
+});
+watch(rows, (records) => {
+  if (selectAllFiltered.value) selectedIds.value = new Set(records.map((record) => record.no));
+  else selectedIds.value = new Set([...selectedIds.value].filter((id) => records.some((record) => record.no === id)));
+});
 
 function fieldOptions(key: keyof RegistrationListQuery) {
   if (key === 'groupName') return groups.value;
@@ -322,23 +360,56 @@ function fieldOptions(key: keyof RegistrationListQuery) {
 function patch(key: keyof RegistrationListQuery, value: unknown) { Object.assign(query, { [key]: typeof value === 'string' ? value : '' }); }
 function toggleOptional(key: keyof RegistrationListQuery, checked: boolean) { optionalVisible.value[key] = checked; if (!checked) patch(key, ''); }
 function reset() {
-  Object.assign(query, emptyRegistrationListQuery());
-  dateValue.value = undefined;
+  const { dateFrom, dateTo } = query;
+  Object.assign(query, emptyRegistrationListQuery(), { dateFrom, dateTo });
   current.value = 1;
   clearSelection();
 }
-function changeRange(dates: [Dayjs, Dayjs] | [string, string] | null) {
-  if (!dates || !dates[0] || !dates[1]) {
-    query.dateFrom = '';
-    query.dateTo = '';
-    dateValue.value = undefined;
-    return;
+function changeTimePreset(value: string | number) {
+  listNow.value = new Date();
+  customRangeError.value = '';
+  if (value === 'custom') {
+    pickingDates.value = [];
+    customPickerOpen.value = true;
+  } else {
+    timePreset.value = value as RegistrationListTimePreset;
+    customPanelOpen.value = false;
+    customPickerOpen.value = false;
   }
+}
+function calendarChange(dates: unknown) { pickingDates.value = (dates ?? []) as typeof pickingDates.value; }
+function disabledCreationDate(date: Dayjs) {
+  const window = registrationListWindow();
+  return date.startOf('day').isBefore(dayjs(window.from)) || date.startOf('day').isAfter(dayjs(window.to).startOf('day'));
+}
+function disabledCreationTime(date: Dayjs | null) {
+  const now = dayjs();
+  const sameDay = !!date && date.isSame(now, 'day');
+  const after = (value: number, length: number) => Array.from({ length }, (_, i) => i).filter((i) => i > value);
+  return {
+    disabledHours: () => sameDay ? after(now.hour(), 24) : [],
+    disabledMinutes: (hour: number) => sameDay && hour === now.hour() ? after(now.minute(), 60) : [],
+    disabledSeconds: (hour: number, minute: number) => sameDay && hour === now.hour() && minute === now.minute() ? after(now.second(), 60) : [],
+  };
+}
+function changeRange(dates: [Dayjs, Dayjs] | [string, string] | null) {
+  if (!dates || !dates[0] || !dates[1]) return;
   const start = dayjs(dates[0]);
   const end = dayjs(dates[1]);
-  query.dateFrom = start.format('YYYY-MM-DD HH:mm:ss');
-  query.dateTo = end.format('YYYY-MM-DD HH:mm:ss');
+  const from = start.format('YYYY-MM-DD HH:mm:ss'), to = end.format('YYYY-MM-DD HH:mm:ss');
+  const error = registrationListRangeError(from, to);
+  if (error) {
+    customRangeError.value = error; message.warning(error);
+    setTimeout(() => { customPickerOpen.value = true; }, 0);
+    return;
+  }
+  customRangeError.value = '';
+  query.dateFrom = from;
+  query.dateTo = to;
   dateValue.value = [start, end];
+  listNow.value = new Date();
+  timePreset.value = 'custom';
+  setTimeout(() => { customPickerOpen.value = false; customPanelOpen.value = false; }, 0);
 }
 function selectChip(key: string) { query.status = key === 'processing' ? '处理中' : key === 'closed' ? '已结案' : ''; }
 function setColumnVisible(key: string, visible: boolean) { columnState.value.visible[key] = visible; }
@@ -391,32 +462,26 @@ function cancelReopen() {
   reopenTarget.value = null;
 }
 function csvCell(value: unknown) { const text = String(value ?? ''); return `"${(/^[=+@\-\t\r]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`; }
-function withinExportWindow(record: RegistrationRecord) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 3);
-  cutoff.setHours(0, 0, 0, 0);
-  return new Date(record.createdAt.replace(' ', 'T')).getTime() >= cutoff.getTime();
-}
-
 function exportRows() {
+  listNow.value = new Date();
   const scopeRows = selectAllFiltered.value
     ? rows.value
     : selectedCount.value
       ? rows.value.filter((record) => selectedIds.value.has(record.no))
       : rows.value;
-  const exportable = scopeRows.filter(withinExportWindow);
+  const exportable = scopeRows.filter((record) => withinRegistrationListWindow(record));
   if (!scopeRows.length) {
-    message.info('请先勾选要导出的工单');
+    message.info('当前筛选下没有可导出的工单');
     return;
   }
   if (!exportable.length) {
     message.info(selectedCount.value ? '所选工单均不在近三个月导出范围内' : '当前筛选下没有近三个月的工单可导出');
     return;
   }
-  const header = ['工单号', '状态', '处理组', '建单人', '处理人', '创建时间', '更新时间', '结案时间', '预约提醒时间', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.label)];
+  const header = ['工单号', '状态', '处理组', '建单人', '处理人', '创建时间', '更新时间', '结案时间', '预约提醒时间', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.unit ? `${field.label}（${field.unit}）` : field.label)];
   const body = exportable.map((record) => {
     const next = record.reminders?.filter((item) => !item.triggeredAt).sort((a, b) => a.at.localeCompare(b.at))[0];
-    return [record.no, record.status, record.groupName, record.builder, record.handler, record.createdAt, record.updatedAt, record.closedAt ?? '', next?.at ?? '', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => record.values[field.key])];
+    return [record.no, record.status, record.groupName, record.builder, record.handler, record.createdAt, record.updatedAt, record.closedAt ?? '', next?.at ?? '', ...REGISTRATION_FIELD_DEFINITIONS.map((field) => field.key === 'refundAmount' ? formatRegistrationAmount(record.values[field.key]) : record.values[field.key])];
   });
   const blob = new Blob(['\uFEFF', [header, ...body].map((row) => row.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob), link = document.createElement('a'), today = new Date();
@@ -429,16 +494,51 @@ function exportRows() {
 
 <template>
   <div class="workbench">
-    <div class="workbench-tabs"><WorkspaceTaskTabs :active="scope" :tabs="scopeTabs" :counts="{ mine: myRecords.length, all: visibleRecords.length }" @change="scope = $event as typeof scope" /></div>
+    <div class="workbench-tabs"><WorkspaceTaskTabs :active="scope" :tabs="scopeTabs" :counts="{ mine: myRecords.length, all: timeVisibleRecords.length }" @change="scope = $event as typeof scope" /></div>
     <div class="workbench-body">
       <div class="filter-row-unified">
         <TicketFilterBar :active-chip="activeChip" :chips="chips" :chip-counts="chipCounts" :show-time-filter="false" @chip="selectChip" />
+        <div class="creation-time-filter" aria-label="创建时间筛选">
+          <span class="creation-time-label">创建时间</span>
+          <div class="creation-time-segments">
+            <a-segmented :value="timePreset" :options="creationTimeOptions" size="small" @change="changeTimePreset" />
+            <a-popover v-model:open="customPanelOpen" trigger="click" placement="bottomRight">
+              <template #content>
+                <div class="creation-custom-panel">
+                  <p>选择近三个月内的创建时间，精确到秒</p>
+                  <a-range-picker
+                    :value="customPickerValue"
+                    v-model:open="customPickerOpen"
+                    class="creation-range-picker"
+                    :disabled-date="disabledCreationDate"
+                    :disabled-time="disabledCreationTime"
+                    :show-time="{ format: 'HH:mm:ss', defaultValue: [dayjs().startOf('day'), dayjs()] }"
+                    :get-popup-container="(node: HTMLElement) => node.parentElement!"
+                    format="YYYY-MM-DD HH:mm:ss"
+                    :placeholder="['开始时间', '结束时间']"
+                    size="small"
+                    :allow-clear="false"
+                    aria-label="自定义创建时间范围"
+                    @calendar-change="calendarChange"
+                    @change="changeRange"
+                  />
+                  <p v-if="customRangeError" class="creation-range-error" role="alert">{{ customRangeError }}</p>
+                </div>
+              </template>
+              <button
+                type="button"
+                class="creation-custom-button"
+                :class="{ active: timePreset === 'custom' || customPanelOpen }"
+                :title="timePreset === 'custom' && dateValue ? `${query.dateFrom} 至 ${query.dateTo}` : '自定义近三个月内的创建时间'"
+              >自定义</button>
+            </a-popover>
+          </div>
+        </div>
       </div>
       <div class="list-controls">
         <div v-if="filterExpanded" class="mine-query" aria-label="自建单筛选条件">
           <div class="query-filters">
             <div class="filter-scroll">
-              <label class="filter-item filter-item-date"><a-select v-model:value="query.timeField" :options="[{ value: 'updatedAt', label: '更新时间' }, { value: 'createdAt', label: '创建时间' }, { value: 'accessTime', label: '派单时间' }, { value: 'replyTime', label: '回复时间' }]" size="small" :bordered="false" aria-label="筛选时间字段" /><a-range-picker v-model:value="dateValue" class="fi-range-picker" :presets="rangePresets" :show-time="{ format: 'HH:mm:ss' }" format="YYYY-MM-DD HH:mm:ss" :placeholder="['开始时间', '结束时间']" size="small" :bordered="false" allow-clear @change="changeRange" /></label>
               <label v-for="field in filterFields" :key="field.key" class="filter-item" :class="{ 'filter-item-wide': field.kind === 'select' }"><span class="fi-label">{{ field.label }}</span><a-select v-if="field.kind === 'select'" class="fi-select-wide" :value="query[field.key] || undefined" :options="fieldOptions(field.key)" allow-clear show-search :bordered="false" size="small" placeholder="请选择" :aria-label="`筛选${field.label}`" @change="patch(field.key, $event)" /><input v-else class="fi-input" :value="query[field.key]" :aria-label="`筛选${field.label}`" placeholder="请输入" @input="patch(field.key, ($event.target as HTMLInputElement).value)" /></label>
             </div>
             <div class="filter-actions"><a-popover v-model:open="optionalOpen" trigger="click" placement="bottomRight"><template #content><div class="optional-fields"><a-checkbox v-for="field in filterDefs" :key="field.key" :checked="field.fixed || optionalVisible[field.key]" :disabled="field.fixed" @change="toggleOptional(field.key, $event.target.checked === true)">{{ field.label }}</a-checkbox></div></template><button type="button" class="link-btn">+ 筛选</button></a-popover><button type="button" class="link-btn" @click="reset">重置</button></div>
@@ -575,11 +675,78 @@ function exportRows() {
   gap: 12px;
   width: 100%;
   min-width: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .filter-row-unified :deep(.filter-row) {
   flex: 1;
-  min-width: 0;
+  min-width: 250px;
+}
+.creation-time-filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  padding: 6px 10px;
+  max-width: 100%;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+.creation-time-label {
+  flex: none;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 500;
+}
+.creation-time-filter :deep(.ant-segmented) {
+  font-size: 12px;
+  background: transparent;
+}
+.creation-time-segments {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 2px;
+  background: #f1f3f5;
+  border-radius: 4px;
+}
+.creation-custom-button {
+  padding: 0 7px;
+  height: 22px;
+  border: none;
+  border-radius: 2px;
+  color: #6b7280;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+}
+.creation-custom-button.active {
+  color: #1a6fff;
+  background: #fff;
+  box-shadow: 0 1px 3px #00000012;
+}
+.creation-custom-panel {
+  width: 380px;
+  max-width: calc(100vw - 48px);
+}
+.creation-custom-panel > p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.creation-range-picker {
+  width: 100%;
+  max-width: 100%;
+}
+.creation-range-picker :deep(input) {
+  font-size: 12px;
+}
+.creation-range-error {
+  width: 100%;
+  color: #ef4444 !important;
+  font-size: 12px;
+  text-align: right;
 }
 .list-controls {
   display: flex;
@@ -623,36 +790,6 @@ function exportRows() {
 .filter-item-wide :deep(.fi-select-wide) {
   min-width: 120px;
   max-width: 180px;
-}
-.filter-item-date {
-  min-width: 0;
-  flex-shrink: 0;
-  padding-right: 6px;
-}
-.filter-item-date :deep(.fi-range-picker) {
-  width: 228px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-}
-.filter-item-date :deep(.fi-range-picker .ant-picker-input > input) {
-  width: 78px;
-  font-size: 12px;
-  color: #374151;
-}
-.filter-item-date :deep(.fi-range-picker .ant-picker-input > input::placeholder) {
-  color: #9ca3af;
-}
-.filter-item-date :deep(.fi-range-picker .ant-picker-separator),
-.filter-item-date :deep(.fi-range-picker .ant-picker-suffix) {
-  color: #9ca3af;
-}
-.filter-item-date :deep(.fi-range-picker.ant-picker-focused) {
-  box-shadow: none;
-}
-.filter-item-date > :deep(.ant-select) {
-  width: 100px;
 }
 .fi-label {
   flex: none;
@@ -793,9 +930,6 @@ function exportRows() {
   }
   .query-filters {
     flex-direction: column;
-  }
-  .filter-item-date :deep(.fi-range-picker) {
-    width: 200px;
   }
   .workbench :deep(.wb-toolbar__cluster) {
     flex-wrap: wrap;
