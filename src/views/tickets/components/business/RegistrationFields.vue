@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
 import RegistrationDateTimePicker from './RegistrationDateTimePicker.vue';
+import { formatRegistrationAmount } from '@/views/tickets/utils/registrationAmount';
 import type {
   RegistrationFieldKey, RegistrationTemplate, RegistrationValidationErrors, RegistrationValues,
 } from '@/views/tickets/types/businessRegistration';
@@ -79,6 +80,9 @@ function update(key: RegistrationFieldKey, value: unknown) {
   emit('change', key, value == null ? '' : String(value));
 }
 function nativeValue(event: Event) { return (event.target as HTMLInputElement).value; }
+function finishAmount(key: RegistrationFieldKey) {
+  if (props.editable) update(key, formatRegistrationAmount(props.values[key]));
+}
 function isTextareaAttach(key: RegistrationFieldKey) {
   return key === 'description' || key === 'processResult';
 }
@@ -204,14 +208,29 @@ function pairedLabelTitle(field: { label: string; placeholder?: string }) {
             rows="3"
             @input="update(field.key, nativeValue($event))"
           />
+          <div v-else-if="field.control === 'amount'" class="amount-control">
+            <input
+              :id="`registration-${field.key}`"
+              class="field-control amount-input"
+              :value="!editable || field.readonly ? formatRegistrationAmount(values[field.key]) : values[field.key]"
+              type="text"
+              inputmode="decimal"
+              :disabled="!editable || field.readonly"
+              :readonly="field.readonly"
+              :placeholder="field.placeholder || `填写${field.label}`"
+              :aria-describedby="field.unit ? `registration-${field.key}-unit` : undefined"
+              :aria-invalid="!!errors[field.key]"
+              @input="update(field.key, nativeValue($event))"
+              @blur="finishAmount(field.key)"
+            />
+            <span v-if="field.unit" :id="`registration-${field.key}-unit`" class="amount-unit">{{ field.unit }}</span>
+          </div>
           <input
             v-else
             :id="`registration-${field.key}`"
             class="field-control"
             :value="values[field.key]"
-            :type="field.control === 'amount' ? 'number' : 'text'"
-            :step="field.control === 'amount' ? '0.01' : undefined"
-            :min="field.control === 'amount' ? '0' : undefined"
+            type="text"
             :disabled="!editable || field.readonly"
             :readonly="field.readonly"
             :placeholder="field.readonly ? '自动记录' : field.placeholder || `填写${field.label}`"
@@ -510,6 +529,23 @@ function pairedLabelTitle(field: { label: string; placeholder?: string }) {
   font-size: 11px;
   color: #ef4444;
   margin-top: 4px;
+}
+.amount-control {
+  position: relative;
+  width: 100%;
+}
+.registration-field .amount-control input.amount-input,
+.registration-inline .amount-control input.amount-input {
+  padding-right: 32px;
+}
+.amount-unit {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 12px;
+  pointer-events: none;
 }
 
 /* inline = 统一建单 uc-page 行内标签 */

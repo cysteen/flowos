@@ -3,7 +3,10 @@ import { computed, onScopeDispose, ref, watch } from 'vue';
 import { MOCK_USERS } from '@/mock/users';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
-import { REGISTRATION_SEED_RECORDS } from '@/mock/registration/seedRecords';
+import {
+  REGISTRATION_SEED_RECORDS, REGISTRATION_DEMO_REMINDER_PACK, REGISTRATION_DEMO_REMINDER_PACK_VERSION,
+  REGISTRATION_DEMO_REMINDER_TICKET_NO, type RegistrationSeedRecord,
+} from '@/mock/registration/seedRecords';
 import {
   WIRELESS_REGISTRATION_TEMPLATE_ID,
   WIRELESS_REGISTRATION_GROUP_ID,
@@ -30,6 +33,7 @@ import {
   REGISTRATION_REOPEN_ROLES,
 } from '@/views/tickets/composables/opActions';
 import { buildCallContactSummary, type CallSession } from '@/stores/cti';
+import { formatRegistrationAmount } from '@/views/tickets/utils/registrationAmount';
 
 const CACHE_VERSION = 1;
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -192,8 +196,41 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
       return [];
     }
   }
+  /** Only expand the original untouched demo scenario, once; consumed items never return. */
+  function supplementDemoReminderPack(): void {
+    try {
+      const original = localStorage.getItem(cacheKey.value);
+      const cache = JSON.parse(original ?? 'null') as { version?: number; records?: RegistrationSeedRecord[] } | null;
+      if (cache?.version !== CACHE_VERSION || !Array.isArray(cache.records)) return;
+      const index = cache.records.findIndex((record) => (
+        record.no === REGISTRATION_DEMO_REMINDER_TICKET_NO
+        && record.templateId === WIRELESS_REGISTRATION_TEMPLATE_ID
+        && record.values?.businessPhone === '13912345001'
+        && record.createdAt === '2026-11-13 08:20:11'
+        && record.builder === '张三' && record.handler === '张三' && record.status === '处理中'
+        && record.groupId === WIRELESS_REGISTRATION_GROUP_ID
+        && record.history?.some((item) => item.id === `seed-hist-${REGISTRATION_DEMO_REMINDER_TICKET_NO}`)
+        && !record.history.some((item) => ['调剂', '调剂到组', '跨组调剂', '结案', '退回重开'].includes(item.action))
+      ));
+      if (index < 0 || (cache.records[index]!.demoReminderPackVersion ?? 0) >= REGISTRATION_DEMO_REMINDER_PACK_VERSION) return;
+      const next = copy(cache.records[index]!);
+      const existingIds = new Set((next.reminders ?? []).map((item) => item.id));
+      // The original reminder may have been consumed or cancelled: never recreate or rewrite it.
+      next.reminders = [
+        ...(next.reminders ?? []),
+        ...REGISTRATION_DEMO_REMINDER_PACK.slice(1).filter((item) => !existingIds.has(item.id)).map((item) => copy(item)),
+      ];
+      next.demoReminderPackVersion = REGISTRATION_DEMO_REMINDER_PACK_VERSION;
+      next.revision = (next.revision ?? 0) + 1;
+      const nextRecords = cache.records.map((record, at) => at === index ? next : record);
+      // Preserve other records and cache metadata, and do not overwrite a detected concurrent change.
+      if (localStorage.getItem(cacheKey.value) !== original) return;
+      localStorage.setItem(cacheKey.value, JSON.stringify({ ...cache, records: nextRecords }));
+    } catch { /* A failed demo upgrade leaves the existing cache available and unchanged. */ }
+  }
   function hydrate() {
     try {
+      supplementDemoReminderPack();
       records.value = seedIfEmpty(readPersisted());
     } catch { records.value = []; }
     revision.value += 1;
@@ -214,7 +251,7 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
     const normalized = normalizeRegistrationValues(values);
     const stage = options.close ? 'close' : options.draft ? 'draft' : 'create';
     const errors = validateRegistrationValues(normalized, stage, templateId);
-    if (Object.keys(errors).length) return { ok: false, message: '请补齐必填信息', errors };
+    if (Object.keys(errors).length) return { ok: false, message: '请检查标注的字段信息', errors };
     const createdAt = new Date();
     const now = registrationNow(createdAt);
     const prefix = makeRegistrationNo(1, createdAt).slice(0, -5);
@@ -269,9 +306,11 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
         ? 'draft'
         : 'create';
     const errors = validateRegistrationValues(normalized, validateStage, previous.templateId, previous.values);
-    if (Object.keys(errors).length) return { ok: false, message: '请补齐必填信息', errors };
+    if (Object.keys(errors).length) return { ok: false, message: '请检查标注的字段信息', errors };
     if (options.close && !normalized.replyTime.trim()) normalized.replyTime = registrationNow();
-    const changes = registrationTemplateOf(previous.templateId)!.fields.filter((field) => previous.values[field.key] !== normalized[field.key]).map((field) => ({ field: field.key, label: field.label, before: previous.values[field.key], after: normalized[field.key] }));
+    const changes = registrationTemplateOf(previous.templateId)!.fields.filter((field) => (
+      field.key === 'refundAmount' ? formatRegistrationAmount(previous.values[field.key]) : previous.values[field.key]
+    ) !== normalized[field.key]).map((field) => ({ field: field.key, label: field.label, before: previous.values[field.key], after: normalized[field.key] }));
     next.values = normalized;
     if (options.descriptionAttachments) next.descriptionAttachments = [...options.descriptionAttachments];
     if (options.processResultAttachments) next.processResultAttachments = [...options.processResultAttachments];

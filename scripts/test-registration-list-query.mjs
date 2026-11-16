@@ -29,7 +29,11 @@ function load(file) {
   }, module, module.exports);
   return module.exports;
 }
-const { emptyRegistrationListQuery, matchesRegistrationListQuery, filterRegistrationRecords } = load(resolve(root, 'src/views/self-service/registrationListQuery.ts'));
+const queryModule = load(resolve(root, 'src/views/self-service/registrationListQuery.ts'));
+const { emptyRegistrationListQuery, registrationListRangeError, registrationListWindow, resolveRegistrationListTimeRange } = queryModule;
+const now = new Date('2026-11-16T12:00:00');
+const matchesRegistrationListQuery = (record, query) => queryModule.matchesRegistrationListQuery(record, query, now);
+const filterRegistrationRecords = (records, query) => queryModule.filterRegistrationRecords(records, query, now);
 const base = {
   no: 'IFLYZX-20261112-80012', status: '处理中', handler: '王组长', groupName: '无线音乐处理组', builder: '张三',
   createdAt: '2026-11-13 00:00:00', updatedAt: '2026-11-13 20:00:00',
@@ -63,22 +67,23 @@ test('calendar date bounds include midnight and the final millisecond of the sel
   assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13T23:59:59.999' }, q), true);
   assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-14T00:00:00' }, q), false);
 });
-test('creation versus access time uses explicit fields, never the ordinary prototype clock or last update', () => {
+test('creation time is fixed; a legacy alternate-field value cannot change the query meaning', () => {
   const q = query({ dateFrom: '2026-11-13', dateTo: '2026-11-13' });
   assert.equal(matchesRegistrationListQuery(base, q), true);
-  assert.equal(matchesRegistrationListQuery(base, { ...q, timeField: 'accessTime' }), false);
+  assert.equal(matchesRegistrationListQuery(base, { ...q, timeField: 'accessTime' }), true);
   assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-10-01 12:00:00' }, q), false);
 });
-test('updatedAt field filters on record last update, independent of createdAt or accessTime', () => {
+test('last-update time cannot make a record outside the selected creation dates appear', () => {
   const q = query({ timeField: 'updatedAt', dateFrom: '2026-11-13', dateTo: '2026-11-13' });
   assert.equal(matchesRegistrationListQuery(base, q), true);
-  assert.equal(matchesRegistrationListQuery({ ...base, updatedAt: '2026-11-12 23:59:59' }, q), false);
-  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-10-01 12:00:00' }, q), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, updatedAt: '2026-11-12 23:59:59' }, q), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-10-01 12:00:00' }, q), false);
 });
-test('empty dates keep incomplete records searchable; invalid or inverted date constraints do not match', () => {
+test('empty business dates remain searchable; missing creation time and invalid constraints never match', () => {
   const incomplete = { ...base, values: { ...base.values, accessTime: '' } };
   assert.equal(matchesRegistrationListQuery(incomplete, query({ timeField: 'accessTime' })), true);
-  assert.equal(matchesRegistrationListQuery(incomplete, query({ timeField: 'accessTime', dateFrom: '2026-11-13' })), false);
+  assert.equal(matchesRegistrationListQuery(incomplete, query({ dateFrom: '2026-11-13' })), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '' }, query()), false);
   assert.equal(matchesRegistrationListQuery(base, query({ dateFrom: 'invalid' })), false);
   assert.equal(matchesRegistrationListQuery(base, query({ dateFrom: '2026-11-14', dateTo: '2026-11-12' })), false);
 });
@@ -120,30 +125,30 @@ test('the global keyword still matches business fields and is independent of ded
   assert.equal(matchesRegistrationListQuery(base, query({ keyword: '13900000001', businessPhone: '13900000001' })), false);
 });
 
-test('reply-time queries include only records with an actual reply time when a range is applied', () => {
+test('missing reply time does not hide a record whose creation time matches', () => {
   const q = query({ timeField: 'replyTime', dateFrom: '2026-11-13', dateTo: '2026-11-13' });
   assert.equal(matchesRegistrationListQuery(base, q), true);
   const notReplied = { ...base, values: { ...base.values, replyTime: '' } };
-  assert.equal(matchesRegistrationListQuery(notReplied, q), false);
+  assert.equal(matchesRegistrationListQuery(notReplied, q), true);
   assert.equal(matchesRegistrationListQuery(notReplied, query({ timeField: 'replyTime' })), true);
-  assert.equal(matchesRegistrationListQuery({ ...base, values: { ...base.values, replyTime: undefined } }, q), false);
+  assert.equal(matchesRegistrationListQuery({ ...base, values: { ...base.values, replyTime: undefined } }, q), true);
 });
 
-test('explicit second-level and datetime-local ranges do not expand into a whole day', () => {
-  const q = query({ timeField: 'replyTime', dateFrom: '2026-11-13 10:15:30', dateTo: '2026-11-13T10:15:30' });
-  assert.equal(matchesRegistrationListQuery(base, q), true);
-  for (const replyTime of ['2026-11-13 10:15:29.999', '2026-11-13 10:15:31', '2026-11-13 11:15:30']) {
-    assert.equal(matchesRegistrationListQuery({ ...base, values: { ...base.values, replyTime } }, q), false);
+test('explicit second-level and datetime-local creation ranges do not expand into a whole day', () => {
+  const q = query({ dateFrom: '2026-11-13 10:15:30', dateTo: '2026-11-13T10:15:30' });
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13 10:15:30.123' }, q), true);
+  for (const createdAt of ['2026-11-13 10:15:29.999', '2026-11-13 10:15:31', '2026-11-13 11:15:30']) {
+    assert.equal(matchesRegistrationListQuery({ ...base, createdAt }, q), false);
   }
 });
 
 test('minute and fractional-second endpoint precision remains inclusive only within that precision', () => {
-  const minute = query({ timeField: 'replyTime', dateFrom: '2026-11-13T10:15', dateTo: '2026-11-13T10:15' });
-  assert.equal(matchesRegistrationListQuery(base, minute), true);
-  assert.equal(matchesRegistrationListQuery({ ...base, values: { ...base.values, replyTime: '2026-11-13T10:16:00' } }, minute), false);
-  const fractional = query({ timeField: 'replyTime', dateFrom: '2026-11-13 10:15:30.1', dateTo: '2026-11-13 10:15:30.1' });
-  assert.equal(matchesRegistrationListQuery(base, fractional), true);
-  assert.equal(matchesRegistrationListQuery({ ...base, values: { ...base.values, replyTime: '2026-11-13T10:15:30.200' } }, fractional), false);
+  const minute = query({ dateFrom: '2026-11-13T10:15', dateTo: '2026-11-13T10:15' });
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13 10:15:30.123' }, minute), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13T10:16:00' }, minute), false);
+  const fractional = query({ dateFrom: '2026-11-13 10:15:30.1', dateTo: '2026-11-13 10:15:30.1' });
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13 10:15:30.123' }, fractional), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-13T10:15:30.200' }, fractional), false);
 });
 
 test('invalid calendar dates, out-of-range clocks and reversed explicit times never match', () => {
@@ -153,7 +158,7 @@ test('invalid calendar dates, out-of-range clocks and reversed explicit times ne
   assert.equal(matchesRegistrationListQuery(base, query({ timeField: 'replyTime', dateFrom: '2026-11-13T10:16:00', dateTo: '2026-11-13 10:15:59' })), false);
 });
 
-for (const timeField of ['createdAt', 'updatedAt', 'accessTime', 'replyTime']) {
+for (const timeField of ['createdAt']) {
   test(`${timeField} alone controls an exact timestamp interval with other record times outside it`, () => {
     const at = '2026-11-13 12:34:56';
     const outside = '2026-11-12 12:34:56';
@@ -166,6 +171,49 @@ for (const timeField of ['createdAt', 'updatedAt', 'accessTime', 'replyTime']) {
     assert.equal(matchesRegistrationListQuery(withTime('2026-11-13 12:34:55.999'), selected), false);
     assert.equal(matchesRegistrationListQuery(withTime('2026-11-13 12:34:57'), selected), false);
     assert.equal(matchesRegistrationListQuery(withTime(''), selected), false);
-    assert.equal(matchesRegistrationListQuery(withTime(''), query({ timeField })), true);
+    assert.equal(matchesRegistrationListQuery(withTime(''), query({ timeField })), false);
   });
 }
+
+test('blank or widened dates cannot bypass the three-calendar-month creation window', () => {
+  for (const q of [query(), query({ dateFrom: '2020-01-01', dateTo: '2030-01-01' })]) {
+    assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-08-16 00:00:00' }, q), true);
+    assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-08-15 23:59:59.999' }, q), false);
+    assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-16 12:00:00' }, q), true);
+    assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-11-16 12:00:00.001' }, q), false);
+  }
+});
+
+test('calendar-month cutoff clamps month ends and differs from a fixed 90 days', () => {
+  const window = registrationListWindow(new Date('2026-05-31T12:34:56'));
+  assert.equal(window.from.getMonth(), 1);
+  assert.equal(window.from.getDate(), 28);
+  assert.equal(window.from.getHours(), 0);
+  const leap = registrationListWindow(new Date('2024-05-31T12:34:56'));
+  assert.equal(leap.from.getDate(), 29);
+});
+
+test('all four quick ranges share real current time rather than the old prototype anchor', () => {
+  assert.deepEqual(resolveRegistrationListTimeRange('3m', now), { from: '2026-08-16 00:00:00', to: '2026-11-16 12:00:00' });
+  assert.deepEqual(resolveRegistrationListTimeRange('today', now), { from: '2026-11-16 00:00:00', to: '2026-11-16 12:00:00' });
+  assert.deepEqual(resolveRegistrationListTimeRange('week', new Date('2026-11-18T12:00:00')), { from: '2026-11-16 00:00:00', to: '2026-11-18 12:00:00' });
+  assert.deepEqual(resolveRegistrationListTimeRange('month', now), { from: '2026-11-01 00:00:00', to: '2026-11-16 12:00:00' });
+});
+
+test('custom ranges reject missing, invalid, reversed, old and future endpoints', () => {
+  assert.equal(registrationListRangeError('2026-08-16 00:00:00', '2026-11-16 12:00:00', now), undefined);
+  for (const [from, to] of [
+    ['', '2026-11-13'], ['2026-11-13', ''], ['bad', '2026-11-13'],
+    ['2026-11-14', '2026-11-13'], ['2026-08-15 23:59:59', '2026-11-13'],
+    ['2026-11-13', '2026-11-16 12:00:01'],
+  ]) assert.equal(typeof registrationListRangeError(from, to, now), 'string');
+});
+
+test('today, week and month narrow the same population without deleting historical stored rows', () => {
+  const records = [base, { ...base, no: 'old', createdAt: '2026-07-01 00:00:00' }, { ...base, no: 'today', createdAt: '2026-11-16 10:00:00' }];
+  const original = JSON.stringify(records);
+  const today = resolveRegistrationListTimeRange('today', now);
+  assert.deepEqual(filterRegistrationRecords(records, query({ dateFrom: today.from })).map(r => r.no), ['today']);
+  assert.equal(filterRegistrationRecords(records, query()).length, 2);
+  assert.equal(JSON.stringify(records), original);
+});

@@ -2,6 +2,7 @@ import type { TicketStatus, TicketType } from './ticket';
 import { statusStyle } from './ticket';
 import { getActivePinia } from 'pinia';
 import { useFormCatalogsStore } from '@/stores/formCatalogs';
+import { formatRegistrationAmount, registrationAmountError } from '@/views/tickets/utils/registrationAmount';
 
 /** Independent self-service records reuse platform field controls and account context. */
 export const WIRELESS_REGISTRATION_TEMPLATE_ID = 'wireless-operator';
@@ -46,6 +47,7 @@ export type RegistrationValidationErrors = Partial<Record<RegistrationFieldKey, 
 export interface RegistrationFieldDefinition {
   key: RegistrationFieldKey;
   label: string;
+  unit?: string;
   /** Input placeholder when label text differs from hint copy (e.g. 服务请求 vs 服务请求类别). */
   placeholder?: string;
   createRequired?: boolean;
@@ -98,7 +100,7 @@ export const REGISTRATION_FIELD_DEFINITIONS: readonly RegistrationFieldDefinitio
   { key: 'description', label: '描述内容', closeRequired: true },
   { key: 'processResult', label: '处理结果', closeRequired: true },
   { key: 'refundPhone', label: '退费号码' },
-  { key: 'refundAmount', label: '退费金额' },
+  { key: 'refundAmount', label: '退费金额', unit: '元' },
   { key: 'replyTime', label: '回复时间' },
 ];
 
@@ -198,6 +200,7 @@ export function emptyRegistrationValues(_templateId = WIRELESS_REGISTRATION_TEMP
 export function normalizeRegistrationValues(values: Partial<RegistrationValues>): RegistrationValues {
   const result = emptyRegistrationValues();
   for (const key of Object.keys(result) as RegistrationFieldKey[]) result[key] = typeof values[key] === 'string' ? values[key]!.trim() : '';
+  result.refundAmount = formatRegistrationAmount(result.refundAmount);
   return result;
 }
 export function validateRegistrationValues(values: RegistrationValues, stage: 'create' | 'close' | 'draft', templateId = WIRELESS_REGISTRATION_TEMPLATE_ID, previous?: RegistrationValues): RegistrationValidationErrors {
@@ -208,7 +211,8 @@ export function validateRegistrationValues(values: RegistrationValues, stage: 'c
     const unchanged = !!previous && previous[field.key] === values[field.key];
     if (values[field.key] && field.options && !['specificSource', 'problemL1', 'problemL2'].includes(field.key) && !field.options.includes(values[field.key]) && !unchanged) errors[field.key] = `请选择启用中的${field.label}`;
   }
-  if (values.refundAmount && (!Number.isFinite(Number(values.refundAmount)) || Number(values.refundAmount) < 0)) errors.refundAmount = '退费金额须为非负数';
+  const amountError = registrationAmountError(values.refundAmount);
+  if (amountError) errors.refundAmount = amountError;
   if (template) {
     const unchangedProblem = !!previous && previous.problemL1 === values.problemL1 && previous.problemL2 === values.problemL2;
     if (values.problemL1 && !Object.keys(template.problemOptions).includes(values.problemL1) && !(previous && previous.problemL1 === values.problemL1)) errors.problemL1 = '请选择启用中的问题分类一';
