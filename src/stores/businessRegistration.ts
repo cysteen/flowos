@@ -206,6 +206,7 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
         record.no === REGISTRATION_DEMO_REMINDER_TICKET_NO
         && record.templateId === WIRELESS_REGISTRATION_TEMPLATE_ID
         && record.values?.businessPhone === '13912345001'
+        && record.values?.productName === '乐响铃声'
         && record.createdAt === '2026-11-13 08:20:11'
         && record.builder === '张三' && record.handler === '张三' && record.status === '处理中'
         && record.groupId === WIRELESS_REGISTRATION_GROUP_ID
