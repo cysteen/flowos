@@ -9,12 +9,14 @@ import { PlusOutlined, ImportOutlined, EditOutlined, DeleteOutlined, InboxOutlin
 
 // 字典管理（PRD-52）：左字典类型 + 右字典数据 二级联动；配色；Excel 导入。
 interface DictType { dictType: string; name: string; app: string; status: '启用' | '停用'; }
-interface DictData { code: string; label: string; value: string; sort: number; status: '启用' | '停用'; colorType: string; remark: string; parentValue?: string; }
+interface DictData { code: string; label: string; value: string; sort: number; status: '启用' | '停用'; colorType: string; remark: string; parentValue?: string; minutes?: number; }
+
+const props = defineProps<{ templateId?: string; fieldKey?: RegistrationFieldKey; embedded?: boolean }>();
 
 const route = useRoute();
 const catalogs = useFormCatalogsStore();
 const tenant = useTenantStore();
-const catalogTemplateId = ref(typeof route.query.template === 'string' ? route.query.template : '');
+const catalogTemplateId = ref(props.templateId ?? (typeof route.query.template === 'string' ? route.query.template : ''));
 const catalogSeed = computed(() => REGISTRATION_TEMPLATES.find((template) => template.id === catalogTemplateId.value));
 const scopeOptions = [{ value: '', label: '平台通用字典' }, ...REGISTRATION_TEMPLATES.map((template) => ({ value: template.id, label: template.name }))];
 
@@ -29,8 +31,10 @@ const selected = ref<string>('workorder_status');
 const visibleTypes = computed<DictType[]>(() => catalogSeed.value
   ? formCatalogFields(catalogSeed.value).map((field) => ({ dictType: field.key, name: field.label, app: catalogSeed.value!.name, status: '启用' }))
   : types.value);
-watch(catalogTemplateId, () => { selected.value = visibleTypes.value[0]?.dictType ?? 'workorder_status'; }, { immediate: true });
-watch(() => route.query.template, (template) => { catalogTemplateId.value = typeof template === 'string' ? template : ''; });
+watch(catalogTemplateId, () => { selected.value = props.fieldKey ?? visibleTypes.value[0]?.dictType ?? 'workorder_status'; }, { immediate: true });
+watch(() => props.fieldKey, (field) => { if (field) selected.value = field; });
+watch(() => props.templateId, (template) => { if (template) catalogTemplateId.value = template; });
+watch(() => route.query.template, (template) => { if (!props.templateId) catalogTemplateId.value = typeof template === 'string' ? template : ''; });
 const parentField = computed(() => catalogSeed.value ? formCatalogParentField(selected.value as RegistrationFieldKey) : undefined);
 const parentLabel = computed(() => catalogSeed.value?.fields.find((field) => field.key === parentField.value)?.label ?? '上级选项');
 const parentOptions = computed(() => catalogSeed.value && parentField.value ? catalogs.optionRows(catalogSeed.value, parentField.value, true).map((row) => ({ value: row.value, label: row.label })) : []);
@@ -89,7 +93,7 @@ const dataMap: Record<string, DictData[]> = reactive({
   ],
 });
 const datas = computed<DictData[]>(() => catalogSeed.value
-  ? catalogs.optionRows(catalogSeed.value, selected.value as RegistrationFieldKey).map((row) => ({ code: row.id, label: row.label, value: row.value, sort: row.sort, status: row.enabled ? '启用' : '停用', colorType: 'primary', remark: '', parentValue: row.parentValue }))
+  ? catalogs.optionRows(catalogSeed.value, selected.value as RegistrationFieldKey).map((row) => ({ code: row.id, label: row.label, value: row.value, sort: row.sort, status: row.enabled ? '启用' : '停用', colorType: 'primary', remark: '', parentValue: row.parentValue, minutes: row.minutes ?? catalogSeed.value!.timeLimitMinutes?.[row.value] }))
   : dataMap[selected.value] ?? []);
 const selName = computed(() => visibleTypes.value.find((t) => t.dictType === selected.value)?.name ?? '');
 
@@ -105,8 +109,9 @@ const baseDataCols = [
   { title: '操作', key: 'op', width: 110 },
 ];
 const dataCols = computed(() => {
-  const columns = baseDataCols.map((column) => catalogSeed.value && column.key === 'code' ? { ...column, ellipsis: true } : column);
+  const columns = baseDataCols.filter((column) => !catalogSeed.value || !['colorType', 'remark'].includes(column.key)).map((column) => catalogSeed.value && column.key === 'code' ? { ...column, ellipsis: true } : column);
   if (catalogSeed.value && parentField.value) columns.splice(3, 0, { title: parentLabel.value, dataIndex: 'parentValue', key: 'parentValue', width: 180 });
+  if (catalogSeed.value && selected.value === 'timeLimit') columns.splice(3, 0, { title: '时长（分钟）', dataIndex: 'minutes', key: 'minutes', width: 120 });
   return columns;
 });
 function pick(t: DictType) { selected.value = t.dictType; }
@@ -136,13 +141,13 @@ watch([catalogTemplateId, selected, () => tenant.currentTenantId], () => { dataM
 function openAddData() {
   if (catalogSeed.value) catalogEditingRevision.value = catalogs.catalogOf(catalogSeed.value).revision;
   editingCode.value = null;
-  Object.assign(dform, { code: '', label: '', value: '', sort: datas.value.length + 1, status: '启用', colorType: 'primary', remark: '', parentValue: '' });
+  Object.assign(dform, { code: '', label: '', value: '', sort: datas.value.length + 1, status: '启用', colorType: 'primary', remark: '', parentValue: '', minutes: undefined });
   dataModalOpen.value = true;
 }
 function openEditData(d: DictData) { if (catalogSeed.value) catalogEditingRevision.value = catalogs.catalogOf(catalogSeed.value).revision; editingCode.value = d.code; Object.assign(dform, { ...d }); dataModalOpen.value = true; }
 function saveData() {
   if (catalogSeed.value) {
-    const result = catalogs.saveOption(catalogSeed.value, { id: editingCode.value ?? undefined, field: selected.value as RegistrationFieldKey, value: dform.value, label: dform.label, parentValue: dform.parentValue, enabled: dform.status === '启用', sort: dform.sort, expectedRevision: catalogEditingRevision.value });
+    const result = catalogs.saveOption(catalogSeed.value, { id: editingCode.value ?? undefined, field: selected.value as RegistrationFieldKey, value: dform.value, label: dform.label, parentValue: dform.parentValue, minutes: dform.minutes, enabled: dform.status === '启用', sort: dform.sort, expectedRevision: catalogEditingRevision.value });
     if (!result.ok) { message.warning(result.message); return; }
     message.success(result.message); dataModalOpen.value = false; return;
   }
@@ -181,10 +186,10 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
 </script>
 
 <template>
-  <div class="dict-manage">
-    <div class="catalog-scope"><span>适用范围</span><a-select v-model:value="catalogTemplateId" :options="scopeOptions" style="width:300px" /><span v-if="catalogSeed" class="scope-note">本表单独立字典；新增、启停后与业务表单同步</span></div>
+  <div class="dict-manage" :class="{ 'dict-manage--embedded': embedded }">
+    <div v-if="!embedded" class="catalog-scope"><span>适用范围</span><a-select v-model:value="catalogTemplateId" :options="scopeOptions" style="width:300px" /><span v-if="catalogSeed" class="scope-note">本表单选项与实体字典共用数据；新增、启停后与业务表单同步</span></div>
     <!-- 左：字典类型 -->
-    <div class="left">
+    <div v-if="!embedded" class="left">
       <div class="panel-head"><span>字典类型</span><a-button v-if="!catalogSeed" type="primary" size="small" @click="openAddType"><template #icon><PlusOutlined /></template>新增</a-button></div>
       <div class="type-list">
         <div v-for="t in visibleTypes" :key="t.dictType" class="type-item" :class="{ on: t.dictType === selected }" @click="pick(t)">
@@ -212,7 +217,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
           </template>
         </template>
       </a-table>
-      <div class="tip">{{ catalogSeed ? '停用项不再供新选择；历史工单已使用值保留，可原样保存及修订。已有选项名称、键值和上级保持稳定，调整时新增选项。产品名称及归属在产品管理的独立目录中维护。' : '配色所见即所得：业务页标签/徽章按 colorType 渲染。停用项新建时不可选，历史已用值仍正常显示。删除被引用字典项会拦截。' }}</div>
+      <div class="tip">{{ catalogSeed ? '已有字典标签与键值只读；改名时新增选项并停用旧项。上级、排序、时长和状态可维护。停用项不供新选择，历史工单保留已存业务值及归属，可原样保存、结案或修订。产品名称及归属从实体字典的“产品名称”字段配置，与产品管理共用数据。' : '配色所见即所得：业务页标签/徽章按 colorType 渲染。停用项新建时不可选，历史已用值仍正常显示。删除被引用字典项会拦截。' }}</div>
     </div>
 
     <!-- 新增字典类型 -->
@@ -229,7 +234,8 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
       <a-form layout="vertical" class="d-form">
         <a-form-item label="字典标签" required class="half"><a-input v-model:value="dform.label" :disabled="!!catalogSeed && !!editingCode" placeholder="展示文案" /></a-form-item>
         <a-form-item label="字典键值" required class="half"><a-input v-model:value="dform.value" :disabled="!!catalogSeed && !!editingCode" placeholder="存储值 / 枚举码" /></a-form-item>
-        <a-form-item v-if="catalogSeed && parentField" :label="parentLabel" required class="full"><a-select v-model:value="dform.parentValue" :options="parentOptions" :disabled="!!editingCode" placeholder="请选择上级选项" /></a-form-item>
+        <a-form-item v-if="catalogSeed && parentField" :label="parentLabel" required class="full"><a-select v-model:value="dform.parentValue" :options="parentOptions" placeholder="请选择上级选项" /></a-form-item>
+        <a-form-item v-if="catalogSeed && selected === 'timeLimit'" label="时长（分钟）" required class="full"><a-input-number v-model:value="dform.minutes" :min="1" :precision="0" placeholder="正整数分钟数，如 30、60、120、1440" style="width:100%" /><div class="scope-note">工单保存时记录时长快照；修改配置不追溯改变已有工单。</div></a-form-item>
         <a-form-item v-if="!catalogSeed" label="编码" class="half"><a-input v-model:value="dform.code" placeholder="留空自动生成" /></a-form-item>
         <a-form-item label="排序" class="half"><a-input-number v-model:value="dform.sort" :min="0" style="width:100%" /></a-form-item>
         <a-form-item v-if="!catalogSeed" label="配色" class="half"><a-select v-model:value="dform.colorType" :options="COLOR_OPTS.map((c)=>({value:c,label:c}))" /></a-form-item>
@@ -252,6 +258,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
 
 <style scoped>
 .dict-manage { display: flex; gap: 16px; padding: 16px 24px; min-height: 100%; align-items: flex-start; }
+.dict-manage--embedded { padding:0; min-height:0; }
 .dict-manage { flex-wrap:wrap; }
 .catalog-scope { flex-basis:100%; display:flex; align-items:center; gap:12px; color:#65758c; font-size:13px; }
 .scope-note { font-size:12px; color:#94a0b1; }

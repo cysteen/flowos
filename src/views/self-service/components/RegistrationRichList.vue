@@ -7,6 +7,7 @@ import {
   registrationListDisplayStatus,
   registrationListDisplayStatusStyle,
   registrationTemplateOf,
+  registrationDisplayValue,
   type RegistrationRecord,
 } from '@/views/tickets/types/businessRegistration';
 import { formatListDateTime } from '@/views/tickets/utils/ticketListCells';
@@ -24,7 +25,7 @@ function registrationStatusLabel(record: RegistrationRecord) {
 
 /** 与 TicketTitleCell 行内 `.tag` 同源：产品分类优先，不用业务线独占标位 */
 function registrationTypeLabel(record: RegistrationRecord): string {
-  const category = record.values.productCategory?.trim();
+  const category = registrationDisplayValue(record, 'productCategory');
   if (category) return category;
   const template = registrationTemplateOf(record.templateId);
   return template?.name?.trim() || template?.ticketType || '—';
@@ -33,9 +34,9 @@ function registrationTypeLabel(record: RegistrationRecord): string {
 /** 行内主标题（对齐工单标题格：产品 · 分类 · 诉求类型） */
 function registrationTitleText(record: RegistrationRecord): string {
   const parts = [
-    record.values.productName?.trim(),
-    record.values.productCategory?.trim(),
-    record.values.complaintType?.trim() || record.values.problemL1?.trim(),
+    registrationDisplayValue(record, 'productName'),
+    registrationDisplayValue(record, 'productCategory'),
+    registrationDisplayValue(record, 'complaintType') || registrationDisplayValue(record, 'problemL1'),
   ].filter(Boolean);
   if (parts.length) return parts.join(' · ');
   const fallback = record.values.description?.trim()
@@ -44,22 +45,22 @@ function registrationTitleText(record: RegistrationRecord): string {
 }
 
 function sourcePrimary(record: RegistrationRecord) {
-  return record.values.feedback?.trim() || '—';
+  return registrationDisplayValue(record, 'feedback') || '—';
 }
 
 function sourceSecondary(record: RegistrationRecord) {
-  return record.values.specificSource?.trim() || record.values.channelDetail?.trim() || '';
+  return registrationDisplayValue(record, 'specificSource') || record.values.channelDetail?.trim() || '';
 }
 
 /** 标题格第二行来源（对齐工单 TicketTitleCell：反馈平台 · 单号，不用渠道明细/具体来源） */
 function registrationTitleChannel(record: RegistrationRecord): string {
-  return record.values.feedback?.trim() || '—';
+  return registrationDisplayValue(record, 'feedback') || '—';
 }
 
 function registrationProblemText(record: RegistrationRecord): string {
   const desc = record.values.description?.trim();
   if (desc) return desc;
-  const ladder = [record.values.problemL1, record.values.problemL2].filter((v) => v?.trim()).join(' / ');
+  const ladder = [registrationDisplayValue(record, 'problemL1'), registrationDisplayValue(record, 'problemL2')].filter(Boolean).join(' / ');
   return ladder.trim() || '—';
 }
 
@@ -75,8 +76,8 @@ function registrationLatestText(record: RegistrationRecord): string {
 
 function registrationSummaryHeadline(record: RegistrationRecord): string {
   return [
-    record.values.productName,
-    record.values.productCategory,
+    registrationDisplayValue(record, 'productName'),
+    registrationDisplayValue(record, 'productCategory'),
     registrationTitleChannel(record),
   ].filter(Boolean).join(' · ');
 }
@@ -259,7 +260,7 @@ function plainField(record: RegistrationRecord, key: string): string {
   if (key === 'createdAt' || key === 'updatedAt') return displayTime(record[key]);
   if (key === 'accessTime') return displayTime(record.values.accessTime);
   if (key in record.values) {
-    const v = record.values[key as keyof typeof record.values];
+    const v = registrationDisplayValue(record, key as keyof typeof record.values);
     return typeof v === 'string' && v.trim() ? v.trim() : '—';
   }
   return '—';

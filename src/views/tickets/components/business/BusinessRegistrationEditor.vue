@@ -204,6 +204,7 @@ watch(dirty, (value) => emit('dirty-change', value), { immediate: true });
 
 function changeField(key: RegistrationFieldKey, value: string) {
   if (!editable.value) return;
+  const previousValue = values[key];
   values[key] = value;
   if (key === 'businessPhone' || key === 'contactPhone') {
     const contact = applyRegistrationPhoneInput({ contactPhone: values.contactPhone, manuallyEdited: contactManuallyEdited.value }, key, value, isNew.value);
@@ -215,18 +216,11 @@ function changeField(key: RegistrationFieldKey, value: string) {
     const amountError = registrationAmountError(value);
     if (amountError) errors.value.refundAmount = amountError;
   }
-  if (key === 'feedback') values.specificSource = '';
-  if (key === 'problemL1') values.problemL2 = '';
-  if (key === 'productName') {
-    const product = template.value?.products.find((item) => item.name === value);
-    if (product) {
-      values.productCategory = product.category;
-      if (product.businessLine) values.businessLine = product.businessLine;
-    }
-  }
-  if (key === 'productCategory') {
-    const product = template.value?.products.find((item) => item.name === values.productName);
-    if (product && product.category !== value) values.productName = '';
+  if (previousValue !== value) {
+    if (key === 'feedback') values.specificSource = '';
+    if (key === 'problemL1') values.problemL2 = '';
+    if (key === 'businessLine') { values.productCategory = ''; values.productName = ''; }
+    if (key === 'productCategory') values.productName = '';
   }
   if (key === 'businessPhone') {
     const hit = lookupMobileAttribution(value);
@@ -1783,27 +1777,21 @@ defineExpose({ reset: () => loadValues() });
   padding: 6px 10px 12px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
 }
 .process-sections {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: none;
   min-height: 0;
   gap: 8px;
 }
-/* 工单处理：上方栅格字段定高，处理结果区纵向撑满至底栏上方 */
+/* 正文按默认行数展示，较矮窗口由画布滚动，避免处理结果被强制拉高或压缩。 */
 .body-content.is-process .process-sections :deep(.registration-embedded) {
-  flex: 1;
+  flex: none;
   min-height: 0;
-  height: 100%;
   display: flex;
   flex-direction: column;
-}
-.body-content.is-process .process-sections :deep(.registration-fields--stretch) {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
 }
 .body-content.is-process .process-sections :deep(.pair-field[data-field='processResult']) {
   grid-column: 1 / -1;

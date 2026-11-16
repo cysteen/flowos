@@ -53,11 +53,11 @@ export function registrationEditorSections(template: RegistrationTemplate): Regi
 export function registrationFieldOptions(field: RegistrationEditorField, template: RegistrationTemplate, values: RegistrationValues) {
   let choices: readonly string[] = field.options ?? [];
   if (field.key === 'specificSource') choices = template.sourceOptions[values.feedback] ?? [];
-  if (field.key === 'productCategory') choices = field.options ?? [...new Set(template.products.map((item) => item.category))];
-  if (field.key === 'productName') choices = template.products.map((item) => item.name);
+  if (field.key === 'productCategory') choices = template.productCategoryOptions?.[values.businessLine] ?? [...new Set(template.products.filter((item) => item.businessLine === values.businessLine).map((item) => item.category))];
+  if (field.key === 'productName') choices = template.products.filter((item) => item.businessLine === values.businessLine && item.category === values.productCategory).map((item) => item.name);
   if (field.key === 'problemL1') choices = Object.keys(template.problemOptions);
   if (field.key === 'problemL2') choices = template.problemOptions[values.problemL1] ?? [];
-  const parent = field.key === 'specificSource' ? values.feedback : field.key === 'problemL2' ? values.problemL1 : '';
+  const parent = field.key === 'specificSource' ? values.feedback : field.key === 'problemL2' ? values.problemL1 : field.key === 'productCategory' ? values.businessLine : '';
   const result: { value: string; label: string; disabled?: boolean }[] = choices.map((value) => ({ value, label: registrationOptionLabel(template, field.key, value, parent) }));
   const current = values[field.key];
   if (current && !choices.includes(current)) result.push({ value: current, label: `${registrationOptionLabel(template, field.key, current, parent)}（历史值）`, disabled: true });
@@ -66,5 +66,20 @@ export function registrationFieldOptions(field: RegistrationEditorField, templat
 
 export function registrationFieldVisible(field: RegistrationEditorField, template: RegistrationTemplate, values: RegistrationValues) {
   if (field.key !== 'specificSource') return true;
-  return (template.sourceOptions[values.feedback]?.length ?? 0) > 0;
+  return !!values.specificSource || (template.sourceOptions[values.feedback]?.length ?? 0) > 0;
+}
+
+export function registrationFieldParent(field: RegistrationFieldKey): RegistrationFieldKey | undefined {
+  return field === 'productCategory' ? 'businessLine' : field === 'productName' ? 'productCategory' : field === 'specificSource' ? 'feedback' : field === 'problemL2' ? 'problemL1' : undefined;
+}
+
+export function registrationFieldDisabled(field: RegistrationFieldKey, values: RegistrationValues): boolean {
+  const parent = registrationFieldParent(field);
+  return !!parent && !values[parent];
+}
+
+export function registrationFieldPlaceholder(field: RegistrationEditorField, values: RegistrationValues): string {
+  const parent = registrationFieldParent(field.key);
+  const parentLabels: Partial<Record<RegistrationFieldKey, string>> = { businessLine: '业务线', productCategory: '产品线', feedback: '反馈平台', problemL1: '问题分类一' };
+  return parent && !values[parent] ? `请先选择${parentLabels[parent] ?? '上级'}` : field.placeholder || '请选择';
 }

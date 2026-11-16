@@ -1,25 +1,18 @@
-import type { RegistrationRecord } from '@/views/tickets/types/businessRegistration';
+import { REGISTRATION_LEGACY_TIME_LIMIT_MINUTES, type RegistrationRecord } from '@/views/tickets/types/businessRegistration';
 import { SLA_COLOR, type SlaState } from '@/views/tickets/types/ticket';
 import { formatSlaRemain, slaStateOf } from '@/views/tickets/utils/slaClock';
 import { registrationListTimeMs } from '@/views/self-service/registrationListQuery';
 
 /** 与结案表单 `timeLimit` 选项一致（PRD：运营商承诺时效，不挂钩原工单 SLA 引擎） */
-const REGISTRATION_TIME_LIMIT_MS: Record<string, number> = {
-  半小时: 30 * 60_000,
-  '1小时': 60 * 60_000,
-  '2小时': 2 * 60 * 60_000,
-  '24小时': 24 * 60 * 60_000,
-};
 
 export interface RegistrationTimelinessLine {
   text: string;
   color: string;
 }
 
-function registrationTimeLimitMs(label?: string): number | null {
-  const key = label?.trim();
-  if (!key) return null;
-  return REGISTRATION_TIME_LIMIT_MS[key] ?? null;
+function registrationTimeLimitMs(record: RegistrationRecord): number | null {
+  const minutes = record.timeLimitMinutes ?? REGISTRATION_LEGACY_TIME_LIMIT_MINUTES[record.values.timeLimit?.trim()];
+  return Number.isInteger(minutes) && minutes > 0 ? minutes * 60_000 : null;
 }
 
 function registrationAccessMs(record: RegistrationRecord): number {
@@ -35,7 +28,7 @@ function registrationClosedMs(record: RegistrationRecord): number {
 
 /** 承诺截止时刻；缺接入时间或承诺档位时返回 NaN */
 export function registrationTimelinessDeadlineMs(record: RegistrationRecord): number {
-  const limit = registrationTimeLimitMs(record.values.timeLimit);
+  const limit = registrationTimeLimitMs(record);
   const start = registrationAccessMs(record);
   if (limit == null || !Number.isFinite(start)) return NaN;
   return start + limit;
@@ -81,7 +74,7 @@ export function registrationTimelinessCountdownLine(
 
 /** 第一行：运营商承诺档位 */
 export function registrationTimelinessPromiseLine(record: RegistrationRecord): RegistrationTimelinessLine {
-  const label = record.values.timeLimit?.trim();
+  const label = record.timeLimitLabel?.trim() || record.values.timeLimit?.trim();
   if (!label) return { text: '承诺：—', color: SLA_COLOR.paused };
   return { text: `承诺：${label}`, color: '#6B7280' };
 }

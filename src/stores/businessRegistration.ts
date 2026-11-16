@@ -15,6 +15,8 @@ import {
   normalizeRegistrationValues,
   registrationNow,
   registrationTemplateOf,
+  registrationOptionLabel,
+  REGISTRATION_LEGACY_TIME_LIMIT_MINUTES,
   validateRegistrationValues,
   hydrateRegistrationReminders,
   pendingRegistrationReminders,
@@ -155,7 +157,23 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
     return { id: eventId(), action, detail, actor: user.name, at: registrationNow(), ...(changes?.length ? { changes } : {}) };
   }
   function sanitizeRecord(record: RegistrationRecord): RegistrationRecord {
-    return hydrateRegistrationReminders(record);
+    const next = hydrateRegistrationReminders(record);
+    if (next.timeLimitMinutes === undefined && REGISTRATION_LEGACY_TIME_LIMIT_MINUTES[next.values.timeLimit]) {
+      next.timeLimitMinutes = REGISTRATION_LEGACY_TIME_LIMIT_MINUTES[next.values.timeLimit];
+      next.timeLimitLabel = next.values.timeLimit;
+    }
+    return next;
+  }
+  function captureTimeLimit(record: RegistrationRecord, previous?: RegistrationRecord) {
+    const value = record.values.timeLimit;
+    if (previous && previous.values.timeLimit === value) {
+      record.timeLimitMinutes = previous.timeLimitMinutes ?? REGISTRATION_LEGACY_TIME_LIMIT_MINUTES[value];
+      record.timeLimitLabel = previous.timeLimitLabel ?? value;
+      return;
+    }
+    const template = registrationTemplateOf(record.templateId);
+    record.timeLimitMinutes = template?.timeLimitMinutes?.[value];
+    record.timeLimitLabel = template && value ? registrationOptionLabel(template, 'timeLimit', value) : undefined;
   }
   function readPersisted(): RegistrationRecord[] {
     const cache = JSON.parse(localStorage.getItem(cacheKey.value) ?? 'null') as { version?: number; records?: RegistrationRecord[] } | null;
@@ -273,6 +291,7 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
       ...(options.descriptionAttachments?.length ? { descriptionAttachments: [...options.descriptionAttachments] } : {}),
       ...(options.processResultAttachments?.length ? { processResultAttachments: [...options.processResultAttachments] } : {}),
     };
+    captureTimeLimit(record);
     if (options.close) record.history.unshift(history('结案', normalized.processResult));
     return commit(record, options.close ? '工单已创建并结案' : options.draft ? '草稿已保存' : '工单已创建，当前由您处理', true);
   }
@@ -313,6 +332,7 @@ export const useBusinessRegistrationStore = defineStore('businessRegistration', 
       field.key === 'refundAmount' ? formatRegistrationAmount(previous.values[field.key]) : previous.values[field.key]
     ) !== normalized[field.key]).map((field) => ({ field: field.key, label: field.label, before: previous.values[field.key], after: normalized[field.key] }));
     next.values = normalized;
+    captureTimeLimit(next, previous);
     if (options.descriptionAttachments) next.descriptionAttachments = [...options.descriptionAttachments];
     if (options.processResultAttachments) next.processResultAttachments = [...options.processResultAttachments];
     next.updatedAt = registrationNow();

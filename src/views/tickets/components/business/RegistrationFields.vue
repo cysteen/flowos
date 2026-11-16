@@ -8,7 +8,7 @@ import type {
   RegistrationFieldKey, RegistrationTemplate, RegistrationValidationErrors, RegistrationValues,
 } from '@/views/tickets/types/businessRegistration';
 import {
-  registrationFieldOptions, registrationFieldVisible, type RegistrationEditorSection,
+  registrationFieldOptions, registrationFieldVisible, registrationFieldDisabled, registrationFieldPlaceholder, type RegistrationEditorSection,
 } from './registrationEditorConfig';
 
 const props = withDefaults(
@@ -50,13 +50,9 @@ const fields = computed(() => props.section.fields.filter((field) => registratio
 const inline = computed(() => props.layout === 'inline');
 const paired = computed(() => props.layout === 'paired');
 const isOverview = computed(() => !!props.overviewTone);
-const processStretch = computed(() => props.embedded && props.section.id === 'process');
 const fieldsWrapClass = computed(() => {
   if (inline.value) return inlineGridClass.value;
-  if (paired.value) {
-    const base = 'registration-fields registration-fields--paired';
-    return processStretch.value ? `${base} registration-fields--stretch` : base;
-  }
+  if (paired.value) return 'registration-fields registration-fields--paired';
   return 'registration-fields';
 });
 const fieldsWrapStyle = computed(() => {
@@ -165,9 +161,9 @@ function pairedLabelTitle(field: { label: string; placeholder?: string }) {
             class="field-control"
             :value="values[field.key] || undefined"
             :options="registrationFieldOptions(field, template, values)"
-            :disabled="!editable || field.readonly"
+            :disabled="!editable || field.readonly || registrationFieldDisabled(field.key, values)"
             :status="errors[field.key] ? 'error' : undefined"
-            :placeholder="field.placeholder || '请选择'"
+            :placeholder="registrationFieldPlaceholder(field, values)"
             allow-clear
             @update:value="update(field.key, $event)"
           />
@@ -187,8 +183,7 @@ function pairedLabelTitle(field: { label: string; placeholder?: string }) {
               :readonly="!editable || field.readonly"
               :shell-background="!editable || field.readonly ? '#f5f5f5' : '#fff'"
               :placeholder="field.placeholder || `填写${field.label}`"
-              :stretch="embedded && field.key === 'processResult'"
-              :min-input-height="field.key === 'processResult' ? (isNew ? 120 : 96) : 54"
+              :rows="field.key === 'processResult' ? 10 : 2"
               :maxlength="2000"
               :max-file-size-mb="200"
               rename-duplicates
@@ -270,38 +265,6 @@ function pairedLabelTitle(field: { label: string; placeholder?: string }) {
 .registration-embedded .registration-fields--paired {
   padding: 0;
   gap: 8px;
-}
-/* 工单处理 Tab：末行 1fr，处理结果纵向撑满（与标准工单处理区一致） */
-.registration-fields--stretch {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  align-content: stretch;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-}
-.registration-fields--stretch .pair-field[data-field='processResult'] {
-  align-items: stretch;
-  align-self: stretch;
-  min-height: 0;
-}
-.registration-fields--stretch .pair-field[data-field='processResult'] label {
-  align-self: flex-start;
-  padding-top: 6px;
-  line-height: 1.4;
-}
-.registration-fields--stretch .pair-field[data-field='processResult'] .field-control--textarea-attach {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  align-self: stretch;
-}
-.registration-fields--stretch .pair-field[data-field='processResult'] .field-control--textarea-attach :deep(.textarea-attach--stretch) {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-.registration-fields--stretch .pair-field[data-field='processResult'] .textarea-count {
-  flex: none;
 }
 .registration-embedded .registration-fields--paired .pair-field label {
   width: 56px;

@@ -11,6 +11,7 @@ export interface FormCatalogOption {
   value: string;
   label: string;
   parentValue?: string;
+  minutes?: number;
   enabled: boolean;
   sort: number;
 }
@@ -23,7 +24,7 @@ export interface FormCatalog {
 }
 export interface FormCatalogResult { ok: boolean; message: string }
 export interface FormCatalogOptionInput {
-  id?: string; field: RegistrationFieldKey; value: string; label?: string; parentValue?: string; enabled: boolean; sort?: number; expectedRevision?: number;
+  id?: string; field: RegistrationFieldKey; value: string; label?: string; parentValue?: string; minutes?: number; enabled: boolean; sort?: number; expectedRevision?: number;
 }
 const VERSION = 1;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -34,16 +35,19 @@ export function formCatalogFields(seed: RegistrationTemplate) {
   return seed.fields.filter((field) => !!field.options || ['specificSource', 'productCategory', 'problemL1', 'problemL2'].includes(field.key));
 }
 export function formCatalogParentField(field: RegistrationFieldKey): RegistrationFieldKey | undefined {
-  return field === 'specificSource' ? 'feedback' : field === 'problemL2' ? 'problemL1' : undefined;
+  return field === 'specificSource' ? 'feedback' : field === 'problemL2' ? 'problemL1' : field === 'productCategory' ? 'businessLine' : field === 'productName' ? 'productCategory' : undefined;
 }
 function factory(seed: RegistrationTemplate): FormCatalog {
   const options: FormCatalogOption[] = [];
   const add = (field: RegistrationFieldKey, values: readonly string[], parentValue?: string) => values.forEach((value, index) => options.push({
     id: idOf(`${seed.id}:${field}`, `${parentValue ?? ''}\u0001${value}`), field, value, label: value,
-    ...(parentValue ? { parentValue } : {}), enabled: true, sort: index + 1,
+    ...(parentValue ? { parentValue } : {}), ...(field === 'timeLimit' ? { minutes: seed.timeLimitMinutes?.[value] } : {}), enabled: true, sort: index + 1,
   }));
   seed.fields.filter((field) => field.options).forEach((field) => add(field.key, field.options!));
-  add('productCategory', [...new Set(seed.products.map((product) => product.category))]);
+  [...new Set(seed.products.map((product) => product.category))].forEach((category) => {
+    const businessLine = seed.products.find((product) => product.category === category && product.businessLine)?.businessLine;
+    add('productCategory', [category], businessLine);
+  });
   add('problemL1', Object.keys(seed.problemOptions));
   Object.entries(seed.problemOptions).forEach(([parent, children]) => add('problemL2', children, parent));
   Object.entries(seed.sourceOptions).forEach(([parent, children]) => add('specificSource', children, parent));
@@ -60,8 +64,8 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
   const catalogs = ref<Record<string, FormCatalog>>({});
   const revision = ref(0);
   const cacheKey = computed(() => `flowos-form-catalogs-v${VERSION}:${tenant.currentTenantId ?? 'default'}`);
-  const canManageOptions = computed(() => canAccessAdminItem(user.role, 'dicts'));
-  const canManageProducts = computed(() => canAccessAdminItem(user.role, 'products'));
+  const canManageOptions = computed(() => canAccessAdminItem(user.role, 'dicts') || canAccessAdminItem(user.role, 'entity-dict'));
+  const canManageProducts = computed(() => canAccessAdminItem(user.role, 'products') || canAccessAdminItem(user.role, 'entity-dict'));
   function readCache(): Record<string, FormCatalog> {
     const data = JSON.parse(localStorage.getItem(cacheKey.value) ?? 'null') as { version?: number; catalogs?: Record<string, FormCatalog> } | null;
     return data?.version === VERSION && data.catalogs && typeof data.catalogs === 'object' ? data.catalogs : {};
@@ -70,7 +74,29 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
     try { catalogs.value = readCache(); } catch { catalogs.value = {}; }
     revision.value += 1;
   }
-  function catalogOf(seed: RegistrationTemplate): FormCatalog { return catalogs.value[seed.id] ?? factory(seed); }
+  function catalogOf(seed: RegistrationTemplate): FormCatalog {
+    const stored = catalogs.value[seed.id];
+    if (!stored) return factory(seed);
+    // Compatibility enrichment only: never replace an administrator's mapped path,
+    // status or custom entries. No record values or cache are silently rewritten.
+    const next = clone(stored);
+    next.options.filter((row) => row.field === 'productCategory' && !row.parentValue).forEach((category) => {
+      const explicit = next.products.filter((product) => product.category === category.value && product.businessLine).map((product) => product.businessLine!);
+      const demonstrated = seed.products.filter((known) => known.category === category.value && known.businessLine && next.products.some((product) => product.name === known.name && product.category === known.category && !product.businessLine)).map((known) => known.businessLine!);
+      const parents = [...new Set([...explicit, ...demonstrated])].filter((parent) => !next.options.some((row) => row !== category && row.field === 'productCategory' && row.value === category.value && row.parentValue === parent));
+      parents.forEach((parent, index) => {
+        if (index === 0) category.parentValue = parent;
+        else next.options.push({ ...category, id: idOf(`${seed.id}:productCategory`, `${parent}\u0001${category.value}`), parentValue: parent });
+      });
+    });
+    seed.products.filter((product) => product.businessLine).forEach((known) => {
+      const category = next.options.find((row) => row.field === 'productCategory' && row.value === known.category && row.parentValue === known.businessLine);
+      if (!category) return;
+      const product = next.products.find((row) => row.name === known.name && row.category === known.category);
+      if (product && !product.businessLine) product.businessLine = known.businessLine;
+    });
+    return next;
+  }
   function optionRows(seed: RegistrationTemplate, field: RegistrationFieldKey, enabledOnly = false): FormCatalogOption[] {
     return catalogOf(seed).options.filter((row) => row.field === field && (!enabledOnly || row.enabled)).sort((a, b) => a.sort - b.sort);
   }
@@ -82,7 +108,14 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
     const catalog = catalogOf(seed);
     const feedback = activeValues(catalog, 'feedback');
     const lines = activeValues(catalog, 'businessLine');
-    const categories = activeValues(catalog, 'productCategory');
+    const productCategoryOptions: Record<string, string[]> = {};
+    lines.forEach((parent) => {
+      productCategoryOptions[parent] = catalog.options.filter((row) => row.field === 'productCategory' && row.parentValue === parent && row.enabled).sort((a, b) => a.sort - b.sort).map((row) => row.value);
+    });
+    const timeLimitMinutes = Object.fromEntries(catalog.options.filter((row) => row.field === 'timeLimit' && row.enabled).flatMap((row) => {
+      const minutes = row.minutes ?? seed.timeLimitMinutes?.[row.value];
+      return Number.isInteger(minutes) && minutes! > 0 ? [[row.value, minutes!]] : [];
+    }));
     const problemOptions: Record<string, string[]> = {};
     activeValues(catalog, 'problemL1').forEach((parent) => {
       problemOptions[parent] = catalog.options.filter((row) => row.field === 'problemL2' && row.parentValue === parent && row.enabled).sort((a, b) => a.sort - b.sort).map((row) => row.value);
@@ -96,10 +129,10 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
       ...seed,
       optionLabels: Object.fromEntries(catalog.options.map((row) => [[row.field, row.parentValue ?? '', row.value].join('\u0001'), row.label])),
       fields: seed.fields.map((field) => formCatalogFields(seed).some((managed) => managed.key === field.key)
-        ? { ...field, options: activeValues(catalog, field.key) }
+        ? { ...field, options: field.key === 'timeLimit' ? Object.keys(timeLimitMinutes) : field.key === 'productCategory' ? [...new Set(Object.values(productCategoryOptions).flat())] : activeValues(catalog, field.key) }
         : field),
-      products: catalog.products.filter((product) => product.enabled && categories.includes(product.category) && (!product.businessLine || lines.includes(product.businessLine))).map(({ id: _id, enabled: _enabled, ...product }) => product),
-      problemOptions, sourceOptions,
+      products: catalog.products.filter((product) => product.enabled && !!product.businessLine && productCategoryOptions[product.businessLine]?.includes(product.category)).map(({ id: _id, enabled: _enabled, ...product }) => product),
+      productCategoryOptions, timeLimitMinutes, problemOptions, sourceOptions,
     };
   }
   function commit(seed: RegistrationTemplate, next: FormCatalog): FormCatalogResult {
@@ -126,10 +159,12 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
     const parentValue = input.parentValue?.trim() || undefined;
     const existing = input.id ? next.options.find((row) => row.id === input.id) : undefined;
     if (input.id && !existing) return { ok: false, message: '字典项已不存在，请刷新后重试' };
-    if (existing && (existing.field !== input.field || existing.value !== value || existing.label !== label || existing.parentValue !== parentValue)) return { ok: false, message: '已有字典键值、名称和上级保持稳定，请通过新增选项调整' };
-    if (!existing && parentField && (!parentValue || !next.options.some((row) => row.field === parentField && row.value === parentValue && row.enabled))) return { ok: false, message: '请选择启用中的上级选项' };
+    if (existing && (existing.field !== input.field || existing.value !== value || existing.label !== label)) return { ok: false, message: '已有字典标签与键值保持稳定，请新增选项并停用旧项' };
+    if (parentField && input.enabled && (!parentValue || !next.options.some((row) => row.field === parentField && row.value === parentValue && row.enabled))) return { ok: false, message: '请选择启用中的上级选项' };
+    const minutes = input.field === 'timeLimit' ? input.minutes ?? existing?.minutes ?? seed.timeLimitMinutes?.[value] : undefined;
+    if (input.field === 'timeLimit' && (!Number.isInteger(minutes) || minutes! <= 0)) return { ok: false, message: '工单时效须配置正整数分钟数' };
     if (next.options.some((row) => row.id !== existing?.id && row.field === input.field && row.value === value && row.parentValue === parentValue)) return { ok: false, message: '同一上级下的字典键值已存在' };
-    const row: FormCatalogOption = { id: existing?.id ?? idOf(`${seed.id}:${input.field}`, `${parentValue ?? ''}\u0001${value}`), field: input.field, value, label, parentValue, enabled: input.enabled, sort: Math.max(0, input.sort ?? existing?.sort ?? next.options.length + 1) };
+    const row: FormCatalogOption = { id: existing?.id ?? idOf(`${seed.id}:${input.field}`, `${parentValue ?? ''}\u0001${value}`), field: input.field, value, label, parentValue, ...(minutes !== undefined ? { minutes } : {}), enabled: input.enabled, sort: Math.max(0, input.sort ?? existing?.sort ?? next.options.length + 1) };
     if (existing) next.options.splice(next.options.findIndex((item) => item.id === existing.id), 1, row);
     else next.options.push(row);
     return commit(seed, next);
@@ -145,14 +180,13 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
     const next = clone(catalogOf(seed));
     const existing = input.id ? next.products.find((product) => product.id === input.id) : undefined;
     const name = input.name.trim(), category = input.category.trim(), businessLine = input.businessLine.trim();
-    if (!name || !category || !businessLine) return { ok: false, message: '请填写产品名称、产品分类和业务线归属' };
+    if (!name || !category || !businessLine) return { ok: false, message: '请填写产品名称、产品线和业务线归属' };
     if (input.id && !existing) return { ok: false, message: '产品已不存在，请刷新后重试' };
     if (existing && existing.name !== name) return { ok: false, message: '已有产品名称保持稳定，请新增产品' };
     if (next.products.some((product) => product.id !== existing?.id && product.name === name)) return { ok: false, message: '产品名称已存在' };
     if (!next.options.some((row) => row.field === 'businessLine' && row.value === businessLine && row.enabled)) return { ok: false, message: '请选择启用中的业务线' };
-    const categoryOption = next.options.find((row) => row.field === 'productCategory' && row.value === category);
-    if (categoryOption && !categoryOption.enabled) return { ok: false, message: '该产品分类已停用，请先在字典管理启用' };
-    if (!categoryOption) next.options.push({ id: idOf(`${seed.id}:productCategory`, `\u0001${category}`), field: 'productCategory', value: category, label: category, enabled: true, sort: next.options.length + 1 });
+    const categoryOption = next.options.find((row) => row.field === 'productCategory' && row.value === category && row.parentValue === businessLine && row.enabled);
+    if (!categoryOption) return { ok: false, message: '请先配置该业务线下启用的产品线，再选择产品归属' };
     const product: FormCatalogProduct = { id: existing?.id ?? idOf(`${seed.id}:product`, name), name, category, businessLine, enabled: input.enabled };
     if (existing) next.products.splice(next.products.findIndex((item) => item.id === existing.id), 1, product);
     else next.products.push(product);
@@ -162,6 +196,7 @@ export const useFormCatalogsStore = defineStore('formCatalogs', () => {
     if (!canManageProducts.value) return { ok: false, message: '当前账号无产品维护权限' };
     const next = clone(catalogOf(seed)), row = next.products.find((product) => product.id === id);
     if (!row) return { ok: false, message: '产品不存在' };
+    if (enabled && (!row.businessLine || !next.options.some((option) => option.field === 'businessLine' && option.value === row.businessLine && option.enabled) || !next.options.some((option) => option.field === 'productCategory' && option.value === row.category && option.parentValue === row.businessLine && option.enabled))) return { ok: false, message: '请先补齐启用中的业务线与产品线归属' };
     row.enabled = enabled;
     return commit(seed, next);
   }

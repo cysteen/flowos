@@ -73,7 +73,14 @@ export interface RegistrationTemplate {
   problemOptions: Readonly<Record<string, readonly string[]>>;
   sourceOptions: Readonly<Record<string, readonly string[]>>;
   optionLabels?: Readonly<Record<string, string>>;
+  /** Enabled product lines grouped by their configured business-line parent. */
+  productCategoryOptions?: Readonly<Record<string, readonly string[]>>;
+  /** Stable option value to configured duration; display labels never drive timing. */
+  timeLimitMinutes?: Readonly<Record<string, number>>;
 }
+
+/** Compatibility duration for tickets created before configurable promise snapshots. */
+export const REGISTRATION_LEGACY_TIME_LIMIT_MINUTES: Readonly<Record<string, number>> = { 半小时: 30, '1小时': 60, '2小时': 120, '24小时': 1440 };
 
 export const REGISTRATION_FIELD_DEFINITIONS: readonly RegistrationFieldDefinition[] = [
   { key: 'businessPhone', label: '业务号码', createRequired: true, closeRequired: true },
@@ -105,14 +112,16 @@ export const REGISTRATION_FIELD_DEFINITIONS: readonly RegistrationFieldDefinitio
 ];
 
 const wirelessProducts: readonly RegistrationProduct[] = [
-  { name: '个性化彩铃', category: '个彩音频' },
-  { name: '乐响铃声', category: '个彩音频' },
-  { name: '沃阅读', category: '个彩音频' },
+  // Complete demo paths below come only from the eight reviewed seedRecords;
+  // products without a demonstrated business-line owner remain pending configuration.
+  { name: '个性化彩铃', category: '个彩音频', businessLine: '数字娱乐业务部' },
+  { name: '乐响铃声', category: '个彩音频', businessLine: '数字娱乐业务部' },
+  { name: '沃阅读', category: '个彩音频', businessLine: '数字娱乐业务部' },
   { name: '安徽彩铃升级版', category: '个彩音频' },
   { name: '新悦铃音盒', category: '个彩音频' },
   { name: '音乐我最牛', category: '个彩音频' },
-  { name: '会员畅听包', category: '个彩音频' },
-  { name: '白金会员', category: '个彩音频' },
+  { name: '会员畅听包', category: '个彩音频', businessLine: '数字娱乐业务部' },
+  { name: '白金会员', category: '个彩音频', businessLine: '数字娱乐业务部' },
   { name: '真心点歌', category: '个彩音频' },
   { name: '音乐乐翻天', category: '个彩音频' },
   { name: 'VIP尽享包', category: '个彩音频' },
@@ -139,17 +148,17 @@ const wirelessProducts: readonly RegistrationProduct[] = [
   { name: '移动企业视频彩铃', category: '商彩-互联网' },
   { name: '铃音盒-个性化彩铃商务版5元包', category: '商彩-音频' },
   { name: '音乐名片', category: '商彩-音频' },
-  { name: '商务炫铃', category: '商彩-音频' },
+  { name: '商务炫铃', category: '商彩-音频', businessLine: '数字娱乐业务部' },
   { name: '铃音盒-个性化彩铃3元', category: '商彩-音频' },
   { name: '联通视频彩铃商务版DIY10元包', category: '商彩-音频' },
   { name: '商务视频彩铃', category: '商彩-音频' },
-  { name: '咪咕音乐天籁VIP', category: '天籁会员' },
+  { name: '咪咕音乐天籁VIP', category: '天籁会员', businessLine: '数字娱乐业务部' },
   { name: '咪咕音乐天籁会员', category: '天籁会员' },
   { name: '音乐全曲包-曼曼之声10元包', category: '亲情提醒' },
   { name: 'AI视频彩铃-标准版', category: 'AIGC' },
   { name: '咪咕音乐视宣号标准版', category: '视宣号' },
   { name: '咪咕音乐视宣号精英版', category: '视宣号' },
-  { name: '咪咕音乐明星闹铃经济版', category: '个彩视频' },
+  { name: '咪咕音乐明星闹铃经济版', category: '个彩视频', businessLine: '数字娱乐业务部' },
 ];
 
 export const REGISTRATION_TEMPLATES: readonly RegistrationTemplate[] = [{
@@ -160,6 +169,7 @@ export const REGISTRATION_TEMPLATES: readonly RegistrationTemplate[] = [{
   groupId: WIRELESS_REGISTRATION_GROUP_ID,
   groupName: WIRELESS_REGISTRATION_GROUP_NAME,
   includeInGeneralConsultationCount: false,
+  timeLimitMinutes: REGISTRATION_LEGACY_TIME_LIMIT_MINUTES,
   fields: REGISTRATION_FIELD_DEFINITIONS,
   products: wirelessProducts,
   problemOptions: {
@@ -224,9 +234,12 @@ export function validateRegistrationValues(values: RegistrationValues, stage: 'c
     if (values.specificSource && !sourceChoices.includes(values.specificSource) && !(previous && previous.feedback === values.feedback && previous.specificSource === values.specificSource)) errors.specificSource = '请选择与反馈平台对应的启用中具体来源';
     const product = template.products.find((item) => item.name === values.productName);
     const unchangedProduct = !!previous && previous.productName === values.productName && previous.productCategory === values.productCategory && previous.businessLine === values.businessLine;
+    const productCategories = template.productCategoryOptions?.[values.businessLine] ?? template.products.filter((item) => item.businessLine === values.businessLine).map((item) => item.category);
+    if (values.productCategory && !productCategories.includes(values.productCategory) && !unchangedProduct) errors.productCategory = '请选择与业务线对应的启用中产品线';
+    if (values.productName && (!values.businessLine || !values.productCategory) && !unchangedProduct) errors.productName = '请先选择业务线和产品线';
     if (values.productName && !product && !unchangedProduct) errors.productName = '请选择启用中的产品名称';
     if (product && !unchangedProduct) {
-      if (values.productCategory && values.productCategory !== product.category) errors.productCategory = '产品分类与所选产品不一致';
+      if (values.productCategory && values.productCategory !== product.category) errors.productCategory = '产品线与所选产品不一致';
       if (product.businessLine && values.businessLine && values.businessLine !== product.businessLine) errors.businessLine = '业务线与所选产品归属不一致';
     }
   }
@@ -260,6 +273,9 @@ export interface RegistrationRecord {
   revision?: number;
   templateId: string;
   values: RegistrationValues;
+  /** Snapshot selected when the promise is first saved or deliberately changed. */
+  timeLimitMinutes?: number;
+  timeLimitLabel?: string;
   status: '草稿' | '处理中' | '已结案';
   groupId: string;
   groupName: string;
@@ -278,6 +294,14 @@ export interface RegistrationRecord {
   /** 描述内容 / 处理结果区 OpTextareaAttach 文件名（与附件历史同步上传） */
   descriptionAttachments?: string[];
   processResultAttachments?: string[];
+}
+/** Display labels share dictionary resolution; stored keys and query comparisons stay unchanged. */
+export function registrationDisplayValue(record: RegistrationRecord, field: RegistrationFieldKey, template = registrationTemplateOf(record.templateId)): string {
+  const value = record.values[field]?.trim() ?? '';
+  if (!value) return '';
+  if (field === 'timeLimit' && record.timeLimitLabel) return record.timeLimitLabel;
+  const parent = field === 'specificSource' ? record.values.feedback : field === 'problemL2' ? record.values.problemL1 : field === 'productCategory' ? record.values.businessLine : '';
+  return template ? registrationOptionLabel(template, field, value, parent) : value;
 }
 export interface RegistrationOperationResult { ok: boolean; message: string; record?: RegistrationRecord; errors?: RegistrationValidationErrors }
 

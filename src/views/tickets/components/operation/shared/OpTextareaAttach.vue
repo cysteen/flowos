@@ -8,6 +8,8 @@ const props = withDefaults(defineProps<{
   attachments: string[];
   placeholder?: string;
   minInputHeight?: number;
+  /** 正文默认行数；不传时沿用 minInputHeight，附件区另占高度 */
+  rows?: number;
   shellBackground?: string;
   shellRadius?: number;
   /**
@@ -130,14 +132,15 @@ function removeFile(name: string) {
       } : {
         background: shellBackground,
         borderRadius: `${shellRadius}px`,
-        minHeight: `${minInputHeight + 36}px`,
+        minHeight: rows ? undefined : `${minInputHeight + 36}px`,
       }"
     >
       <textarea
         ref="textareaEl"
         class="textarea-input"
         :class="{ 'is-readonly': readonly }"
-        :style="stretch ? undefined : { minHeight: `${minInputHeight}px` }"
+        :style="stretch ? undefined : { minHeight: rows ? `${rows * 1.5}em` : `${minInputHeight}px` }"
+        :rows="rows"
         :value="modelValue"
         :placeholder="readonly ? '' : placeholder"
         :readonly="readonly"
