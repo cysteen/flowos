@@ -437,7 +437,7 @@ const singleReopen = computed(() => (reopenVisible.value.length === 1 ? reopenVi
   position: sticky;
   top: 0;
   z-index: 1;
-  pointer-events: auto;
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
