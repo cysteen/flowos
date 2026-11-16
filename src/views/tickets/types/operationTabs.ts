@@ -152,8 +152,8 @@ export interface ContactRecord {
   asr?: { speaker: string; text: string }[];
   smsContent?: string;
   emailLines?: { text: string; bold?: boolean; muted?: boolean }[];
-  /** 记录来源：一线（关联沟通）/ 二线（本席产生）；默认二线 */
-  source?: '一线' | '二线';
+  /** 记录来源：一线（关联沟通）/ 二线（本席产生）/ 自建单；默认二线 */
+  source?: '一线' | '二线' | '自建单';
   /** 一线关联沟通的渠道：热线 / IM */
   channel?: '热线' | 'IM';
   /** 一线小结（热线卡片，可展开查看全文）；替代二线的文本转写 */
@@ -215,6 +215,8 @@ export interface AttachmentHistoryRecord {
   size: string;
   uploadedAt: string;
   uploadedBy: string;
+  /** 有 url 时「查看/下载」走真实链接，否则为原型占位提示 */
+  url?: string;
 }
 
 /** 上传链接的发出渠道（这条短链接是从哪个渠道发给客户的） */

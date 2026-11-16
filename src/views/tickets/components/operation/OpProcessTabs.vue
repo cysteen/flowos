@@ -109,7 +109,7 @@ const emit = defineEmits<{
   'feishu-retry': [];
   dunning: [];
   closingNoteFilesAdded: [files: { name: string; size: number }[]];
-  'attachment-upload': [files: { name: string; size: number }[]];
+  'attachment-upload': [files: { name: string; size: number; file?: File }[]];
 }>();
 
 const user = useUserStore();

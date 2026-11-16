@@ -17,11 +17,34 @@ global.localStorage = {
   setItem(key, value) { cache.set(key, String(value)); },
   removeItem(key) { cache.delete(key); },
 };
+const modules = new Map();
 function load(file, dependencies = {}) {
-  const source = fs.readFileSync(path.resolve(file), 'utf8');
-  const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const absolute = path.resolve(file);
+  if (modules.has(absolute)) return modules.get(absolute).exports;
+  const source = fs.readFileSync(absolute, 'utf8');
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    transformers: { before: [context => root => {
+      const visit = node => ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword
+        ? context.factory.createIdentifier('__testImportMeta')
+        : ts.visitEachChild(node, visit, context);
+      return ts.visitNode(root, visit);
+    }] },
+  }).outputText;
   const module = { exports: {} };
-  new Function('require', 'module', 'exports', js)(name => Object.hasOwn(dependencies, name) ? dependencies[name] : projectRequire(name), module, module.exports);
+  // Cache before evaluation: query/timeliness and the platform stores have real circular imports.
+  modules.set(absolute, module);
+  const localRequire = createRequire(absolute);
+  new Function('require', 'module', 'exports', '__testImportMeta', `${js}\n//# sourceURL=${absolute.replaceAll('\\', '/')}`)(name => {
+    if (Object.hasOwn(dependencies, name)) return dependencies[name];
+    if (name.startsWith('@/') || name.startsWith('.')) {
+      const base = name.startsWith('@/') ? path.resolve('src', name.slice(2)) : path.resolve(path.dirname(absolute), name);
+      const target = [base, `${base}.ts`, path.join(base, 'index.ts')].find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+      if (target?.endsWith('.ts')) return load(target, dependencies);
+      if (target) return localRequire(target);
+    }
+    return localRequire(name);
+  }, module, module.exports, { env: { MODE: 'test', DEV: false, PROD: true } });
   return module.exports;
 }
 const roles = load('src/config/roles.ts');
@@ -63,6 +86,7 @@ function fullValues(phone = '13800000000') {
   next.businessLine = product.businessLine ?? template.fields.find(field => field.key === 'businessLine').options[0];
   next.problemL1 = Object.keys(template.problemOptions)[0];
   next.problemL2 = template.problemOptions[next.problemL1][0];
+  next.specificSource = template.sourceOptions[next.feedback]?.[0] ?? '';
   next.orderTime = '';
   return next;
 }
@@ -78,11 +102,28 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   const future = types.registrationNow(new Date(Date.now() + 3600000)).replace(' ', 'T');
   check('05 future reminder set', () => assert.equal(store.setReminder(no, future, 'example').ok, true));
   const leader = users.MOCK_USERS['team-leader'].name;
-  check('06 same-group transfer retains reminder time and changes recipient', () => { assert.equal(store.transfer(no, leader).ok, true); assert.equal(store.recordOf(no).reminder.at, future); assert.equal(store.recordOf(no).reminder.recipient, leader); });
-  check('07 previous handler cannot edit', () => { assert.equal(store.canEdit(no), false); assert.equal(save(no, values()).ok, false); });
+  check('06 same-group transfer retains reminder time and changes recipient', () => { assert.equal(store.transfer(no, leader).ok, true); assert.equal(store.recordOf(no).reminders[0].at, future); assert.equal(store.recordOf(no).reminders[0].recipient, leader); });
+  check('07 previous handler in the same group cannot edit or initiate another transfer', () => {
+    const before = copy(store.recordOf(no));
+    assert.equal(store.canEdit(no), false);
+    assert.equal(save(no, values()).ok, false);
+    assert.equal(store.canTransfer(no), false);
+    assert.equal(store.transfer(no, actor.name).ok, false);
+    assert.deepEqual(copy(store.recordOf(no)), before);
+  });
   setActor('team-leader');
-  check('08 complete close with optional order time and reminder cancellation', () => { assert.equal(save(no, fullValues(), { close: true }).ok, true); assert.equal(store.recordOf(no).reminder, undefined); assert.equal(store.recordOf(no).values.orderTime, ''); });
-  check('09 closed revision preserves closedAt and replyTime', () => { const before = copy(store.recordOf(no)); assert.equal(save(no, { ...before.values, description: 'revised' }, { revision: true }).ok, true); assert.equal(store.recordOf(no).closedAt, before.closedAt); assert.equal(store.recordOf(no).values.replyTime, before.values.replyTime); });
+  check('08 complete close with optional order time and reminder cancellation', () => { assert.equal(save(no, fullValues(), { close: true }).ok, true); assert.equal(store.recordOf(no).reminders, undefined); assert.equal(store.recordOf(no).values.orderTime, ''); });
+  check('09 closed revision preserves closure time and an unchanged reply time', () => { const before = copy(store.recordOf(no)); assert.equal(save(no, { ...before.values, description: 'revised' }, { revision: true }).ok, true); assert.equal(store.recordOf(no).closedAt, before.closedAt); assert.equal(store.recordOf(no).values.replyTime, before.values.replyTime); });
+  check('closed revision can explicitly correct the manually maintained reply time', () => {
+    const before = copy(store.recordOf(no));
+    const replyTime = '2026-11-12 15:20:30';
+    assert.equal(save(no, { ...before.values, replyTime }, { revision: true }).ok, true);
+    const revised = store.recordOf(no);
+    assert.equal(revised.status, '已结案');
+    assert.equal(revised.closedAt, before.closedAt);
+    assert.equal(revised.values.replyTime, replyTime);
+    assert.ok(revised.history[0].changes.some(change => change.field === 'replyTime' && change.before === before.values.replyTime && change.after === replyTime));
+  });
   setActor('tech-support');
   check('10 outside-group actor cannot edit/transfer/upload', () => { assert.equal(store.canEdit(no), false); assert.equal(store.canTransfer(no), false); assert.equal(store.canUpload(no), false); });
   setActor('team-leader');
@@ -110,7 +151,7 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   global.FileReader = class { readAsDataURL() { finishRead = () => { this.result = 'data:text/plain;base64,YQ=='; this.onload(); }; } };
   const uploading = store.addAttachments(openNo, [{ name: 'example.txt', size: 1, type: 'text/plain' }]);
   tenant.currentTenantId = 'source-check-b'; await vue.nextTick();
-  check('15 tenant switch clears independent records without publishing any ticket projection', () => { assert.equal(store.records.length, 0); assert.equal(tickets.length, 0); });
+  check('15 tenant switch does not expose the previous tenant record or publish a ticket projection', () => { assert.equal(store.recordOf(openNo), undefined); assert.equal(tickets.length, 0); });
   const otherTenant = store.create(values('13800000002'));
   finishRead(); const uploadResult = await uploading;
   check('16 async attachment cannot cross tenant', () => { assert.equal(uploadResult.ok, false); assert.equal(otherTenant.ok, true); assert.equal(store.recordOf(otherTenant.record.no).attachments.length, 0); });
@@ -156,7 +197,7 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   check('32 returning tenant restores independent catalog', () => assert.equal(catalogs.optionRows(seed, 'feedback').find(row => row.value === 'custom-feedback').enabled, false));
   check('33 catalog changes did not rewrite persisted historical values', () => assert.equal(store.recordOf(historicalNo).values.feedback, 'custom-feedback'));
   setActor('team-leader');
-  check('34 disabled historical dictionary value can complete closure', () => { const result = save(historicalNo, { ...fullValues('13800000003'), feedback: 'custom-feedback' }, { close: true }); assert.equal(result.ok, true); });
+  check('34 disabled historical dictionary value can complete closure', () => { const result = save(historicalNo, { ...fullValues('13800000003'), feedback: 'custom-feedback', specificSource: '' }, { close: true }); assert.equal(result.ok, true); });
   check('35 disabled historical dictionary value remains editable after closure', () => { const before = copy(store.recordOf(historicalNo)); assert.equal(save(historicalNo, { ...before.values, description: 'closed historic option retained' }, { revision: true }).ok, true); assert.equal(store.recordOf(historicalNo).values.feedback, 'custom-feedback'); assert.equal(store.recordOf(historicalNo).closedAt, before.closedAt); assert.equal(store.recordOf(historicalNo).values.replyTime, before.values.replyTime); });
   const { clearLegacyRegistrationProjections } = load('src/views/self-service/legacyRegistrationProjection.ts', { '@/views/tickets/types/businessRegistration': types });
   const legacy = { id: `registration-${no}`, no, formTemplateId: templateId };
@@ -164,11 +205,199 @@ function check(label, fn) { fn(); console.log(`PASS ${++count}: ${label}`); }
   const unknownForm = { id: `registration-${no}`, no, formTemplateId: 'unrelated-form' };
   check('36 legacy cleanup removes only explicit registration projections, retaining same-number ordinary tickets', () => { const rows = [ordinarySameNo, legacy, unknownForm]; assert.equal(clearLegacyRegistrationProjections(rows), 1); assert.deepEqual(rows, [ordinarySameNo, unknownForm]); assert.equal(clearLegacyRegistrationProjections(rows), 0); });
   const oldCache = JSON.parse(localStorage.getItem(businessKey()));
-  const oldRecord = { ...copy(store.recordOf(historicalNo)), no: 'IFLYZX-20261112-80012', handler: leader, attachments: [{ id: 'old-file', name: 'proof.txt', uploadedBy: leader, uploadedAt: '2026-11-12 18:00:00', url: 'data:text/plain;base64,YQ==', size: 1, type: 'text/plain' }], reminder: { id: 'old-reminder', recipient: leader, at: future }, history: [{ id: 'old-history', action: '创建工单', actor: leader, at: '2026-11-12 17:00:00', detail: 'preserved' }] };
+  const oldRecord = { ...copy(store.recordOf(historicalNo)), no: 'IFLYZX-20261112-80012', status: '处理中', closedAt: undefined, handler: leader, attachments: [{ id: 'old-file', name: 'proof.txt', uploadedBy: leader, uploadedAt: '2026-11-12 18:00:00', url: 'data:text/plain;base64,YQ==', size: 1, type: 'text/plain' }], reminder: { id: 'old-reminder', recipient: leader, at: future }, history: [{ id: 'old-history', action: '创建工单', actor: leader, at: '2026-11-12 17:00:00', detail: 'preserved' }] };
   oldCache.records.push(oldRecord); localStorage.setItem(businessKey(), JSON.stringify(oldCache)); store.hydrate();
-  check('37 workspace separation restores old number, attachments, history and reminder without rewriting cache', () => { assert.deepEqual(copy(store.recordOf(oldRecord.no)), oldRecord); assert.deepEqual(JSON.parse(localStorage.getItem(businessKey())).records.find(record => record.no === oldRecord.no), oldRecord); });
+  check('37 workspace separation restores old number, attachments, history and reminder without rewriting cache', () => {
+    const hydrated = store.recordOf(oldRecord.no);
+    assert.equal(hydrated.reminders[0].id, 'old-reminder');
+    assert.equal(hydrated.reminders[0].recipient, leader);
+    assert.equal(JSON.parse(localStorage.getItem(businessKey())).records.find(record => record.no === oldRecord.no).reminder.id, 'old-reminder');
+  });
   check('38 new independent sequence never publishes into ordinary ticket collection', () => { const result = store.create(values('13800000006')); assert.equal(result.ok, true); assert.match(result.record.no, /^IFLYZJ-/); assert.deepEqual(tickets, []); });
   setActor('tech-support');
   check('39 read access uses self-service permission rather than the ordinary query-center menu', () => { actor.canAccess = key => key === 'query-center'; assert.equal(store.canView(oldRecord.no), false); actor.canAccess = key => key === 'self-service'; assert.equal(store.canView(oldRecord.no), true); });
+  setActor('agent-l2');
+  let draftNo;
+  check('blank draft receives a unique IFLYZJ number but has no formal creation event', () => {
+    const before = store.records.length;
+    const result = store.create(types.emptyRegistrationValues(), { draft: true });
+    assert.equal(result.ok, true);
+    draftNo = result.record.no;
+    assert.match(draftNo, /^IFLYZJ-\d{8}-\d{5}$/);
+    assert.equal(result.record.status, '草稿');
+    assert.equal(result.record.values.businessPhone, '');
+    assert.equal(result.record.history.some(event => event.action === '创建工单'), false);
+    assert.equal(store.records.length, before + 1);
+    assert.equal(store.canTransfer(draftNo), false);
+    assert.equal(store.addReminder(draftNo, future).ok, false);
+  });
+  check('another blank draft consumes the next sequence without making either draft formal', () => {
+    const result = store.create(types.emptyRegistrationValues(), { draft: true });
+    assert.equal(result.ok, true);
+    assert.notEqual(result.record.no, draftNo);
+    assert.equal(Number(result.record.no.slice(-5)), Number(draftNo.slice(-5)) + 1);
+    assert.equal(store.recordOf(draftNo).status, '草稿');
+    assert.equal(result.record.status, '草稿');
+  });
+  check('draft cannot become a formal registration until the business phone is supplied', () => {
+    const before = copy(store.recordOf(draftNo));
+    const result = save(draftNo, before.values, { promote: true });
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.businessPhone);
+    assert.deepEqual(copy(store.recordOf(draftNo)), before);
+  });
+  check('formal creation promotes the same numbered draft and writes exactly one creation event', () => {
+    const beforeCount = store.records.length;
+    const result = save(draftNo, values('13800000007'), { promote: true });
+    assert.equal(result.ok, true);
+    assert.equal(result.record.no, draftNo);
+    assert.equal(result.record.status, '处理中');
+    assert.equal(result.record.history.filter(event => event.action === '创建工单').length, 1);
+    assert.equal(store.records.length, beforeCount);
+    assert.equal(save(draftNo, result.record.values).ok, true);
+    assert.equal(store.recordOf(draftNo).history.filter(event => event.action === '创建工单').length, 1);
+  });
+  const crossGroup = store.transferTargetGroups().find(group => store.membersForGroup(group.value).some(name => name !== leader && name !== actor.name));
+  assert.ok(crossGroup, 'real platform directory must provide a target group');
+  const crossHandler = store.membersForGroup(crossGroup.value).find(name => name !== leader && name !== actor.name);
+  const crossUserKey = Object.entries(users.MOCK_USERS).find(([, member]) => member.name === crossHandler && member.groups.includes(crossGroup.value))?.[0];
+  assert.ok(crossUserKey, 'cross-group recipient must be an actual member of the selected group');
+  check('ordinary current handler can transfer within the group but cannot cross groups', () => {
+    const before = copy(store.recordOf(draftNo));
+    assert.equal(store.canTransfer(draftNo), true);
+    assert.equal(store.canCrossGroupTransfer(), false);
+    assert.equal(store.transferCrossGroup(draftNo, crossGroup.value, crossHandler).ok, false);
+    assert.deepEqual(copy(store.recordOf(draftNo)), before);
+  });
+  setActor('team-leader');
+  check('cross-group privilege alone cannot transfer another handler record', () => {
+    assert.equal(store.canCrossGroupTransfer(), true);
+    assert.equal(store.canTransfer(draftNo), false);
+    assert.equal(store.transferCrossGroup(draftNo, crossGroup.value, crossHandler).ok, false);
+  });
+  setActor('agent-l2');
+  assert.equal(store.transfer(draftNo, leader).ok, true);
+  setActor('team-leader');
+  assert.equal(store.addReminder(draftNo, future, 'first').ok, true);
+  const later = types.registrationNow(new Date(Date.now() + 7200000)).replace(' ', 'T');
+  assert.equal(store.addReminder(draftNo, later, 'second').ok, true);
+  check('privileged current handler can cross groups and transfer every pending reminder unchanged', () => {
+    const before = copy(store.recordOf(draftNo));
+    const result = store.transferCrossGroup(draftNo, crossGroup.value, crossHandler, 'handover');
+    assert.equal(result.ok, true);
+    assert.equal(result.record.groupName, crossGroup.value);
+    assert.equal(result.record.handler, crossHandler);
+    assert.equal(result.record.status, '处理中');
+    assert.deepEqual(result.record.reminders.map(reminder => reminder.at), before.reminders.map(reminder => reminder.at));
+    assert.ok(result.record.reminders.every(reminder => reminder.recipient === crossHandler));
+    assert.equal(result.record.history[0].action, '跨组调剂');
+    assert.equal(store.canEdit(draftNo), false);
+  });
+  setActor(crossUserKey);
+  check('the selected real target-group member receives handling rights immediately', () => {
+    assert.equal(store.canEdit(draftNo), true);
+    assert.equal(store.canTransfer(draftNo), true);
+    assert.equal(save(draftNo, { ...store.recordOf(draftNo).values, processResult: 'received' }).ok, true);
+    assert.deepEqual(tickets, []);
+  });
+  setActor('agent-l2');
+  check('a blank draft can close directly with exactly one formal creation event and one closure event', () => {
+    const draft = store.create(types.emptyRegistrationValues(), { draft: true });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.record.history.filter(event => event.action === '创建工单').length, 0);
+    assert.equal(draft.record.history.filter(event => event.action === '结案').length, 0);
+    const beforeCount = store.records.length;
+    const result = save(draft.record.no, fullValues('13800000008'), { close: true });
+    assert.equal(result.ok, true);
+    assert.equal(result.record.no, draft.record.no);
+    assert.equal(result.record.status, '已结案');
+    assert.equal(store.records.length, beforeCount);
+    assert.equal(result.record.history.filter(event => event.action === '创建工单').length, 1);
+    assert.equal(result.record.history.filter(event => event.action === '结案').length, 1);
+    const revised = save(result.record.no, { ...result.record.values, processResult: 'revised after direct closure' }, { revision: true });
+    assert.equal(revised.ok, true);
+    assert.equal(revised.record.history.filter(event => event.action === '创建工单').length, 1);
+    assert.equal(revised.record.history.filter(event => event.action === '结案').length, 1);
+  });
+  setActor('agent-l2');
+  const reminderCase = store.create(values('13800000009'));
+  assert.equal(reminderCase.ok, true);
+  const reminderNo = reminderCase.record.no;
+  const reminderAt = types.registrationNow(new Date(Date.now() + 60_000));
+  check('a pending reminder can still be cancelled', () => {
+    const added = store.addReminder(reminderNo, reminderAt, 'pending cancellation');
+    assert.equal(added.ok, true);
+    const id = added.record.reminders.at(-1).id;
+    assert.equal(store.cancelReminder(reminderNo, id).ok, true);
+    assert.equal(store.recordOf(reminderNo).reminders?.some(item => item.id === id) ?? false, false);
+  });
+  assert.equal(store.addReminder(reminderNo, reminderAt, 'refresh and acknowledgement regression').ok, true);
+  const reminderId = store.recordOf(reminderNo).reminders.at(-1).id;
+  const NativeDate = Date;
+  const elapsedAt = NativeDate.parse(reminderAt.replace(' ', 'T')) + 1000;
+  global.Date = class extends NativeDate {
+    constructor(...args) { super(...(args.length ? args : [elapsedAt])); }
+    static now() { return elapsedAt; }
+  };
+  try {
+    assert.equal(store.markReminderTriggered(reminderNo, reminderId).ok, true);
+    check('an edit dialog opened before a deadline cannot cancel the reminder after it triggers', () => {
+      const before = copy(store.recordOf(reminderNo));
+      const persisted = localStorage.getItem(businessKey());
+      const result = store.cancelReminder(reminderNo, reminderId);
+      assert.equal(result.ok, false);
+      assert.match(result.message, /已触发/);
+      assert.deepEqual(copy(store.recordOf(reminderNo)), before);
+      assert.equal(localStorage.getItem(businessKey()), persisted);
+    });
+    check('a triggered but unacknowledged reminder is recoverable from persisted data', () => {
+      store.hydrate();
+      assert.deepEqual(types.unacknowledgedRegistrationReminders(store.recordOf(reminderNo).reminders).map(item => item.id), [reminderId]);
+      assert.ok(store.recordOf(reminderNo).reminders[0].triggeredAt);
+    });
+    check('another group member and an outside-group actor cannot consume the reminder', () => {
+      const before = copy(store.recordOf(reminderNo));
+      for (const role of ['team-leader', 'tech-support']) {
+        setActor(role);
+        assert.equal(store.acknowledgeReminder(reminderNo, reminderId).ok, false);
+        assert.deepEqual(copy(store.recordOf(reminderNo)), before);
+      }
+      setActor('agent-l2');
+    });
+    check('a reminder that has not triggered cannot be consumed', () => {
+      const added = store.addReminder(reminderNo, types.registrationNow(new Date(Date.now() + 60_000)), 'not due');
+      assert.equal(added.ok, true);
+      const id = added.record.reminders.at(-1).id;
+      assert.equal(store.acknowledgeReminder(reminderNo, id).ok, false);
+      assert.equal(store.recordOf(reminderNo).reminders.find(item => item.id === id).acknowledgedAt, undefined);
+    });
+    check('failed acknowledgement persistence leaves the reminder available to display', () => {
+      const before = copy(store.recordOf(reminderNo));
+      const write = localStorage.setItem;
+      try {
+        localStorage.setItem = () => { throw new Error('storage unavailable'); };
+        assert.equal(store.acknowledgeReminder(reminderNo, reminderId).ok, false);
+      } finally { localStorage.setItem = write; }
+      assert.deepEqual(copy(store.recordOf(reminderNo)), before);
+      assert.ok(types.unacknowledgedRegistrationReminders(store.recordOf(reminderNo).reminders).some(item => item.id === reminderId));
+    });
+    check('consumption is persisted, idempotent and does not restore the card after rehydration', () => {
+      const before = copy(store.recordOf(reminderNo).reminders.find(item => item.id === reminderId));
+      assert.equal(store.acknowledgeReminder(reminderNo, reminderId).ok, true);
+      const consumed = store.recordOf(reminderNo).reminders.find(item => item.id === reminderId);
+      assert.ok(consumed.acknowledgedAt);
+      assert.equal(consumed.triggeredAt, before.triggeredAt);
+      const revision = store.recordOf(reminderNo).revision;
+      assert.equal(store.acknowledgeReminder(reminderNo, reminderId).ok, true);
+      assert.equal(store.recordOf(reminderNo).revision, revision);
+      store.hydrate();
+      assert.ok(store.recordOf(reminderNo).reminders.find(item => item.id === reminderId).acknowledgedAt);
+      assert.equal(types.unacknowledgedRegistrationReminders(store.recordOf(reminderNo).reminders).some(item => item.id === reminderId), false);
+    });
+    check('legacy triggered reminders without consumption state remain available', () => {
+      const legacy = { id: 'legacy-triggered', at: reminderAt, note: '', recipient: actor.name, triggeredAt: types.registrationNow() };
+      assert.deepEqual(types.unacknowledgedRegistrationReminders([legacy]).map(item => item.id), [legacy.id]);
+    });
+  } finally { global.Date = NativeDate; }
   console.log(`ALL ${count} SOURCE CHECKS PASSED`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -26,24 +26,33 @@ const props = withDefaults(defineProps<{
   maxFileSizeMb?: number;
   /** 同名文件改为重命名追加（{原名}_{yyyyMMddHHmmss}{.扩展名}）；不传则同名不重复添加 */
   renameDuplicates?: boolean;
+  /** 父级 flex 容器内纵向撑满（自建单「处理结果」等场景） */
+  stretch?: boolean;
 }>(), {
   minInputHeight: 52,
   shellBackground: '#fff',
   shellRadius: 6,
+  stretch: false,
 });
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'update:attachments': [files: string[]];
   /** 本次选中的文件（名称 + 字节数），供调用方记录文件大小 */
-  filesAdded: [files: { name: string; size: number }[]];
+  filesAdded: [files: { name: string; size: number; file: File }[]];
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const textareaEl = ref<HTMLTextAreaElement | null>(null);
 
 function focusInput() {
+  if (props.readonly) return;
   textareaEl.value?.focus();
+}
+
+function onTextareaInput(e: Event) {
+  if (props.readonly) return;
+  emit('update:modelValue', (e.target as HTMLTextAreaElement).value);
 }
 
 defineExpose({ focusInput });
@@ -72,7 +81,7 @@ function onFilesSelected(e: Event) {
   // 同名文件（与列表内或同一次多选内重名）：renameDuplicates 时重命名追加，否则不再新增标签
   const seen = new Set(props.attachments);
   let rejected = 0;
-  const picked: { name: string; size: number }[] = [];
+  const picked: { name: string; size: number; file: File }[] = [];
   Array.from(input.files ?? []).forEach((f) => {
     if (seen.has(f.name) && !props.renameDuplicates) return;
     const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : '';
@@ -83,7 +92,8 @@ function onFilesSelected(e: Event) {
     }
     const name = seen.has(f.name) ? renameWithTimestamp(f.name, seen) : f.name;
     seen.add(name);
-    picked.push({ name, size: f.size });
+    const file = name === f.name ? f : new File([f], name, { type: f.type, lastModified: f.lastModified });
+    picked.push({ name, size: file.size, file });
   });
   input.value = '';
   if (rejected) {
@@ -107,10 +117,17 @@ function removeFile(name: string) {
 </script>
 
 <template>
-  <div class="textarea-attach">
+  <div
+    class="textarea-attach"
+    :class="{ 'textarea-attach--stretch': stretch, 'is-readonly': readonly }"
+  >
     <div
       class="textarea-shell"
-      :style="{
+      :class="{ 'textarea-shell--stretch': stretch, 'is-readonly': readonly }"
+      :style="stretch ? {
+        background: shellBackground,
+        borderRadius: `${shellRadius}px`,
+      } : {
         background: shellBackground,
         borderRadius: `${shellRadius}px`,
         minHeight: `${minInputHeight + 36}px`,
@@ -119,12 +136,13 @@ function removeFile(name: string) {
       <textarea
         ref="textareaEl"
         class="textarea-input"
-        :style="{ minHeight: `${minInputHeight}px` }"
+        :class="{ 'is-readonly': readonly }"
+        :style="stretch ? undefined : { minHeight: `${minInputHeight}px` }"
         :value="modelValue"
         :placeholder="readonly ? '' : placeholder"
         :readonly="readonly"
         :maxlength="maxlength"
-        @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
+        @input="onTextareaInput"
       />
       <div v-if="attachments.length" class="attach-chips">
         <span v-for="f in attachments" :key="f" class="attach-chip">
@@ -180,6 +198,20 @@ function removeFile(name: string) {
 .textarea-attach {
   width: 100%;
 }
+.textarea-attach--stretch {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+}
+.textarea-shell--stretch {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+}
 
 .textarea-shell {
   display: flex;
@@ -191,6 +223,12 @@ function removeFile(name: string) {
   padding: 8px;
   resize: vertical;
   overflow: auto;
+}
+.textarea-shell.is-readonly {
+  background: #f5f5f5 !important;
+  border-color: #d9d9d9;
+  cursor: not-allowed;
+  resize: none;
 }
 
 .textarea-input {
@@ -210,6 +248,10 @@ function removeFile(name: string) {
 }
 .textarea-input::placeholder {
   color: #6b7280;
+}
+.textarea-input.is-readonly {
+  cursor: not-allowed;
+  color: rgba(0, 0, 0, 0.65);
 }
 
 .attach-chips {

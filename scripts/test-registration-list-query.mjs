@@ -1,22 +1,40 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
-const path = '../src/views/self-service/registrationListQuery.ts';
-const source = readFileSync(new URL(path, import.meta.url), 'utf8');
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-});
-const exports = {};
-runInNewContext(outputText, { exports, require(name) { throw new Error(`Unexpected runtime dependency ${name}`); } }, { filename: path });
-const { emptyRegistrationListQuery, matchesRegistrationListQuery, filterRegistrationRecords } = exports;
+const root = fileURLToPath(new URL('../', import.meta.url));
+const modules = new Map();
+function load(file) {
+  const absolute = resolve(file);
+  if (modules.has(absolute)) return modules.get(absolute).exports;
+  const source = readFileSync(absolute, 'utf8');
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  });
+  const module = { exports: {} };
+  modules.set(absolute, module);
+  const localRequire = createRequire(absolute);
+  new Function('require', 'module', 'exports', outputText)(name => {
+    if (name.startsWith('@/') || name.startsWith('.')) {
+      const base = name.startsWith('@/') ? resolve(root, 'src', name.slice(2)) : resolve(dirname(absolute), name);
+      const target = [base, `${base}.ts`, join(base, 'index.ts')].find(candidate => existsSync(candidate) && statSync(candidate).isFile());
+      if (target?.endsWith('.ts')) return load(target);
+      if (target) return localRequire(target);
+    }
+    return localRequire(name);
+  }, module, module.exports);
+  return module.exports;
+}
+const { emptyRegistrationListQuery, matchesRegistrationListQuery, filterRegistrationRecords } = load(resolve(root, 'src/views/self-service/registrationListQuery.ts'));
 const base = {
   no: 'IFLYZX-20261112-80012', status: '处理中', handler: '王组长', groupName: '无线音乐处理组', builder: '张三',
   createdAt: '2026-11-13 00:00:00', updatedAt: '2026-11-13 20:00:00',
   values: { businessPhone: '13800000001', contactPhone: '13900000001', refundPhone: '13700000001',
-    upstreamNo: 'MG-EXAMPLE-001', productName: '个性化彩铃', feedback: '微信反馈', specificSource: '群A',
+    upstreamNo: 'MG-EXAMPLE-001', productName: '个性化彩铃', feedback: '微信反馈', specificSource: '江苏移动微信投诉群',
     accessTime: '2026-11-12T23:59:59', replyTime: '2026-11-13 10:15:30.123', description: '订购核实', processResult: '待回单',
     operator: '移动', province: '江苏省', businessLine: '数字娱乐业务部', productCategory: '个彩音频',
     problemL1: '不知情订购', problemL2: '退订+退费', complaintType: '普通投诉', closedLoop: '已闭环',
@@ -35,7 +53,7 @@ test('business, contact and upstream numbers search the same independent record'
   assert.equal(matchesRegistrationListQuery(base, query({ keyword: 'unrelated' })), false);
 });
 test('status, handler, feedback, dependent source and product filters combine', () => {
-  const selected = { status: '处理中', handler: '王组长', feedback: '微信反馈', specificSource: '群A', productName: '个性化彩铃' };
+  const selected = { status: '处理中', handler: '王组长', feedback: '微信反馈', specificSource: '江苏移动微信投诉群', productName: '个性化彩铃' };
   assert.equal(matchesRegistrationListQuery(base, query(selected)), true);
   for (const key of Object.keys(selected)) assert.equal(matchesRegistrationListQuery(base, query({ ...selected, [key]: 'different' })), false);
 });
@@ -50,6 +68,12 @@ test('creation versus access time uses explicit fields, never the ordinary proto
   assert.equal(matchesRegistrationListQuery(base, q), true);
   assert.equal(matchesRegistrationListQuery(base, { ...q, timeField: 'accessTime' }), false);
   assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-10-01 12:00:00' }, q), false);
+});
+test('updatedAt field filters on record last update, independent of createdAt or accessTime', () => {
+  const q = query({ timeField: 'updatedAt', dateFrom: '2026-11-13', dateTo: '2026-11-13' });
+  assert.equal(matchesRegistrationListQuery(base, q), true);
+  assert.equal(matchesRegistrationListQuery({ ...base, updatedAt: '2026-11-12 23:59:59' }, q), false);
+  assert.equal(matchesRegistrationListQuery({ ...base, createdAt: '2026-10-01 12:00:00' }, q), true);
 });
 test('empty dates keep incomplete records searchable; invalid or inverted date constraints do not match', () => {
   const incomplete = { ...base, values: { ...base.values, accessTime: '' } };
@@ -128,3 +152,20 @@ test('invalid calendar dates, out-of-range clocks and reversed explicit times ne
   }
   assert.equal(matchesRegistrationListQuery(base, query({ timeField: 'replyTime', dateFrom: '2026-11-13T10:16:00', dateTo: '2026-11-13 10:15:59' })), false);
 });
+
+for (const timeField of ['createdAt', 'updatedAt', 'accessTime', 'replyTime']) {
+  test(`${timeField} alone controls an exact timestamp interval with other record times outside it`, () => {
+    const at = '2026-11-13 12:34:56';
+    const outside = '2026-11-12 12:34:56';
+    const record = { ...base, createdAt: outside, updatedAt: outside, values: { ...base.values, accessTime: outside, replyTime: outside } };
+    const withTime = time => timeField in record.values
+      ? { ...record, values: { ...record.values, [timeField]: time } }
+      : { ...record, [timeField]: time };
+    const selected = query({ timeField, dateFrom: at, dateTo: at });
+    assert.equal(matchesRegistrationListQuery(withTime(at), selected), true);
+    assert.equal(matchesRegistrationListQuery(withTime('2026-11-13 12:34:55.999'), selected), false);
+    assert.equal(matchesRegistrationListQuery(withTime('2026-11-13 12:34:57'), selected), false);
+    assert.equal(matchesRegistrationListQuery(withTime(''), selected), false);
+    assert.equal(matchesRegistrationListQuery(withTime(''), query({ timeField })), true);
+  });
+}

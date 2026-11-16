@@ -45,10 +45,13 @@ function isWorkspacePath(path: string) {
   return true;
 }
 
+type TabCloseGuard = () => boolean | Promise<boolean>;
+
 /** 坐席工作区多页签（对齐 AdminPageTabs 全动态模式） */
 export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
   const tabs = ref<WorkspaceTab[]>([]);
   const activeKey = ref<string | null>(null);
+  const closeGuards = new Map<string, TabCloseGuard>();
 
   function defaultPath() {
     const u = useUserStore();
@@ -84,10 +87,24 @@ export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
     });
   }
 
-  function close(key: string) {
+  function registerCloseGuard(path: string, guard: TabCloseGuard) {
+    closeGuards.set(path, guard);
+  }
+
+  function unregisterCloseGuard(path: string) {
+    closeGuards.delete(path);
+  }
+
+  async function close(key: string) {
+    const guard = closeGuards.get(key);
+    if (guard) {
+      const ok = await guard();
+      if (!ok) return;
+    }
     const idx = tabs.value.findIndex((t) => t.key === key);
     if (idx === -1) return;
     tabs.value.splice(idx, 1);
+    closeGuards.delete(key);
     if (activeKey.value !== key) return;
     if (tabs.value.length > 0) {
       const next = tabs.value[Math.max(0, idx - 1)];
@@ -103,5 +120,8 @@ export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
     activeKey.value = null;
   }
 
-  return { tabs, activeKey, syncFromRoute, updateTitle, activate, close, reset, defaultPath };
+  return {
+    tabs, activeKey, syncFromRoute, updateTitle, activate, close, reset, defaultPath,
+    registerCloseGuard, unregisterCloseGuard,
+  };
 });

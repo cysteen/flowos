@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import OpAttachmentViewModal from '@/views/tickets/components/operation/OpAttachmentViewModal.vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
+import { dataUrlToPreviewBlob } from '@/views/tickets/utils/attachmentPreview';
 import type {
   AttachmentHistoryRecord,
   AttachmentLinkFile,
@@ -20,10 +21,15 @@ const props = defineProps<{
    * 只读角色 / 整页只读时不出。处理表单区上传与此处写入同一路径。
    */
   readonly?: boolean;
+  /** 业务登记等场景：仅上传人可删 */
+  allowDelete?: (record: AttachmentHistoryRecord) => boolean;
+  /** 隐藏「客户上传」子页签（无线音乐等业务仅坐席上传） */
+  showCustomerUpload?: boolean;
 }>();
 
 const emit = defineEmits<{
-  upload: [files: { name: string; size: number }[]];
+  upload: [files: { name: string; size: number; file: File }[]];
+  delete: [id: string];
 }>();
 
 type SubTab = 'files' | 'links';
@@ -33,6 +39,11 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'files', label: '坐席上传' },
   { key: 'links', label: '客户上传' },
 ];
+const visibleSubTabs = computed(() => (
+  props.showCustomerUpload === false
+    ? SUB_TABS.filter((tab) => tab.key === 'files')
+    : SUB_TABS
+));
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -55,17 +66,48 @@ function onFilesSelected(e: Event) {
   const input = e.target as HTMLInputElement;
   const picked = Array.from(input.files ?? []);
   if (!picked.length) return;
-  emit('upload', picked.map((f) => ({ name: f.name, size: f.size })));
+  emit('upload', picked.map((f) => ({ name: f.name, size: f.size, file: f })));
   message.success(`已上传 ${picked.length} 个附件`);
   input.value = '';
 }
 
-function onView(name: string) {
-  message.info(`查看 ${name}`);
+function onView(record: AttachmentHistoryRecord) {
+  if (record.url) {
+    if (/^data:/i.test(record.url)) {
+      let previewUrl: string | undefined;
+      try {
+        previewUrl = URL.createObjectURL(dataUrlToPreviewBlob(record.url));
+        window.open(previewUrl, '_blank', 'noopener,noreferrer');
+        const ownedUrl = previewUrl;
+        window.setTimeout(() => URL.revokeObjectURL(ownedUrl), 60_000);
+      } catch {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        message.warning('附件内容无效，无法预览');
+      }
+      return;
+    }
+    window.open(record.url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  message.info(`查看 ${record.name}`);
 }
 
-function onDownload(name: string) {
-  message.info(`下载 ${name}`);
+function onDownload(record: AttachmentHistoryRecord) {
+  if (record.url) {
+    const link = document.createElement('a');
+    link.href = record.url;
+    link.download = record.name;
+    link.rel = 'noopener';
+    link.target = '_blank';
+    link.click();
+    return;
+  }
+  message.info(`下载 ${record.name}`);
+}
+
+function onDelete(record: AttachmentHistoryRecord) {
+  if (props.readonly || !props.allowDelete?.(record)) return;
+  emit('delete', record.id);
 }
 
 /* ---- 子页签二：客户上传（按关联 ID 向容联云拉取上传短链接与文件清单） ---- */
@@ -97,7 +139,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
     <div class="attach-toolbar">
       <div class="sub-tabs" role="tablist">
         <button
-          v-for="t in SUB_TABS"
+          v-for="t in visibleSubTabs"
           :key="t.key"
           type="button"
           role="tab"
@@ -148,8 +190,30 @@ function openLinkFiles(link: AttachmentLinkRecord) {
               <td class="col-time">{{ formatOpTime(r.uploadedAt) }}</td>
               <td class="col-user">{{ r.uploadedBy }}</td>
               <td class="col-actions">
-                <button type="button" class="link-btn" @click="onView(r.name)">查看</button>
-                <button type="button" class="link-btn" @click="onDownload(r.name)">下载</button>
+                <button
+                  type="button"
+                  class="link-btn"
+                  :disabled="!r.url"
+                  @click="onView(r)"
+                >
+                  查看
+                </button>
+                <button
+                  type="button"
+                  class="link-btn"
+                  :disabled="!r.url"
+                  @click="onDownload(r)"
+                >
+                  下载
+                </button>
+                <button
+                  v-if="allowDelete?.(r)"
+                  type="button"
+                  class="link-btn is-danger"
+                  @click="onDelete(r)"
+                >
+                  删除
+                </button>
               </td>
             </tr>
           </tbody>
@@ -469,8 +533,19 @@ function openLinkFiles(link: AttachmentLinkRecord) {
 }
 
 .col-actions {
-  width: 100px;
+  width: 132px;
   white-space: nowrap;
+}
+
+.link-btn.is-danger {
+  color: #dc2626;
+}
+.link-btn:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.link-btn:disabled:hover {
+  text-decoration: none;
 }
 
 .link-btn {

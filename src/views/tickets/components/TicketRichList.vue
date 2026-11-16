@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { isFlashTicket } from '@/views/tickets/types/flash';
-import { CheckOutlined } from '@ant-design/icons-vue';
+import RichListCheckbox from '@/components/rich-list/RichListCheckbox.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
 import { useUserStore } from '@/stores/user';
@@ -523,9 +523,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         <!-- 表头 -->
         <div class="thead">
           <div v-if="showSelectionColumn" class="cell-cb th-cell">
-            <div class="cb" :class="{ checked: allPageSelected }" @click="emit('toggleAll')">
-              <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
-            </div>
+            <RichListCheckbox :checked="allPageSelected" @click="emit('toggleAll')" />
           </div>
           <!-- 拖拽把手在传了 `columnWidths` 的实例上整体不出：那一处不参与全局列宽记忆 -->
           <div class="col-title th th-cell" :class="{ 'th-cell--resizable': resizable }">
@@ -619,9 +617,10 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         class="cell-cb row-leading"
         :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
       >
-        <div class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
-          <CheckOutlined v-if="selectedIds.has(t.id)" :style="{ color: '#fff', fontSize: '10px' }" />
-        </div>
+        <RichListCheckbox
+          :checked="selectedIds.has(t.id)"
+          @click="emit('toggle', t.id)"
+        />
       </div>
 
       <!-- 工单 / 标题 -->
@@ -1068,22 +1067,6 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 }
 .rich-list--resizing .rich-list-scroll {
   cursor: col-resize;
-}
-
-.cb {
-  width: 16px;
-  height: 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.cb.checked {
-  background: #1a6fff;
-  border-color: #1a6fff;
 }
 
 /* 工单摘要列：标签 + 内容单行展示 */

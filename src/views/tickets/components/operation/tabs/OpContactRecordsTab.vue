@@ -164,7 +164,7 @@ function metaLabel(r: ContactRecord) {
           <span
             class="tag"
             :class="r.source === '一线' ? 'tag-source' : 'tag-source-self'"
-          >{{ r.source === '一线' ? '一线' : '二线' }}</span>
+          >{{ r.source || '二线' }}</span>
         </div>
         <span class="card-meta">{{ metaLabel(r) }}</span>
       </div>

@@ -111,6 +111,8 @@ function pickBatch(action: string, selectedCount: number) {
         />
       </div>
 
+      <slot name="before-filter" />
+
       <div
         v-if="showFilterToggle"
         class="wb-toolbar__btn wb-toolbar__btn--filter"

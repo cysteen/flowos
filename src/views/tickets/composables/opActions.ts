@@ -353,6 +353,15 @@ export const CROSS_GROUP_TRANSFER_ROLES = [
   'system-admin',
   'tenant-admin',
 ];
+/** 自建单已结案 → 处理中（组长退回重开）；非标准工单「已退回」子状态 */
+export const REGISTRATION_REOPEN_ROLES = ['team-leader'] as const;
+export const REGISTRATION_REOPEN_REASONS = [
+  '结案质量不达标',
+  '需补充联系客户',
+  '运营商反馈需跟进',
+  '信息填写有误需更正',
+  '其他',
+] as const;
 /** 委派子任务条数上限 */
 export const DELEGATE_TASK_MAX = 5;
 /** 委派任务说明字数上限 */

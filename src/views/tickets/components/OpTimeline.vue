@@ -49,7 +49,10 @@ function openRelated(t: RelatedTicketBrief) {
   openTicket(t.no);
 }
 
-const props = defineProps<{ entries: TimelineEntry[] }>();
+const props = withDefaults(
+  defineProps<{ entries: TimelineEntry[]; showLegend?: boolean }>(),
+  { showLegend: true },
+);
 
 // 图标取「一眼能认」的语义，与 how 徽章文案呼应
 const ICON: Record<TlAction, unknown> = {
@@ -158,7 +161,7 @@ function hasDetail(e: TimelineEntry): boolean {
 <template>
   <div class="timeline-card">
     <!-- 图例筛选 -->
-    <div class="tl-header">
+    <div v-if="showLegend" class="tl-header">
       <div class="legend">
         <button
           v-for="l in LEGEND"

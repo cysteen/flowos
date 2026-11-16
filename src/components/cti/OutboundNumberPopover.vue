@@ -15,6 +15,10 @@ const props = defineProps<{
   ticketId?: string;
 }>();
 
+const emit = defineEmits<{
+  success: [phone: string];
+}>();
+
 const open = ref(false);
 const user = useUserStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
@@ -26,7 +30,7 @@ const defaultSelectedId = computed(
 const callBlocked = computed(() => checkCanCall());
 
 function onPick(entry: OutboundNumberOption) {
-  requestOutboundCall(
+  const ok = requestOutboundCall(
     {
       phone: props.phone,
       contactLabel: props.contactLabel,
@@ -34,6 +38,7 @@ function onPick(entry: OutboundNumberOption) {
     },
     { outboundNumber: entry.number },
   );
+  if (ok) emit('success', props.phone);
   open.value = false;
 }
 </script>
