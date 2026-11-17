@@ -156,9 +156,9 @@ export function submitWorkTicket(item: CreateWorkItem, ticket: Ticket, processAf
   const receipt = commitCreation(item.id, { no: ticket.no, kind: 'ticket', phase: 'complete' }, origin ? [origin, ticket] : [ticket], migratedSale ? { ...migratedSale, sourceNo: ticket.no } : undefined);
   const stored = TICKETS.find((row) => row.no === ticket.no)!;
   try {
-    if (alreadyDispatched || item.context.action === 'reopen') return receipt;
+    if (alreadyDispatched) return receipt;
     if (processAfter && ['escalateComplaint', 'escalateExternal'].includes(item.context.action) && useUserStore().roleKey !== 'agent-l1') directToInitiator(stored);
-    else if (!processAfter || ['escalateComplaint', 'escalateExternal'].includes(item.context.action)) useDispatchStore().dispatchNewTicket(stored, item.context.action.startsWith('escalate') ? { relatedNo: source?.row.no } : {});
+    else if (!processAfter || ['escalateComplaint', 'escalateExternal', 'reopen'].includes(item.context.action)) useDispatchStore().dispatchNewTicket(stored, item.context.action.startsWith('escalate') || item.context.action === 'reopen' ? { relatedNo: source?.row.no } : {});
     persistCreatedRows([stored]);
   } catch { item.error = `工单 ${stored.no} 已创建，派单结果待核对，请打开该单查看；请勿重复创建。`; }
   return receipt;

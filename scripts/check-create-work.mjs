@@ -28,6 +28,7 @@ try {
   const { TICKETS } = await server.ssrLoadModule('/src/mock/tickets.ts');
   const { TICKET_DETAIL } = await server.ssrLoadModule('/src/mock/ticketDetail.ts');
   const { useUserStore } = await server.ssrLoadModule('/src/stores/user.ts');
+  const { useDispatchStore } = await server.ssrLoadModule('/src/stores/dispatch.ts');
   const { useCreateWorkItemsStore } = await server.ssrLoadModule('/src/stores/createWorkItems.ts');
   const { useTicketDraftStore } = await server.ssrLoadModule('/src/stores/ticketDrafts.ts');
   const service = await server.ssrLoadModule('/src/views/tickets/composables/createWorkSubmission.ts');
@@ -143,14 +144,16 @@ try {
     service.submitWorkTicket(item, special.resumeSpecialResult(item), true, true);
     assert.equal(ledger.creationReceipt(item.id).phase, 'complete');
   });
-  check('915: continuation inherits source fields, collects supplement in child and bypasses auto dispatch', () => {
+  check('continuation inherits source identity and supplement, then enters existing dispatch with related source', () => {
     const source = origin('商机', 'IM', '已结案'); source.row.groupNames = ['原归属组']; source.row.problemDesc = '原问题';
     const item = work('reopen', source); item.form = { continuationSupplement: '新补充', continuationAttachments: ['补充.png'] };
     const created = ticket('咨询');
     service.submitWorkTicket(item, created, true);
     const child = TICKETS.find((row) => row.no === created.no);
     assert.equal(child.title, source.row.title); assert.equal(child.type, '商机'); assert.equal(child.ticketSource, 'IM');
-    assert.equal(child.groupId, source.row.groupId); assert.equal(child.assignee, null); assert.equal(child.nodeStatus, '未认领'); assert.equal(child.tab, 'pool');
+    const dispatch = useDispatchStore(); const state = dispatch.ticketStateOf(child.no);
+    assert.ok(state); assert.equal(state.relatedNo, source.row.no);
+    assert.equal(child.groupId, dispatch.poolGroupIdOf(state.poolId)); assert.ok(dispatch.logsOf(child.no).length > 0);
     assert.equal(child.problemDesc, '原问题\n\n新补充'); assert.equal(child.creationSupplements.length, 1); assert.equal(child.supplementPendingCount, 1);
     assert.equal(source.row.nodeStatus, '已结案'); assert.equal(source.row.continuationChildNo, child.no);
     assert.throws(() => service.submitWorkTicket({ ...item, id: 'second-continuation' }, ticket(), false));
