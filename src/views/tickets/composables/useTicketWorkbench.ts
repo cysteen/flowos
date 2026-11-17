@@ -7,7 +7,7 @@ import { isRefundTicket } from '@/views/tickets/types/refund';
 import { computed, ref, watch } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
-import { creationRevision } from '@/stores/creationLedger';
+import { creationRevision, hydrateCreationRows } from '@/stores/creationLedger';
 import { useUserStore } from '@/stores/user';
 import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
@@ -75,6 +75,11 @@ export function useTicketWorkbench() {
   // 个册退费单快照与产线结果定时查询（1120）：须在取工单库快照之前装载 ——
   // 本会话新建的个册退费单只在快照里，晚于下一行装载则刷新后工作台各页签都取不到它
   const refundStore = useRefundStore();
+  const flash = useFlashStore();
+  const dispatch = useDispatchStore();
+  useXiaozhiStore().hydrate();
+  // Restore creation outcomes after the existing business caches, before the first list snapshot.
+  hydrateCreationRows();
   const all = ref<Ticket[]>([...TICKETS]);
   watch(creationRevision, () => { all.value = [...TICKETS]; });
   // 其他页签新建的个册退费单经快照同步进工单库后，并入本工作台数据源
@@ -98,10 +103,6 @@ export function useTicketWorkbench() {
   const dismissedAiIds = ref<Set<string>>(new Set());
 
   const user = useUserStore();
-  const flash = useFlashStore();
-  const dispatch = useDispatchStore();
-  // 小智种子单的履历与缓存（种子单本身已随 XIAOZHI_SEEDS 并入 TICKETS）
-  useXiaozhiStore().hydrate();
 
   /**
    * 工单池 / 催补待回的可见分组按角色取（930 教育刷机单 M72）：
