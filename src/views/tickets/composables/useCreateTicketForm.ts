@@ -10,6 +10,7 @@ import {
   CUSTOMER_SEARCH_LIMIT,
   PRODUCT_NAMES,
   CUSTOM_PLATFORM_OPTION,
+  complaintPlatformsBySource,
   buildAutoTitle,
   findCustomerById,
   upsertCustomer,
@@ -91,6 +92,7 @@ export interface FlashSubmitBlock {
 
 function defaultForm(): CreateTicketFormState {
   return {
+    continuationSupplement: '', continuationAttachments: [],
     // 业务类型、工单类型、优先级、客户、产品、问题分类、问题描述一律不预选（04 新建工单 F4.0 未定默认值），
     // 由坐席选填；优先级与工单类型的联动见 CreateTicketModal
     businessType: '',
@@ -139,7 +141,7 @@ function phoneDigits(phone: string | undefined): string | undefined {
 export function useCreateTicketForm(
   prefill: () => CreateTicketPrefill | null | undefined,
   /** `twoLevelProblem`：所选路径只到二级时不校验三级（统一建单页用；默认关闭，行为不变） */
-  options?: { twoLevelProblem?: boolean },
+  options?: { twoLevelProblem?: boolean; preserveSourceFields?: boolean },
 ) {
   const form = reactive<CreateTicketFormState>(defaultForm());
 
@@ -250,7 +252,7 @@ export function useCreateTicketForm(
    */
   function fallbackProblem() {
     // 升级带入的是原单的问题分类：预填期间不回落
-    if (applyingPrefill && prefill()?.mode === 'escalate') return;
+    if (applyingPrefill && (prefill()?.mode === 'escalate' || options?.preserveSourceFields)) return;
     const tree = productProblemTree.value;
     // 只回落「问题分类里有、但本产品下没有」的选中值；落不到问题分类上的预填值原样保留
     const full = problemTags.unionTree[form.problemL1];
@@ -277,7 +279,11 @@ export function useCreateTicketForm(
   }
   watch(productProblemTree, fallbackProblem);
   const productNameOptions = computed(
-    () => PRODUCT_NAMES[form.productCategory] ?? [],
+    () => {
+      const names = PRODUCT_NAMES[form.productCategory] ?? [];
+      const inherited = options?.preserveSourceFields && prefill()?.product;
+      return inherited && !names.includes(inherited) ? [inherited, ...names] : names;
+    },
   );
 
   /** 类型专属卡：只剩投诉（建议分类已删，10-29 建单字段表） */
@@ -325,7 +331,7 @@ export function useCreateTicketForm(
    */
   /** 入口固定了工单类型（升级投诉 / 刷机单关联投诉）：不做刷机单识别（预填 `noFlashScene`） */
   const flashSceneOff = ref(false);
-  const isFlashType = computed(() => !flashSceneOff.value && prefill()?.xiaozhiScene !== true && flashConfig.isFlashScene(
+  const isFlashType = computed(() => !flashSceneOff.value && form.ticketType !== '投诉' && prefill()?.xiaozhiScene !== true && flashConfig.isFlashScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   /** 「刷机信息」卡字段下方的必填提示 */
@@ -636,7 +642,7 @@ export function useCreateTicketForm(
    * 个册退费单识别：所选产品的问题分类「专属类型＝个册退费」（后台「问题分类」维护，同刷机单按问题分类识别）。
    * 入口固定了工单类型的（升级投诉 / 关联投诉 / 小智入口）不识别。
    */
-  const isRefundType = computed(() => !flashSceneOff.value && prefill()?.xiaozhiScene !== true && refundConfig.isRefundScene(
+  const isRefundType = computed(() => !flashSceneOff.value && form.ticketType !== '投诉' && prefill()?.xiaozhiScene !== true && refundConfig.isRefundScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   const refundErrors = reactive<Record<CreateTicketRefundField, string>>({
@@ -810,6 +816,7 @@ export function useCreateTicketForm(
   }
 
   function clearUnavailableSelection() {
+    if (options?.preserveSourceFields) return;
     if (!PRODUCT_NAMES[form.productCategory]) form.productCategory = '';
     if (!productNameOptions.value.includes(form.productName)) form.productName = '';
     const l2Map = productProblemTree.value[form.problemL1];
@@ -865,7 +872,7 @@ export function useCreateTicketForm(
       form.customer = null;
     }
     // 产品分类先落、产品名后落：分类是产品名下拉的取值域，反过来会被分类联动重置
-    if (p.productCategory && PRODUCT_NAMES[p.productCategory]) form.productCategory = p.productCategory;
+    if (p.productCategory && (PRODUCT_NAMES[p.productCategory] || options?.preserveSourceFields)) form.productCategory = p.productCategory;
     // 入口只带产品名（子单 / Reopen 等）：按产品名反查所属产品分类，分类没有默认值可兜
     else if (p.product) {
       const cat = Object.keys(PRODUCT_NAMES).find((k) => PRODUCT_NAMES[k].includes(p.product!));
@@ -874,10 +881,11 @@ export function useCreateTicketForm(
     form.productName = p.product ?? form.productName;
     form.deviceSn = p.sn ?? '';
     form.description = p.desc ?? '';
+    form.descriptionAttachments = [...(p.descAttachments ?? [])];
     // 入口没带优先级时不预选（同新建工单默认值，D2）
     form.priority = p.priority ?? '';
     // 升级投诉等场景：原单信息一次性同步（只覆盖有值项，其余留默认由坐席补全）
-    if (p.businessType && (BUSINESS_TYPES as string[]).includes(p.businessType)) {
+    if (p.businessType && ((BUSINESS_TYPES as string[]).includes(p.businessType) || options?.preserveSourceFields)) {
       form.businessType = p.businessType as CreateTicketFormState['businessType'];
     }
     if (p.businessLine) form.businessLine = p.businessLine;
@@ -1024,16 +1032,22 @@ export function useCreateTicketForm(
       && !(options?.twoLevelProblem && !!form.problemL2 && !problemL3Options.value.some(Boolean));
     errors.description = !form.description.trim();
     errors.title = !form.title.trim();
-    errors.problemTime = false;
+    errors.problemTime = form.ticketType === '投诉' && !form.problemTime.trim();
     errors.complaintType =
-      showChannelComplaintFields.value && !form.complaintType;
+      false; // 投诉类型是独立可选字段（830 §3.2.1）
     errors.complaintL1 = form.ticketType === '投诉' && !form.complaintL1;
     errors.complaintL2 = form.ticketType === '投诉' && !form.complaintL2;
     errors.serviceComplaintCategory = showServiceComplaintCategory.value && !form.serviceComplaintCategory;
-    // 升级外投（来源＝内投 / 外投渠道）：平台、业务线、产品线、前期是否反馈必填
+    if (showChannelComplaintFields.value) {
+      const rows = form.complaintPlatforms;
+      const filled = rows.filter((r) => r.platform || r.customPlatform?.trim() || r.complaintNo.trim() || r.complaintContent?.trim());
+      errors.complaintPlatform = filled.some((r) => !complaintPlatformsBySource(form.ticketSource).includes(r.platform) || r.platform === CUSTOM_PLATFORM_OPTION && !r.customPlatform?.trim() || !r.complaintContent?.trim());
+      errors.businessLine = !form.businessLine;
+      errors.priorFeedback = !form.priorFeedback;
+    }
+    // 标准升级保留既有渠道附加字段规则
     if (prefill()?.mode === 'escalate' && showChannelComplaintFields.value) {
-      errors.complaintPlatform = !form.complaintPlatforms.some((r) => r.platform
-        && (r.platform !== CUSTOM_PLATFORM_OPTION || !!(r.customPlatform ?? '').trim()));
+      errors.complaintPlatform ||= !form.complaintPlatforms.some((r) => r.platform);
       errors.businessLine = !form.businessLine;
       errors.productLine = !form.productLine;
       errors.priorFeedback = !form.priorFeedback;
@@ -1116,16 +1130,14 @@ export function useCreateTicketForm(
       businessLine: showChannelComplaintFields.value ? (form.businessLine || undefined) : undefined,
       productLine: showChannelComplaintFields.value ? (form.productLine || undefined) : undefined,
       // 升级：新单指回原单；投诉渠道字段随单落工单行，处理页按它带出
-      ...(prefill()?.mode === 'escalate' ? {
-        escalatedFromNo: prefill()?.parentNo,
-        ...(showChannelComplaintFields.value ? {
+      ...(prefill()?.mode === 'escalate' ? { escalatedFromNo: prefill()?.parentNo } : {}),
+      ...(showChannelComplaintFields.value ? {
           complaintPlatforms: form.complaintPlatforms
             .filter((r) => r.platform)
-            .map((r) => ({ platform: r.platform, customPlatform: r.customPlatform, complaintNo: r.complaintNo.trim() })),
+            .map((r) => ({ platform: r.platform, customPlatform: r.customPlatform, complaintNo: r.complaintNo.trim(), complaintContent: r.complaintContent?.trim() || undefined })),
           priorFeedback: form.priorFeedback,
           serviceReview: form.serviceReview.trim() || undefined,
           complaintReceiveTime: form.complaintReceiveTime || undefined,
-        } : {}),
       } : {}),
       productCategory: form.productCategory || undefined,
       // 建议 / 商机单不采集设备 SN，不落库

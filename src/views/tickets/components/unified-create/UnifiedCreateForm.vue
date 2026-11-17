@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, provide, ref, shallowRef, watch } from 'vue';
-import { message } from 'ant-design-vue';
+import { computed, nextTick, provide, ref, watch } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
 import {
   CheckCircleOutlined, CloseOutlined, FileAddOutlined, SaveOutlined, WarningOutlined,
@@ -11,7 +11,7 @@ import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
-  PRIORITY_OPTIONS,
+    PRIORITY_OPTIONS,
   PRODUCT_CATEGORIES,
   complaintPlatformsBySource,
   ticketSourceOptionsForRole,
@@ -19,14 +19,16 @@ import {
 import { CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
 import type { AftersaleContext } from '@/views/tickets/composables/opActions';
-import { UNIFIED_CREATE_PATH, type UnifiedCreateScene } from '@/views/tickets/composables/unifiedCreateEntry';
-import { XIAOZHI_TIP, XIAOZHI_TOAST } from '@/views/tickets/types/xiaozhi';
+import { useCreateWorkItemsStore } from '@/stores/createWorkItems';
+import { copy, workInput, workPath, CREATE_WORK_LABELS, type CreateWorkItem } from '../../types/createWork';
+import { submitWorkTicket, validateWorkSource } from '../../composables/createWorkSubmission';
+import { creationReceipt } from '@/stores/creationLedger';
+import { confirmWorkClose } from '../../composables/createWorkGuard';
+import { XIAOZHI_TIP } from '@/views/tickets/types/xiaozhi';
 import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
-import AftersaleCreateForm from '@/views/tickets/components/operation/AftersaleCreateForm.vue';
+import WorkAftersaleModal from './WorkAftersaleModal.vue';
 import { TICKETS } from '@/mock/tickets';
-import { useDispatchStore } from '@/stores/dispatch';
 import { useProblemTagsStore } from '@/stores/problemTags';
-import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useUserStore } from '@/stores/user';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
 import CreateTicketPartCard from '../create-ticket/CreateTicketPartCard.vue';
@@ -35,18 +37,27 @@ import FlashInfoPart from '../create-ticket/FlashInfoPart.vue';
 import RefundInfoPart from '../create-ticket/RefundInfoPart.vue';
 import XiaozhiInfoPart from '../create-ticket/XiaozhiInfoPart.vue';
 import UnifiedComplaintPart from './UnifiedComplaintPart.vue';
+import ExternalEscalationPart from './ExternalEscalationPart.vue';
+import { runSpecialCreation, resumeSpecialResult } from '../../composables/specialWorkCreation';
+import { specialIntent } from '@/stores/creationLedger';
+import { CREATE_COMPLAINT_L2_MAP as EXTERNAL_CATEGORIES, inferCreateComplaintNatures } from '../../types/complaintCreateCategory';
 import UnifiedCustomerPart from './UnifiedCustomerPart.vue';
 
-const props = defineProps<{ scene: UnifiedCreateScene }>();
+const props = defineProps<{ item: CreateWorkItem }>();
+const item = props.item;
+const works = useCreateWorkItemsStore();
+const restoring = ref(true);
+const simplifiedExternal = item.context.action === 'escalateExternal';
+const isContinuation = item.context.action === 'reopen';
+const fixedComplaint = ['escalateComplaint', 'escalateExternal', 'linkComplaint'].includes(item.context.action);
 
 const router = useRouter();
 const tabs = useWorkspaceTabsStore();
 const userStore = useUserStore();
-const draftStore = useTicketDraftStore();
 const problemTags = useProblemTagsStore();
 
-const prefill: CreateTicketPrefill | null = props.scene === 'xiaozhi' ? { xiaozhiScene: true } : null;
-const ctx = useCreateTicketForm(() => prefill, { twoLevelProblem: true });
+const prefill: CreateTicketPrefill | null = item.context.prefill ?? (item.context.scene === 'xiaozhi' ? { xiaozhiScene: true } : null);
+const ctx = useCreateTicketForm(() => isContinuation ? { ...prefill, noFlashScene: true } : prefill, { twoLevelProblem: true, preserveSourceFields: !!item.context.source });
 const {
   form,
   errors,
@@ -71,6 +82,7 @@ const {
   submitRefund,
   submitXiaozhi,
   applyPrefill,
+  applyDraft,
   applyXiaozhiFrontlineDefault,
 } = ctx;
 
@@ -84,9 +96,9 @@ if (prefill) {
 /* ---------------- 问题分类：支持逐级选择，也支持从任一级直接反带完整路径 ---------------- */
 
 // 同步执行：要赶在表单内部「分类回落首项」的监听之前把下级清掉
-watch(() => form.productName, () => { form.problemL1 = ''; }, { flush: 'sync' });
-watch(() => form.problemL1, () => { form.problemL2 = ''; }, { flush: 'sync' });
-watch(() => form.problemL2, () => { form.problemL3 = ''; }, { flush: 'sync' });
+watch(() => form.productName, () => { if (!restoring.value) form.problemL1 = ''; }, { flush: 'sync' });
+watch(() => form.problemL1, () => { if (!restoring.value) form.problemL2 = ''; }, { flush: 'sync' });
+watch(() => form.problemL2, () => { if (!restoring.value) form.problemL3 = ''; }, { flush: 'sync' });
 
 const PROBLEM_PATH_SEPARATOR = '\u001f';
 type ProblemPathOption = { value: string; label: string; l1: string; l2: string; l3?: string };
@@ -151,7 +163,8 @@ const hasL3 = computed(() => exactL3Options.value.length > 0);
 
 /** 售后：选到末级，且本产品这条分类的专属类型为售后 */
 const isAftersaleType = computed(() => {
-  if (isXiaozhiType.value || !form.problemL1 || !form.problemL2) return false;
+  if (item.context.action === 'aftersale') return true;
+  if (fixedComplaint || form.ticketType === '投诉' || isXiaozhiType.value || !form.problemL1 || !form.problemL2) return false;
   if (hasL3.value && !form.problemL3) return false;
   return problemTags.enabledRows.some((r) => r.exclusive === '售后'
     && r.productName === form.productName
@@ -172,10 +185,10 @@ watch(
     if (hit) {
       beforeHit = { ticketType: form.ticketType, businessType: form.businessType, priority: form.priority };
     } else if (beforeHit) {
-      form.ticketType = beforeHit.ticketType;
+      if (form.ticketType !== '投诉') form.ticketType = beforeHit.ticketType;
       form.businessType = beforeHit.businessType;
       // 命中前没选优先级：保留命中期间选的值。类型与优先级是命中前的同一组取值，联动上本就合法
-      if (beforeHit.priority) form.priority = beforeHit.priority;
+      if (beforeHit.priority && form.ticketType !== '投诉') form.priority = beforeHit.priority;
       beforeHit = null;
     }
   },
@@ -195,7 +208,7 @@ function typesFor(priority: Priority | ''): CreateFormTicketType[] {
   if (!priority) return [...CREATE_TICKET_TYPES];
   return HIGH_PRIORITIES.includes(priority) ? ['投诉'] : [...CREATE_TICKET_TYPES];
 }
-const ticketTypeOptions = computed(() => typesFor(form.priority).map((v) => ({ value: v, label: v })));
+const ticketTypeOptions = computed(() => (fixedComplaint ? ['投诉'] : item.context.action === 'transfer' ? ['咨询', '建议', '商机'] : typesFor(form.priority)).map((v) => ({ value: v, label: v })));
 const priorityOptions = computed(() => {
   const allowed = prioritiesFor(form.ticketType);
   return PRIORITY_OPTIONS.filter((p) => !allowed || allowed.includes(p.value))
@@ -205,8 +218,9 @@ watch(
   () => form.priority,
   () => {
     if (!form.priority || !form.ticketType) return;
-    const types = typesFor(form.priority);
-    if (!types.includes(form.ticketType)) form.ticketType = types[0];
+    if (restoring.value || fixedComplaint) return;
+    const types: CreateFormTicketType[] = item.context.action === 'transfer' ? ['咨询', '建议', '商机'] : typesFor(form.priority);
+    if (!types.includes(form.ticketType)) { form.priority = ''; message.info('请为当前工单类型重新选择优先级'); }
   },
 );
 watch(
@@ -215,12 +229,14 @@ watch(
     if (!form.priority || !form.ticketType) return;
     const allowed = prioritiesFor(form.ticketType);
     if (allowed && !allowed.includes(form.priority)) {
-      form.priority = priorityOptions.value[0]?.value ?? allowed[allowed.length - 1];
+      form.priority = '';
+      message.info('当前优先级与所选类型冲突，请重新选择优先级');
     }
   },
 );
-const ticketSourceOptions = computed(() => ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource));
+const ticketSourceOptions = computed(() => simplifiedExternal ? [{ value: '外投渠道', label: '外投渠道' }] : ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource));
 const lockBusinessAndType = computed(() => isFlashType.value || isXiaozhiType.value || isRefundType.value);
+const lockTicketType = computed(() => lockBusinessAndType.value || fixedComplaint);
 
 // 投诉卡切走时不挂载，这两条联动放在表单这一层常驻
 watch(
@@ -250,47 +266,89 @@ function ticketHref(no: string): string {
 const duplicateTickets = computed<Ticket[]>(() => {
   const phone = (form.customer?.phone ?? '').replace(/\s/g, '');
   if (!phone || !form.productName) return [];
-  return TICKETS.filter((t) => (t.customerPhone ?? '').replace(/\s/g, '') === phone
+  return TICKETS.filter((t) => t.no !== item.context.source?.no && (t.customerPhone ?? '').replace(/\s/g, '') === phone
     && t.product === form.productName
     && !t.archived
     && !isTicketClosed(t.nodeStatus));
 });
 
-/* ---------------- 售后：内嵌售后建单页 ---------------- */
-
-/** 售后建单页接到新的预填会重写表单：只在客户或产品的取值真的变了才换，重取同一份档案不算 */
-function buildAftersaleContext(): AftersaleContext {
+/* ---------------- 售后独立工作面 ---------------- */
+const aftersaleContext = computed<AftersaleContext>(() => {
+  const source = item.context.source;
   return {
-    // 该标记在售后建单页上只决定「转出说明」显隐：统一建单没有原单可转出
-    isComplaint: true,
-    customerName: form.customer?.name ?? '',
-    customerPhone: form.customer?.phone ?? '',
-    region: form.customer?.region ?? '',
-    address: form.customer?.address ?? '',
-    productCategory: form.productCategory,
-    productName: form.productName,
+    isComplaint: source ? source.type === '投诉' : true,
+    customerName: form.customer?.name || source?.customer.name || '',
+    customerPhone: form.customer?.phone || source?.customer.contacts.find((c) => c.type === 'phone')?.value || '',
+    region: form.customer?.region || source?.customer.region || '',
+    address: form.customer?.address || source?.customer.address || '',
+    productCategory: form.productCategory || source?.product.category || '',
+    productName: form.productName || source?.product.name || '',
+    sn: form.deviceSn || source?.product.sn || '', fault: form.description || source?.demand || '',
+    faultAttachments: form.descriptionAttachments.length ? [...form.descriptionAttachments] : [...(source?.demandAttachments ?? [])],
   };
+});
+const saleSignature = computed(() => JSON.stringify([form.productCategory, form.productName, form.problemL1, form.problemL2, form.problemL3]));
+let openingSale = false;
+async function continueAftersale() {
+  if (openingSale) return;
+  openingSale = true;
+  try {
+    validateWorkSource(item, true);
+    const next = copy(aftersaleContext.value) as unknown as Record<string, unknown>;
+    const previous = item.aftersalePrefill;
+    if (item.resultNo) { item.aftersaleOpen = true; return; }
+    if (item.aftersaleForm && previous) {
+      const changed = ['customerName', 'customerPhone', 'address', 'productCategory', 'productName', 'sn', 'fault', 'faultAttachments'].filter((key) => JSON.stringify(next[key]) !== JSON.stringify(previous[key]));
+      const oldRegion = String(previous.region || '').split('/').map((v) => v.trim());
+      const regionConflict = next.region !== previous.region && ['province', 'city', 'district'].some((key, i) => String(item.aftersaleForm?.[key] || '') !== (oldRegion[i] || ''));
+      const conflict = regionConflict || changed.some((key) => JSON.stringify(item.aftersaleForm?.[key] ?? '') !== JSON.stringify(previous[key] ?? ''));
+      if (conflict && !await new Promise<boolean>((resolve) => Modal.confirm({ title: '更新售后公共信息', content: '客户或产品信息已变化，售后表单中对应字段也有手动修改。是否按当前统一建单页更新这些字段？专业办理内容将保留。', okText: '确认更新', cancelText: '返回核对', onOk: () => resolve(true), onCancel: () => resolve(false) }))) { item.error = '公共信息尚未确认，请核对当前客户及产品后继续。'; return; }
+      for (const key of ['customerName', 'customerPhone', 'address', 'productCategory', 'productName', 'sn', 'fault', 'faultAttachments']) {
+        if (JSON.stringify(next[key]) !== JSON.stringify(previous[key])) item.aftersaleForm[key] = copy(next[key] ?? '');
+      }
+      if (next.region !== previous.region) {
+        const parts = String(next.region || '').split('/').map((value) => value.trim());
+        [item.aftersaleForm.province, item.aftersaleForm.city, item.aftersaleForm.district] = [parts[0] || '', parts[1] || '', parts[2] || ''];
+      }
+    }
+    item.aftersalePrefill = next; item.surface = 'aftersale'; item.modalHost = 'unified';
+    item.aftersaleDismissed = saleSignature.value; item.aftersaleOpen = true;
+  }
+  catch (e) { item.error = e instanceof Error ? e.message : '当前不可创建售后工单'; }
+  finally { openingSale = false; }
 }
-const aftersaleContext = shallowRef<AftersaleContext>(buildAftersaleContext());
-watch(
-  () => JSON.stringify(buildAftersaleContext()),
-  () => { aftersaleContext.value = buildAftersaleContext(); },
-);
-const aftersaleForm = ref<InstanceType<typeof AftersaleCreateForm> | null>(null);
-
-function aftersaleNo(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `AS-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${Math.floor(Date.now() % 90000) + 10000}`;
+let resolvingSaleExit = false;
+let stableForm = copy(form);
+async function restoreBranch(snapshot: typeof stableForm) {
+  restoring.value = true;
+  applyDraft(snapshot as unknown as Record<string, unknown>);
+  await nextTick();
+  item.form = copy(form) as unknown as Record<string, unknown>;
+  restoring.value = false;
 }
-
-function onConfirmAftersale() {
-  if (!aftersaleForm.value?.getPayload()) {
-    scrollToFirstError();
+watch([isAftersaleType, saleSignature], async ([hit, signature], [wasHit]) => {
+  if (restoring.value || resolvingSaleExit) return;
+  if (wasHit && !hit) {
+    resolvingSaleExit = true;
+    const desired = copy(form);
+    // Freeze the complete previous branch while asking: save/continue operate on the same identity.
+    await restoreBranch(stableForm);
+    item.surface = 'aftersale';
+    const receipt = creationReceipt(item.id);
+    const pending = !!item.resultNo || receipt?.kind === 'aftersale' && receipt.phase === 'created';
+    const accepted = pending ? false : !item.aftersaleForm || await confirmWorkClose(item);
+    if (accepted) { item.surface = 'ticket'; await restoreBranch(desired); }
+    else if (pending) item.error = '售后单已生成，请完成本事项核对，不能切换为客服新建。';
+    stableForm = copy(form);
+    resolvingSaleExit = false;
     return;
   }
-  message.success(`售后单 ${aftersaleNo()} 已创建`);
-  void leaveTo('/home');
+  if (hit && item.aftersaleDismissed !== signature) void continueAftersale();
+});
+watch(form, () => { if (!restoring.value && !resolvingSaleExit) stableForm = copy(form); }, { deep: true, flush: 'post' });
+async function saleCompleted(no: string) {
+  works.complete(item, no);
+  await leaveTo('/aftersale');
 }
 
 /* ---------------- 提交 ---------------- */
@@ -310,67 +368,102 @@ function scrollToFirstError() {
 async function leaveTo(path: string) {
   await router.push(path);
   await nextTick();
-  tabs.close(UNIFIED_CREATE_PATH);
+  await tabs.close(workPath(item.id));
 }
-
-function onCancel() {
-  tabs.close(UNIFIED_CREATE_PATH);
-}
-
+function onCancel() { void tabs.close(workPath(item.id)); }
 function onDraft() {
-  draftStore.save({
-    id: `draft-${Date.now()}`,
-    title: form.title || '未命名草稿',
-    typeLabel: form.ticketType || '工单',
-    customerName: form.customer?.name || '未选择客户',
-    savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
-    form: JSON.parse(JSON.stringify(form)),
-    ...(isXiaozhiType.value ? { xiaozhiScene: true } : {}),
-  });
-  message.success('已存草稿，可在工作台「草稿箱」继续编辑');
-  onCancel();
+  if (resolvingSaleExit) return;
+  if (!works.save(item)) return;
+  message.success('草稿已保存');
+  void tabs.close(workPath(item.id));
+}
+function validateExternal() {
+  const rows = form.externalComplaintCategories ?? [];
+  errors.complaintL1 = !rows.length || rows.some((row) => !row.cat1);
+  errors.complaintL2 = !rows.length || rows.some((row) => !EXTERNAL_CATEGORIES[row.cat1]?.includes(row.cat2));
+  errors.description = !form.description.trim();
+  errors.complaintPlatform = !form.complaintPlatforms.length || form.complaintPlatforms.some((p) => !complaintPlatformsBySource('外投渠道').includes(p.platform) || p.platform === '其他' && !p.customPlatform?.trim());
+  return !errors.complaintL1 && !errors.complaintL2 && !errors.description && !errors.complaintPlatform;
+}
+function onCreate(processAfter = false) {
+  if (resolvingSaleExit) return;
+  if (item.surface === 'aftersale' || creationReceipt(item.id)?.kind === 'aftersale') { void continueAftersale(); return; }
+  if (item.status === 'submitting' || item.status === 'complete') return;
+  const prior = creationReceipt(item.id);
+  if (prior && prior.phase !== 'created') { works.complete(item, prior.no); void leaveTo(`/tickets/${prior.no}`); return; }
+
+  submitting.value = true; item.error = undefined;
+  try {
+    const resumed = resumeSpecialResult(item);
+    if (resumed) {
+      const result = submitWorkTicket(item, resumed, processAfter, true);
+      works.complete(item, result.no); message.success(`已核对并完成工单 ${result.no}`); void leaveTo(`/tickets/${result.no}`); return;
+    }
+    if (item.status === 'unknown') item.status = 'editing';
+    validateWorkSource(item);
+    if (fixedComplaint && form.ticketType !== '投诉') throw new Error('本事项的新工单类型固定为投诉。');
+    if (item.context.action === 'transfer' && !['咨询', '建议', '商机'].includes(form.ticketType)) throw new Error('转单仅支持咨询、建议、商机。');
+    const validPath = problemTags.enabledRows.some((row) => row.productName === form.productName && row.tagL1 === form.problemL1 && row.tagL2 === form.problemL2 && (row.tagL3 || '') === form.problemL3);
+    if (!simplifiedExternal && !isContinuation && !validPath) throw new Error('当前问题分类已停用或与产品不匹配，请重新选择。');
+    if (isContinuation) {
+      if (!form.continuationSupplement?.trim()) throw new Error('请填写本次补充内容。');
+    } else if (simplifiedExternal ? !validateExternal() : !validate()) return scrollToFirstError();
+    item.status = 'submitting';
+    let ticket: Ticket;
+    let dispatched = false;
+    if (isXiaozhiType.value) {
+      const result = runSpecialCreation(item, submitXiaozhi); if (!result) { item.status = 'editing'; return scrollToFirstError(); }
+      if (result.degraded) message.warning(XIAOZHI_TIP.rdPlatformDownOnCreate);
+      ticket = result.ticket; dispatched = true;
+    } else if (isFlashType.value) {
+      const result = runSpecialCreation(item, submitFlash); if (!result) { item.status = 'editing'; return scrollToFirstError(); }
+      ticket = result.ticket; dispatched = true;
+    } else if (isRefundType.value) {
+      const result = runSpecialCreation(item, submitRefund); if (!result) { item.status = 'editing'; return scrollToFirstError(); }
+      ticket = result.ticket; dispatched = true;
+    } else {
+      ticket = buildTicket();
+      if (simplifiedExternal) {
+        const source = validateWorkSource(item)!;
+        Object.assign(ticket, {
+          customer: source.row.customer, customerPhone: source.row.customerPhone,
+          customerRegion: source.row.customerRegion, customerAddress: source.row.customerAddress,
+          product: source.row.product, productCategory: source.row.productCategory, sn: source.row.sn,
+          businessType: source.row.businessType, businessLine: source.row.businessLine, productLine: source.row.productLine,
+          priority: source.row.priority, problemL1: source.row.problemL1, problemL2: source.row.problemL2, problemL3: source.row.problemL3,
+          externalComplaintCategories: copy(form.externalComplaintCategories ?? []), complaintL1: form.externalComplaintCategories?.[0]?.cat1, complaintL2: form.externalComplaintCategories?.[0]?.cat2,
+          ticketSource: '外投渠道', type: '投诉', title: `外投·${source.row.title}`,
+          problemDesc: `【升级投诉·原单 ${source.row.no}】投诉 → 外投\n工单来源：外投渠道\n投诉分类：${form.externalComplaintCategories?.map((row) => `${row.cat1} / ${row.cat2}`).join('；')}（${inferCreateComplaintNatures(form.externalComplaintCategories ?? []).join('、')}）\n投诉平台：${form.complaintPlatforms.map((p) => `${p.customPlatform || p.platform} ${p.complaintNo}`).join('；')}\n${form.description.trim()}\n原客户诉求：${source.detail.demand}`,
+        });
+      }
+    }
+    const result = submitWorkTicket(item, ticket, processAfter, dispatched);
+    works.complete(item, result.no);
+    if (item.error) { message.warning(item.error); return; }
+    message.success(`${CREATE_WORK_LABELS[item.context.action]}完成，工单 ${result.no}`);
+    void leaveTo(`/tickets/${result.no}`);
+  } catch (e) {
+    item.status = creationReceipt(item.id) || specialIntent(item.id) || item.resultNo ? 'unknown' : 'editing';
+    item.error = e instanceof Error ? e.message : '提交失败，已保留输入，请重试。';
+  } finally { submitting.value = false; }
 }
 
-function onCreate(processAfter = false) {
-  submitting.value = true;
-  try {
-    if (isXiaozhiType.value) {
-      const res = submitXiaozhi();
-      if (!res) return scrollToFirstError();
-      if (res.degraded) message.warning(XIAOZHI_TIP.rdPlatformDownOnCreate);
-      else message.success(res.escalated ? XIAOZHI_TOAST.createdAndEscalated(res.ticket.no) : XIAOZHI_TOAST.created(res.ticket.no));
-      void leaveTo(`/tickets/${res.ticket.no}`);
-      return;
-    }
-    if (isFlashType.value) {
-      const res = submitFlash();
-      if (!res) return scrollToFirstError();
-      message.success(
-        res.evaluation.route === 'auto' && res.ticket.nodeStatus === '自动刷机中'
-          ? `已创建刷机单 ${res.ticket.no}，正在自动刷机`
-          : `已创建刷机单 ${res.ticket.no}，已转人工处理`,
-      );
-      void leaveTo(`/tickets/${res.ticket.no}`);
-      return;
-    }
-    if (isRefundType.value) {
-      const res = submitRefund();
-      if (!res) return scrollToFirstError();
-      message.success(res.message);
-      void leaveTo(`/tickets/${res.ticket.no}`);
-      return;
-    }
-    if (!validate()) return scrollToFirstError();
-    const ticket = buildTicket();
-    // 「创建」进入派单；「创建并处理」由建单人自行处理
-    if (!processAfter) useDispatchStore().dispatchNewTicket(ticket, {});
-    if (!TICKETS.some((x) => x.no === ticket.no)) TICKETS.unshift(ticket);
-    message.success(`工单 ${ticket.no} 已创建，进入处理页`);
-    void leaveTo(`/tickets/${ticket.no}`);
-  } finally {
-    submitting.value = false;
-  }
-}
+const savedForm = item.form ? copy(item.form) : null;
+if (savedForm) applyDraft(savedForm);
+if (fixedComplaint) form.ticketType = '投诉';
+if (isContinuation) { form.title = item.context.source?.title ?? ''; form.titleManual = true; }
+if (simplifiedExternal) form.ticketSource = '外投渠道';
+void nextTick(() => {
+  item.form = copy(form) as unknown as Record<string, unknown>;
+  if (item.context.action === 'transfer' && (form.priority === 'P0' || form.priority === 'P1')) form.priority = '';
+  if (!item.savedInput) item.savedInput = workInput(item);
+  stableForm = copy(form);
+  restoring.value = false;
+  if (item.context.action === 'aftersale') item.aftersaleOpen = true;
+  else if (isAftersaleType.value && !item.aftersaleDismissed) continueAftersale();
+});
+watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as Record<string, unknown>; }, { deep: true, flush: 'sync' });
+
 </script>
 
 <template>
@@ -382,7 +475,8 @@ function onCreate(processAfter = false) {
           v-model:value="form.title"
           class="uc-title-input"
           :status="errors.title ? 'error' : ''"
-          :placeholder="props.scene === 'xiaozhi' ? '小智工单登记' : '统一建单'"
+          :placeholder="item.context.scene === 'xiaozhi' ? '小智工单登记' : '统一建单'"
+          :readonly="isContinuation || simplifiedExternal"
           aria-label="工单标题"
           @input="onTitleInput"
         />
@@ -390,16 +484,34 @@ function onCreate(processAfter = false) {
           <span aria-hidden="true">|</span>
           <span>建单人 {{ userStore.name }}</span>
           <span aria-hidden="true">|</span>
-          <span class="muted">保存后生成单号</span>
+          <span class="muted">{{ CREATE_WORK_LABELS[item.context.action] }}</span>
         </div>
       </div>
     </header>
-    <div class="uc-body">
+    <a-alert v-if="item.status === 'complete' && item.resultNo" type="success" :message="`工单 ${item.resultNo} 已创建`">
+      <template #action><a-button type="link" @click="leaveTo(`/tickets/${item.resultNo}`)">打开工单</a-button></template>
+    </a-alert>
+    <a-alert v-if="item.error || works.storageError" :message="item.error || works.storageError" type="error" show-icon />
+    <div v-if="item.context.source" style="padding:12px 24px;background:#fff7e6">
+      {{ CREATE_WORK_LABELS[item.context.action] }} · 原工单 <a :href="ticketHref(item.context.source.no)" target="_blank">{{ item.context.source.no }}</a> · {{ item.context.source.title }}
+    </div>
+    <div v-if="item.context.action !== 'aftersale'" class="uc-body">
       <!-- ① 客户与代报人 -->
-      <UnifiedCustomerPart :ctx="ctx" :search-only="isAftersaleType" />
+      <UnifiedCustomerPart v-if="!simplifiedExternal && !isContinuation" :ctx="ctx" />
+      <CreateTicketPartCard v-else title="原单信息">
+        {{ item.context.source?.customer.name }} · {{ item.context.source?.product.name }} · {{ item.context.source?.priority }}
+        <span v-if="simplifiedExternal">新单来源：外投渠道</span>
+      </CreateTicketPartCard>
 
       <!-- ② 工单基础（含问题描述与附件） -->
-      <CreateTicketPartCard title="工单基础">
+      <CreateTicketPartCard v-if="isContinuation" title="本次补充">
+        <p>客户、产品、类型、来源、问题分类、优先级与归属组继承原单；承接单进入原组工单池。</p>
+        <p>{{ item.context.source?.demand }}</p>
+        <OpTextareaAttach v-model="form.continuationSupplement" v-model:attachments="form.continuationAttachments" placeholder="填写本次补充内容" />
+      </CreateTicketPartCard>
+      <CreateTicketPartCard v-else title="工单基础">
+        <template v-if="!simplifiedExternal">
+        <a-checkbox v-if="!fixedComplaint && item.context.action !== 'transfer' && !isXiaozhiType" :checked="form.ticketType === '投诉'" @change="form.ticketType = $event.target.checked ? '投诉' : '咨询'">本次诉求包含投诉</a-checkbox>
         <div class="row-3">
           <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>业务类型</label>
@@ -408,7 +520,7 @@ function onCreate(processAfter = false) {
               class="inline-control field-control"
               :disabled="lockBusinessAndType"
               :status="errors.businessType ? 'error' : ''"
-              :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
+              :options="[...new Set([...(form.businessType ? [form.businessType] : []), ...BUSINESS_TYPES])].map((v) => ({ value: v, label: v }))"
             />
           </div>
           <div class="inline-field">
@@ -417,7 +529,7 @@ function onCreate(processAfter = false) {
               v-model:value="form.productCategory"
               class="inline-control field-control"
               :status="errors.productCategory ? 'error' : ''"
-              :options="PRODUCT_CATEGORIES.map((v) => ({ value: v, label: v }))"
+              :options="[...new Set([...(form.productCategory ? [form.productCategory] : []), ...PRODUCT_CATEGORIES])].map((v) => ({ value: v, label: v }))"
             />
           </div>
           <div class="inline-field">
@@ -471,7 +583,7 @@ function onCreate(processAfter = false) {
           </div>
         </div>
 
-        <div v-if="!isAftersaleType" class="row-3">
+        <div class="row-3">
           <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>优先级</label>
             <FormSelect
@@ -488,7 +600,7 @@ function onCreate(processAfter = false) {
               v-model:value="form.ticketType"
               class="inline-control field-control"
               allow-clear
-              :disabled="lockBusinessAndType"
+              :disabled="lockTicketType"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />
@@ -498,13 +610,14 @@ function onCreate(processAfter = false) {
             <FormSelect
               v-model:value="form.ticketSource"
               class="inline-control field-control"
-              :disabled="isXiaozhiType"
+              :disabled="isXiaozhiType || simplifiedExternal"
               :options="ticketSourceOptions"
             />
           </div>
         </div>
-        <div v-if="!isAftersaleType" class="detail-body">
-          <div v-if="!isFlashType && !hidesDeviceSn" class="inline-field sn-field">
+        </template>
+        <div class="detail-body">
+          <div v-if="!simplifiedExternal && !isFlashType && !hidesDeviceSn" class="inline-field sn-field">
             <label class="inline-label xl">设备SN</label>
             <a-input
               v-model:value="form.deviceSn"
@@ -526,12 +639,10 @@ function onCreate(processAfter = false) {
         </div>
       </CreateTicketPartCard>
 
-      <!-- ③ 售后内嵌表单与特殊信息 -->
-      <CreateTicketPartCard v-if="isAftersaleType" title="工单详情">
-        <AftersaleCreateForm ref="aftersaleForm" :context="aftersaleContext" refresh-changed-only />
-      </CreateTicketPartCard>
-      <template v-else>
-        <UnifiedComplaintPart v-if="showTypePart" :ctx="ctx" />
+      <a-alert v-if="isAftersaleType" type="info" message="已选择售后分类，请在售后建单弹窗中继续填写。" />
+      <template v-else-if="!isContinuation">
+        <ExternalEscalationPart v-if="simplifiedExternal" :ctx="ctx" />
+        <UnifiedComplaintPart v-else-if="showTypePart" :ctx="ctx" :standard-upgrade="item.context.action === 'escalateComplaint'" />
         <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" :customer-region="form.customer?.region" />
         <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />
         <RefundInfoPart v-if="isRefundType" v-model:info="form.refund" :errors="refundErrors" :customer-region="form.customer?.region" />
@@ -571,9 +682,9 @@ function onCreate(processAfter = false) {
             <span>取消</span>
           </button>
           <template v-if="isAftersaleType">
-            <button type="button" class="uc-action is-process" @click="onConfirmAftersale">
+            <button type="button" class="uc-action is-process" @click="continueAftersale">
               <CheckCircleOutlined />
-              <span>确认</span>
+              <span>继续创建售后工单</span>
             </button>
           </template>
           <template v-else>
@@ -583,10 +694,10 @@ function onCreate(processAfter = false) {
             </button>
             <button type="button" class="uc-action is-create" :disabled="submitting" @click="onCreate(false)">
               <FileAddOutlined />
-              <span>{{ createPrimaryLabel }}</span>
+              <span>{{ item.status === 'unknown' ? '核对本次结果' : item.status === 'complete' ? '已完成' : item.context.action === 'create' ? createPrimaryLabel : CREATE_WORK_LABELS[item.context.action] }}</span>
             </button>
             <button
-              v-if="!isXiaozhiType && !isRefundType"
+              v-if="!isXiaozhiType && !isRefundType && !simplifiedExternal && !isContinuation"
               type="button"
               class="uc-action is-process"
               :disabled="submitting"
@@ -599,6 +710,7 @@ function onCreate(processAfter = false) {
         </div>
       </div>
     </div>
+    <WorkAftersaleModal v-if="item.aftersaleOpen && item.modalHost !== 'workspace'" :item="item" :context="aftersaleContext" @completed="saleCompleted" />
   </div>
 </template>
 

@@ -26,6 +26,8 @@ const CONTACT_KIND_LABEL: Record<CustomerContactRow['kind'], string> = {
   call: '热线', im: '在线', sms: '短信', email: '邮件',
 };
 import { useUserStore } from '@/stores/user';
+import { creationRevision } from '@/stores/creationLedger';
+import { observeOperationDetail } from './createWorkSubmission';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { useHandleLogStore } from '@/stores/handleLog';
 import { delegateTargetLabel, useDelegateTaskStore } from '@/stores/delegateTasks';
@@ -177,6 +179,11 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   }
   solve.dueBy = dueByFromStart(wholeStart, solve.totalSec);
   first.dueBy = dueByFromStart(wholeStart, first.totalSec);
+  if (t.creationSla?.inheritedFromNo && t.creationSla.customer.clocks.length && t.slaText !== '—') {
+    const inherited = JSON.parse(JSON.stringify(t.creationSla.customer.clocks)) as SlaClock[];
+    for (const clock of inherited) clock.phase = clock.kind === 'first' && responded ? 'stopped' : isSlaPaused(t) ? 'paused' : 'running';
+    return inherited;
+  }
   return [solve, first];
 }
 
@@ -291,7 +298,7 @@ export function useTicketOperation() {
       }
       if (t.complaintType) base.complaint.complaintType = normalizeComplaintType(t.complaintType);
       if (t.complaintPlatforms?.length) {
-        base.complaint.platforms = t.complaintPlatforms.map((r) => ({ ...r, complaintContent: '' }));
+        base.complaint.platforms = t.complaintPlatforms.map((r) => ({ ...r, complaintContent: r.complaintContent ?? '' }));
       }
       if (t.priorFeedback) base.complaint.priorFeedback = t.priorFeedback;
       if (t.serviceReview) base.complaint.serviceReview = t.serviceReview;
@@ -303,6 +310,7 @@ export function useTicketOperation() {
        */
       base.createComplaintL1 = t.complaintL1 ?? '';
       base.createComplaintL2 = t.complaintL2 ?? '';
+      if (t.externalComplaintCategories?.length) base.complaint.categories = JSON.parse(JSON.stringify(t.externalComplaintCategories));
       base.serviceComplaintCategory = t.serviceComplaintCategory ?? '';
       // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
       if (t.no === 'IFLYTS-20260817-00001') {
@@ -536,6 +544,14 @@ export function useTicketOperation() {
     }
     // 客户全景「同类单」格（10-23）：刷机 / 小智 / 个册退费单按标识计该客户名下的同标识单，不按工单类型「咨询」计
     if (t && sameMarkOf(t)) base.insight = { ...base.insight, sameTypeCount: sameMarkTickets(t).length };
+    if (t?.creationLinks?.length) base.linkedRecords = [...base.linkedRecords.filter((link) => !t.creationLinks?.some((r) => r.no === link.no && r.tag === link.tag)), ...JSON.parse(JSON.stringify(t.creationLinks))];
+    if (t?.inheritedEscalation) {
+      base.feishuSync = t.feishuSync ?? t.inheritedEscalation.feishuSync ?? 'none';
+      base.feishuFeedbackNo = t.inheritedEscalation.feishuFeedbackNo;
+      base.feishuWorkItemId = t.inheritedEscalation.feishuWorkItemId;
+      base.feishuRecords = JSON.parse(JSON.stringify(t.inheritedEscalation.feishuRecords ?? []));
+    }
+    if (t?.creationSupplements) base.insight.supplementCount = t.creationSupplements.length;
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
     // 小智单：履历以小智链路为准（建单 / 自动流转 / 回传），不沿用类型样例履历
@@ -1045,6 +1061,9 @@ export function useTicketOperation() {
       if (detail.value.status === '已委派') detail.value.status = '处理中';
     },
   );
+
+  watch(detail, (value) => observeOperationDetail(value), { deep: true, immediate: true, flush: 'sync' });
+  watch(creationRevision, () => { if (loadedNo) loadDetail(loadedNo); });
 
   const draftSavedAt = ref<string | null>(null);
 

@@ -2,6 +2,7 @@
 // 业务规则对齐 PRD-02。
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
+import type { CreationSla } from '../composables/createWorkSla';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
 import {
@@ -546,6 +547,14 @@ export interface Ticket {
    * 只追加、不改写。
    */
   eventTimeline?: TimelineEntry[];
+  /** Persisted links from unified creation, projected identically on both detail pages. */
+  continuationChildNo?: string;
+  continuationFromNo?: string;
+  creationSupplements?: import('./operationTabs').SimpleRecord[];
+  upgradeReturnToNo?: string;
+  inheritedEscalation?: { fromNo: string; status: string; feishuSync?: import('@/mock/ticketDetail').FeishuSyncState; feishuFeedbackNo?: string; feishuWorkItemId?: string; feishuRecords?: import('@/mock/ticketDetail').FeishuRecord[]; groupId?: string; primaryOwner?: string | null };
+  externalComplaintCategories?: { cat1: string; cat2: string }[];
+  creationLinks?: { no: string; title: string; tag: string; meta: string }[];
   /** 已处理过的售后终态事件 id（幂等：同一事件重复到达直接丢弃） */
   aftersaleEventIds?: string[];
   /**
@@ -598,6 +607,7 @@ export interface Ticket {
   /** 距超时分钟数，用于 SLA 智能排序（超时为负） */
   slaMinutes: number;
   /** 是否已做过首次响应 */
+  creationSla?: CreationSla;
   responded?: boolean;
   /** 未首响时：解决钟剩余文本（此时 slaText/slaState 为首响钟＝最急钟摘要）；已首响后解决钟即 slaText */
   resolveSlaText?: string;
@@ -737,7 +747,7 @@ export interface Ticket {
    */
   escalatedToNo?: string;
   /** 投诉渠道字段（升级外投随单落库，处理页带出） */
-  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string; complaintContent?: string }[];
   priorFeedback?: string;
   serviceReview?: string;
   complaintReceiveTime?: string;
@@ -784,6 +794,7 @@ export interface CreateTicketPrefill {
   escalateTarget?: 'complaint' | 'external';
   parentNo?: string;
   parentTitle?: string;
+  descAttachments?: string[];
   customerName?: string;
   customerPhone?: string;
   /** 客户标识：业务类型变更后按它重取档案 */

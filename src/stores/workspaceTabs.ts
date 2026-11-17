@@ -60,12 +60,13 @@ export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
 
   /** 路由进入时登记/激活页签 */
   function syncFromRoute(path: string, title?: string) {
-    if (!isWorkspacePath(path)) return;
+    if (!isWorkspacePath(path) || path === '/unified-create') return;
+    if (path.startsWith('/unified-create/')) tabs.value = tabs.value.filter((tab) => tab.key !== '/unified-create');
     const key = path;
     const label = resolveWorkspaceTabTitle(path, title);
     const existing = tabs.value.find((t) => t.key === key);
     if (existing) {
-      existing.title = label;
+      if (!path.startsWith('/unified-create/')) existing.title = label;
     } else {
       tabs.value.push({ key, path, title: label });
     }

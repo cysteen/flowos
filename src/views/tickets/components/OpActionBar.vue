@@ -186,6 +186,7 @@ const emit = defineEmits<{
   cancel: [];
   withdraw: [];
   transferTicket: [];
+  createAftersale: [];
   riskReport: [payload: {
     reason: string;
     category: string | null;
@@ -689,6 +690,7 @@ function run(action: OpActionType | '转单') {
     riskReportOpen.value = true;
     return;
   }
+  if (action === '转售后') { emit('createAftersale'); return; }
   if (DIALOG_ACTIONS.includes(action)) {
     dialogAction.value = action;
     dialogOpen.value = true;
@@ -745,8 +747,7 @@ function openAftersale() {
   if (isTransferred.value) return;
   // 已有活跃关联时按钮已置灰（§5.1 第 5 / 6 行），不建第二张
   if (linkedAftersale.value) return;
-  dialogAction.value = '关联售后';
-  dialogOpen.value = true;
+  emit('createAftersale');
 }
 
 /** 页头「关联售后」位的激活形态：打开同一个激活确认 */

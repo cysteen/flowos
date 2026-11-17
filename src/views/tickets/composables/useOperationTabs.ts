@@ -4,17 +4,18 @@ import { TICKET_DEMO_TAB_OVERRIDES } from '@/mock/ticketDemoTabOverrides';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
+import type { Ticket } from '../types/ticket';
 import { isAftersaleChainTicket } from './aftersaleEvents';
 
 /**
  * 客服⇄售后链路上的单（1025）：关联单 / 补充 / 催单只画本单真实的数据（售后卡片、承接行由处理页载入时挂上），
  * 技术支持草稿留空 —— 不沿用类型样例，否则别的单的关联行与处理结果会混进来。
  */
-function ownTabData(merged: OperationTabData): OperationTabData {
+function ownTabData(merged: OperationTabData, row?: Ticket): OperationTabData {
   return {
     ...merged,
     relatedTickets: [],
-    supplementRecords: [],
+    supplementRecords: JSON.parse(JSON.stringify(row?.creationSupplements ?? [])),
     dunningRecords: [],
     techDraft: {
       ...merged.techDraft,
@@ -34,11 +35,11 @@ function buildTabData(type: string, ticketNo?: string): OperationTabData {
   const byNo = ticketNo ? TICKET_DEMO_TAB_OVERRIDES[ticketNo] : undefined;
   if (byNo) return { ...merged, ...JSON.parse(JSON.stringify(byNo)) };
   const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
-  if (isAftersaleChainTicket(row)) return ownTabData(merged);
+  if (isAftersaleChainTicket(row)) return ownTabData(merged, row);
   // 种子里已有处理人的单之外（待领种子单、本会话新建 / 关联建出的单）：Tab 样例数据一律不落，只画本单自己的数据（D3）
   if (ticketNo && TICKETS.some((x) => x.no === ticketNo) && !SEED_CLAIMED_TICKET_NOS.has(ticketNo)) {
     return {
-      ...ownTabData(merged),
+      ...ownTabData(merged, row),
       contactRecords: [],
       notifyRecords: [],
       surveyRecords: [],

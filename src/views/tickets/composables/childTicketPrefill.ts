@@ -1,92 +1,39 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import type { CreateTicketPrefill, Channel, Priority } from '@/views/tickets/types/ticket';
-import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
+import { TICKETS } from '@/mock/tickets';
+import type { CreateTicketPrefill, Channel, Priority } from '../types/ticket';
+import { PRODUCT_NAMES, normalizeTicketSource, type CreateFormTicketType, type TicketSource } from '../types/createTicket';
 
-const CHANNEL_MAP: Record<string, Channel> = {
-  在线客服: '在线客服',
-  电话: '电话',
-  '400热线': '电话',
-  邮件: '邮件',
-  小程序: '小程序',
-  APP: 'APP',
-};
-
-/** 主单类型 → 推荐子单表单类型 */
-const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
-  投诉: '咨询',
-  建议: '咨询',
-  商机: '咨询',
-  咨询: '咨询',
-};
-
-/** 原单优先级带入；读不到时留空由坐席选（与新建工单默认值同一规则，D2） */
-function mapPriority(p: string): Priority | undefined {
-  if (p === 'P0' || p === 'P1' || p === 'P2' || p === 'P3') return p;
-  return undefined;
+const CHANNEL_MAP: Record<string, Channel> = { 在线客服: '在线客服', 电话: '电话', '400热线': '电话', 邮件: '邮件', 小程序: '小程序', APP: 'APP' };
+const LEGACY_CATEGORY: Record<string, string> = { 消费电子: '智能硬件', 企业服务: '软件服务', 会员权益: '软件服务', 开放平台: '软件服务', 教育服务: '软件服务' };
+/** Copy the source's business facts once. Historical values remain visible; they are never replaced by a sample. */
+function originPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
+  const row = TICKETS.find((ticket) => ticket.no === parent.no);
+  const product = row?.product || parent.product.name;
+  const originalCategory = row?.productCategory || parent.product.category;
+  const category = PRODUCT_NAMES[originalCategory] ? originalCategory : LEGACY_CATEGORY[originalCategory] || Object.keys(PRODUCT_NAMES).find((key) => PRODUCT_NAMES[key].includes(product)) || originalCategory;
+  const tags = parent.product.issueTags ?? [];
+  return {
+    parentNo: parent.no, parentTitle: parent.title,
+    customerName: row?.customer || parent.customer.name,
+    customerPhone: row?.customerPhone || parent.customer.contacts.find((contact) => contact.type === 'phone')?.value || '',
+    customerRegion: row?.customerRegion || parent.customer.region, customerAddress: row?.customerAddress || parent.customer.address,
+    customerTypes: [...parent.customer.types], vip: row?.vip ?? parent.customer.types.some((tag) => tag.includes('VIP')),
+    businessType: row?.businessType || parent.businessType, businessLine: row?.businessLine || parent.businessLine,
+    productCategory: category, product, sn: row?.sn || parent.product.sn,
+    channel: CHANNEL_MAP[parent.channel] || '在线客服',
+    ticketSource: normalizeTicketSource(row?.ticketSource || parent.source) as TicketSource,
+    problemL1: row?.problemL1 ?? tags[0] ?? '', problemL2: row?.problemL2 ?? tags[1] ?? '', problemL3: row?.problemL3 ?? tags[2] ?? '',
+    priority: (row?.priority || parent.priority) as Priority,
+    complaintType: row?.complaintType || parent.complaint.complaintType,
+    desc: row?.problemDesc || parent.demand, descAttachments: [...(row?.problemDescAttachments || parent.demandAttachments || [])],
+  };
 }
-
-function firstPhone(parent: TicketDetailMeta): string {
-  return parent.customer.contacts.find((c) => c.type === 'phone')?.value ?? '';
-}
-
-/** 从主单详情生成子单新建弹窗预填数据 */
+/** This is the actual transfer entry; the old internal mode name does not mean business child creation. */
 export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
-  const parentType = parent.type;
-  const childFormType = CHILD_FORM_TYPE_HINT[parent.type] ?? '咨询';
-  const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
-
-  return {
-    mode: 'child',
-    parentNo: parent.no,
-    parentTitle: parent.title,
-    customerName: parent.customer.name,
-    customerPhone: firstPhone(parent),
-    vip: parent.customer.types.some((t) => t.includes('VIP')),
-    product: parent.product.name,
-    sn: parent.product.sn,
-    channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
-    formTicketType: childFormType,
-    priority: mapPriority(parent.priority),
-    complaintType: parent.complaint.complaintType,
-    desc: [
-      `【子单·关联主单 ${parent.no}】`,
-      `主单类型：${parentType} · 诉求：${demandShort}`,
-      '',
-      '子任务说明：',
-    ].join('\n'),
-  };
+  const result = { ...originPrefill(parent), mode: 'child' as const, formTicketType: '咨询' as const };
+  if (result.priority === 'P0' || result.priority === 'P1') result.priority = undefined;
+  return result;
 }
-
-/** 从原单详情生成 reopen（重新建单）弹窗预填数据 */
 export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
-  const parentType = parent.type;
-  /**
-   * 原单类型照搬到 reopen 弹窗。TicketDetailMeta.type 在 mock 里只声明成宽松 string，
-   * 而工单类型的真源是 TicketType（= CreateFormTicketType 的五类：投诉/建议/商机/咨询/刷机，含刷机见 930 教育刷机单），
-   * 故按该口径收窄，运行时与原来的直接照搬一致。
-   */
-  const formTicketType = parent.type as CreateFormTicketType;
-  const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
-
-  return {
-    mode: 'reopen',
-    parentNo: parent.no,
-    parentTitle: parent.title,
-    customerName: parent.customer.name,
-    customerPhone: firstPhone(parent),
-    vip: parent.customer.types.some((t) => t.includes('VIP')),
-    product: parent.product.name,
-    sn: parent.product.sn,
-    channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
-    formTicketType,
-    priority: mapPriority(parent.priority),
-    complaintType: parent.complaint.complaintType,
-    desc: [
-      `【Reopen·关联原单 ${parent.no}】`,
-      `原单标题：${parent.title}`,
-      `原诉求：${demandShort}`,
-      '',
-      '客户再次反馈：',
-    ].join('\n'),
-  };
+  return { ...originPrefill(parent), mode: 'reopen', noFlashScene: true, formTicketType: parent.type as CreateFormTicketType };
 }

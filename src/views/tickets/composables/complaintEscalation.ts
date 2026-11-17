@@ -9,7 +9,7 @@ import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, PRODUCT_NAMES, normal
  * 升级投诉 / 升级外投判定逻辑。
  *
  * **升阶两档**：`非投诉（咨询/商机/建议） → 投诉 → 外投`。
- * - 「外投」不是投诉分类，是**工单来源＝内投渠道或外投渠道**（两者同层）；
+ * - 「外投」不是投诉分类，是**工单来源＝外投渠道**；
  * - 页头两枚按钮「升级投诉」「升级外投」，不满足即不展示。两枚都打开新建工单弹窗（预填原单），见 `buildEscalatePrefill`。
  */
 
@@ -35,11 +35,11 @@ const AFTERSALE_INBOUND_TIP = '当前来源不可升级外投；补投诉信息�
  * 「已转出」也是冻结态（基线 §2 该行「升级投诉」＝置灰），1025 起门禁②不再拦已关联售后（※26），
  * 故单列一道，提示与底栏冻结同文。
  */
-const FROZEN_STATUS = /已挂起|申请(?:挂起|关闭|强结)中|业务动作审核中/;
+const FROZEN_STATUS = /已挂起|申请(?:挂起|关闭|强结)中|业务动作审核中|调研中|未认领|草稿/;
 const TRANSFERRED_OUT_TIP = '工单已转出至售后，等待售后处理结果';
 /** 中止态：已取消是业务中止，不该再派生新单（基线该行整行 🔒） */
 const VOID_STATUS = /已取消/;
-const EXTERNAL_TERMINAL_TIP = '原单来源已是内投或外投渠道（投诉最高阶），不可再升级；如需补充请用「新建补充」';
+const EXTERNAL_TERMINAL_TIP = '原单来源已是外投渠道（投诉最高阶），不可再升级；如需补充请用「新建补充」';
 
 export interface EscalateVerdict {
   tier: ComplaintTier;
@@ -77,13 +77,14 @@ export function isTicketTerminated(status: string): boolean {
 
 /**
  * 原单阶层判定。
- * 外投阶层＝来源为内投渠道或外投渠道（或外投标记）——投诉平台字段只驱动处理表单的外投分支字段，
+ * 外投阶层以有效来源为外投渠道判定；内投渠道优先于历史外投标记——投诉平台字段只驱动处理表单的外投分支字段，
  * 不单独决定阶层。
  */
 export function resolveComplaintTier(detail: TicketDetailMeta): ComplaintTier {
   if (detail.type !== '投诉') return 'none';
   const source = normalizeTicketSource(detail.source);
-  if (detail.isExternalAppeal || source === '外投渠道' || source === '内投渠道') return 'external';
+  if (source === '内投渠道') return 'complaint';
+  if (source === '外投渠道' || detail.isExternalAppeal && !source) return 'external';
   return 'complaint';
 }
 
@@ -181,9 +182,9 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
     return {
       tier,
       tierLabel,
-      kind: frontline ? null : 'onComplaint',
-      entryEnabled: !frontline,
-      entryTip: frontline ? FRONTLINE_COMPLAINT_TIP : undefined,
+      kind: !frontline && normalizeTicketSource(detail.source) === '内投渠道' ? 'onComplaint' : null,
+      entryEnabled: !frontline && normalizeTicketSource(detail.source) === '内投渠道' && ['agent-l2', 'team-leader', 'complaint-handler', 'complaint-supervisor', 'system-admin', 'ops-admin', 'tenant-admin'].includes(roleKey),
+      entryTip: frontline ? FRONTLINE_COMPLAINT_TIP : '仅内投渠道投诉可升级外投；补充投诉信息请用新建补充',
     };
   }
 
@@ -198,14 +199,14 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
 
 /**
  * 页头两枚升级按钮展示哪几枚（不满足即不展示，不置灰）：
- * - 非投诉单：升级投诉 + 升级外投；一线坐席选不到内投 / 外投渠道，只出升级投诉；
- * - 投诉单（来源电话 / IM / 小程序）：只出升级外投（一线不出，见判定）；
+ * - 非投诉单：升级投诉（第一跳完整表单）；
+ * - 投诉单仅内投来源可升外投；电话 / IM / 小程序等来源不放行；
  * - 其余（外投阶层、冻结态、已取消、已转出、已升级过等）：都不出。
  */
 export function resolveEscalateButtons(detail: TicketDetailMeta, roleKey: string): { complaint: boolean; external: boolean } {
   const verdict = buildEscalateVerdict(detail, roleKey);
   if (!verdict.entryEnabled) return { complaint: false, external: false };
-  if (verdict.kind === 'toComplaint') return { complaint: true, external: !isFrontlineActor(roleKey) };
+  if (verdict.kind === 'toComplaint') return { complaint: true, external: false };
   return { complaint: false, external: verdict.kind === 'onComplaint' };
 }
 
@@ -278,8 +279,8 @@ function flashPrefillPart(detail: TicketDetailMeta, phone: string): Partial<Crea
 
 /** 升级投诉弹窗的工单来源选项 */
 export const ESCALATE_COMPLAINT_SOURCES: TicketSource[] = ['电话', 'IM', '客户服务小程序', '售后系统'];
-/** 升级外投弹窗的工单来源选项（默认内投渠道） */
-export const ESCALATE_EXTERNAL_SOURCES: TicketSource[] = ['内投渠道', '外投渠道'];
+/** 升级外投来源固定外投渠道 */
+export const ESCALATE_EXTERNAL_SOURCES: TicketSource[] = ['外投渠道'];
 
 /** 工单行上的存量产品分类 → 建单产品分类（建单下拉只有 `PRODUCT_CATEGORIES` 三项） */
 const LEGACY_PRODUCT_CATEGORY: Record<string, string> = {
@@ -337,7 +338,7 @@ export function buildEscalatePrefill(detail: TicketDetailMeta, target: EscalateT
     priority: prefillPriority(detail.priority),
     businessType: realValue(detail.businessType),
     ticketSource: target === 'external'
-      ? '内投渠道'
+      ? '外投渠道'
       : (ESCALATE_COMPLAINT_SOURCES.includes(originSource) ? originSource : '电话'),
     problemL1: realValue(row?.problemL1) ?? tags[0] ?? '',
     problemL2: realValue(row?.problemL2) ?? tags[1] ?? '',

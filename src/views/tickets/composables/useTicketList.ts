@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import { TICKETS } from '@/mock/tickets';
+import { creationRevision } from '@/stores/creationLedger';
 import {
   inGroupPoolScope,
   inMineTaskScope,
@@ -50,6 +51,7 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
 
 export function useTicketList(scope: TicketListScope = 'workbench') {
   const all = ref<Ticket[]>([...TICKETS]);
+  watch(creationRevision, () => { all.value = [...TICKETS]; });
 
   const query = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
   /** 顶栏综合搜索（工单号 / 标题 / 客户） */

@@ -8,6 +8,7 @@ import WorkspacePageTabs from './WorkspacePageTabs.vue';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
 import FlowGlobalAssistantFab from '@/components/personal-links/FlowGlobalAssistantFab.vue';
 import GlobalTicketReminders from '@/components/tickets/GlobalTicketReminders.vue';
+import CreateWorkGuard from '@/views/tickets/components/unified-create/CreateWorkGuard.vue';
 
 const route = useRoute();
 const showGlobalLinksFab = computed(
@@ -59,6 +60,7 @@ watch(
     </a-layout>
     <FlowGlobalAssistantFab v-if="showGlobalLinksFab" />
     <GlobalTicketReminders />
+    <CreateWorkGuard />
   </a-layout>
 </template>
 

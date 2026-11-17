@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
@@ -41,10 +41,10 @@ import {
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
-// 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
-const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
+import { useOpenUnifiedCreate } from './composables/unifiedCreateEntry';
+import { receiveUpgradeReturn } from './composables/upgradeReturnRouting';
 import {
   ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, trimEndPunct,
 } from './composables/opActions';
@@ -109,7 +109,7 @@ const route = useRoute();
 const router = useRouter();
 const {
   detail: d, timeline, opState, suspendInfo, draftSavedAt,
-  dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint, reloadDetail,
+  dispatch, confirmWithdraw, reloadDetail,
 } = useTicketOperation();
 const {
   form, activeChip, expandedSections, filledSupplementCount,
@@ -1228,8 +1228,6 @@ watch(
   { immediate: true },
 );
 
-const createOpen = ref(false);
-const createPrefill = ref<CreateTicketPrefill | null>(null);
 
 function onContact(type: 'call' | 'sms' | 'email', value: string) {
   if (type === 'sms') {
@@ -1352,14 +1350,16 @@ function onStatOpenTicket(no: string) {
   message.info(`打开工单 ${no}`);
 }
 
+const openUnifiedWork = useOpenUnifiedCreate();
 function openChildCreate() {
-  createPrefill.value = buildChildTicketPrefill(d.value);
-  createOpen.value = true;
+  openUnifiedWork({ action: 'transfer', scene: 'general', source: d.value, prefill: buildChildTicketPrefill(d.value) });
 }
 
 function openReopenCreate() {
-  createPrefill.value = buildReopenTicketPrefill(d.value);
-  createOpen.value = true;
+  openUnifiedWork({ action: 'reopen', scene: 'general', source: d.value, prefill: buildReopenTicketPrefill(d.value) });
+}
+function openAftersaleWork() {
+  openUnifiedWork({ action: 'aftersale', scene: 'general', source: d.value, aftersaleAction: d.value.type === '投诉' ? '关联售后' : '转售后' });
 }
 
 /**
@@ -1558,121 +1558,12 @@ function openRelation(rel: TicketRelation) {
   router.push(`/tickets/${rel.no}`);
 }
 
-// —— 升级投诉 / 升级外投：建单弹窗（预填原单）→ 建新单 → 原单改状态 + 双向关联 ——
-/** 建单弹窗正在为刷机单「关联投诉」建单：提交后走弱关联，不走升级投诉 */
-const flashLinkPending = ref(false);
-watch(createOpen, (v) => { if (!v) flashLinkPending.value = false; });
-
-/** 升级投诉 / 升级外投：两枚按钮同一套壳，提交后走 `onTicketCreated` 的升级分支 */
+// Unified work captures the source before leaving this detail page.
 function openEscalate(target: EscalateTarget) {
-  createPrefill.value = buildEscalatePrefill(d.value, target);
-  createOpen.value = true;
-}
-
-/** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
-function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
-  const note = ticket.problemDesc ?? '';
-  const wasEnded = isTicketTerminated(d.value.status);
-  const seenIds = new Set(timeline.value.map((e) => e.id));
-  // 基线 ※26：客服来源位关联随升级迁到新投诉单，新单写「关联接入」（原单侧「关联降级」在 applyOpAction）
-  // ④ 的售后转入咨询单升级时迁的是客服派生位（口径定稿 6b），新单接同一位
-  const la = d.value.linkedAftersale;
-  if (la) {
-    const slot = la.slot ?? 'source';
-    Object.assign(ticket, slot === 'derived'
-      ? {
-          aftersaleOriginNo: la.no,
-          // 关系类型随单保留（口径定稿 6d）：投诉新单的「关联售后」位为「激活售后单」
-          aftersaleRelation: la.relation === 'escalated' ? 'escalated' : 'converted',
-          aftersaleOriginTitle: la.title,
-          aftersaleOriginStatus: la.status,
-          aftersaleOriginServiceType: la.serviceType,
-        }
-      : {
-          linkedAftersaleNo: la.no,
-          linkedAftersaleStatus: la.status,
-          linkedAftersaleServiceType: la.serviceType,
-        });
-    Object.assign(ticket, {
-      eventTimeline: [
-        ...(ticket.eventTimeline ?? []),
-        {
-          id: `as-${ticket.no}-joined-${la.no}`,
-          ...aftersaleLinkJoinedEntry({
-            asNo: la.no, fromNo: d.value.no, who: user.name || '系统', role: mapUserRole(user.roleKey), at: nowFullText(), slot,
-          }),
-        },
-      ],
-    });
-  }
-  addEscalatedComplaint(ticket, targetLabel, note);
-  syncEscalatedRelatedCard(ticket, targetLabel);
-  dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
-  // 落工单行：离开本页再打开、列表状态都按新状态走；本次新增的履历随行带上。终态原单状态不变，只留关联
-  const row = TICKETS.find((x) => x.no === d.value.no);
-  if (row) {
-    if (wasEnded) row.escalatedLinkNo = ticket.no;
-    else {
-      row.escalatedToNo = ticket.no;
-      row.escalatedToExternal = targetLabel === '外投';
-      row.tab = 'done';
-      row.handledByMe = true;
-      row.myUpgradeAction = true;
-      row.slaText = '—';
-      row.slaSub = targetLabel === '外投' ? '已升级外投·停表' : '已升级投诉·停表';
-      row.slaState = 'ok';
-      row.updatedAt = nowFullText();
-    }
-    row.eventTimeline = [
-      ...(row.eventTimeline ?? []),
-      ...timeline.value.filter((e) => !seenIds.has(e.id)).map((e) => ({ ...e })),
-    ];
-  }
-  if (!processAfter) processTabsRef.value?.switchTab('related');
-}
-
-function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
-  // 刷机单「关联投诉」（1013 A21 / B5）：新投诉单与本单弱关联，本单状态不变
-  // 个册退费单与小智单同此（小智：用户 2026-10-26），各自落自己那条链路的履历与快照
-  if (flashLinkPending.value) {
-    flashLinkPending.value = false;
-    const actor = { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
-    const res = isXiaozhi.value
-      ? xiaozhiStore.linkComplaint(d.value.no, ticket, actor)
-      : isRefund.value
-        ? refundStore.linkComplaint(d.value.no, ticket, actor)
-        : flashStore.linkComplaint(d.value.no, ticket, flashActor());
-    if (res.ok) message.success(res.message);
-    if (!processAfter) processTabsRef.value?.switchTab('related');
-  }
-  else if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
-  else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
-  // 升级：建单弹窗提交即完成——原单改状态 + 双向关联 + 写履历。升级外投无论选内投还是外投，原单都落「已升级外投」
-  else if (createPrefill.value?.mode === 'escalate') {
-    finishEscalate(ticket, createPrefill.value.escalateTarget === 'external' ? '外投' : '投诉', processAfter);
-  }
-  if (processAfter) router.push(`/tickets/${ticket.no}`);
-}
-
-/** 升级生成的新投诉单同步进「关联单」列表（客服侧本系统单，可站内打开） */
-function syncEscalatedRelatedCard(ticket: Ticket, target: string) {
-  const cards = tabData.value.relatedTickets;
-  if (cards.some((c) => c.no === ticket.no)) return;
-  cards.unshift({
-    no: ticket.no,
-    title: ticket.title,
-    status: '未认领',
-    statusColor: '#1A6FFF',
-    type: target,
-    typeColor: '#EF4444',
-    createdAt: nowFullText(),
-    createdAtFull: nowFullText(),
-    builder: user.name || '当前坐席',
-    demand: d.value.demand,
-    processRecords: [
-      { who: user.name || '当前坐席', when: nowFullText(), content: `由原单 ${d.value.no} 升级投诉生成` },
-    ],
-  });
+  const origin = JSON.parse(JSON.stringify(d.value));
+  const open = () => openUnifiedWork({ action: target === 'external' ? 'escalateExternal' : 'escalateComplaint', scene: 'general', source: origin, prefill: buildEscalatePrefill(origin, target), confirmedUpgradeStatus: ['已升级技术支持', '已升级产研'].includes(origin.status) ? origin.status : undefined });
+  if (['已升级技术支持', '已升级产研'].includes(origin.status)) Modal.confirm({ title: '确认升级投诉', content: `升级投诉将关闭本单，${origin.status === '已升级技术支持' ? '三线技术支持组' : '产研'}的回传改投新单。确认继续？`, okText: '确认继续', cancelText: '取消', onOk: () => { open(); } });
+  else open();
 }
 
 function nowFullText(): string {
@@ -2235,6 +2126,11 @@ function onAction(payload: Record<string, unknown>) {
 }
 
 function routeAction(payload: Record<string, unknown>) {
+  const recorded = TICKETS.find((row) => row.no === d.value.no);
+  if (payload.type === '退回' && recorded?.upgradeReturnToNo) {
+    const target = receiveUpgradeReturn(recorded.no, { id: `upgrade-return-${recorded.no}-${Date.now()}`, kind: 'tech-return', content: String((payload.data as { note?: string })?.note ?? '技术支持退回'), at: nowFullText() });
+    message.success(`回传已记录到承接工单 ${target}`); return;
+  }
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
     if (log?.changes?.some((c) => c.field.startsWith('结案后备注'))) {
@@ -2872,6 +2768,13 @@ function onCancelSubmit(payload: { reason: string; remark: string }) {
  */
 function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
   if (!isTicketTerminated(d.value.status)) return false;
+  const source = TICKETS.find((row) => row.no === d.value.no);
+  const childNo = source?.continuationChildNo || d.value.childTickets[0]?.no;
+  if (childNo) {
+    const child = TICKETS.find((row) => row.no === childNo);
+    message.info(child && !isTicketTerminated(child.nodeStatus) ? `请在承接工单 ${childNo} 追加本次补充` : `本次补充已有承接工单 ${childNo}，请在该单上处理`);
+    void router.push(`/tickets/${childNo}`); return true;
+  }
   // 因**升级**而关闭 → 业务在新单上，引导过去，不再建第三张单（Zendesk 合并口径）
   if (supersededBy.value) {
     const target = supersededBy.value;
@@ -2885,7 +2788,7 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
     return true;
   }
   Modal.confirm({
-    title: `原单已${d.value.status}，无法直接${kind}`,
+    title: '本单已结束，将新建一张承接工单来处理本次补充，是否继续？',
     content: `将基于原单 ${d.value.no} 新建工单（新单号）并关联原单，${kind}信息落在新单上。是否继续？`,
     okText: '基于原单建新单',
     cancelText: '取消',
@@ -2969,11 +2872,9 @@ function onHeaderAction(name: string) {
         message.warning(flashLinkGate.value.tip ?? '');
         return;
       }
-      createPrefill.value = isRefund.value
+      openUnifiedWork({ action: 'linkComplaint', scene: 'general', source: d.value, prefill: isRefund.value
         ? { ...buildFlashLinkComplaintPrefill(d.value), desc: refundLinkComplaintDesc(d.value.no) }
-        : buildFlashLinkComplaintPrefill(d.value);
-      flashLinkPending.value = true;
-      createOpen.value = true;
+        : buildFlashLinkComplaintPrefill(d.value) });
       break;
     case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
       openLinkAftersale();
@@ -3187,8 +3088,6 @@ watch(
           @select-chip="selectChip"
           @update:form="updateForm"
           @update:tab-data="updateTabData"
-          @open-child-create="openChildCreate"
-          @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
@@ -3285,6 +3184,7 @@ watch(
       @cancel="cancelModalOpen = true"
       @withdraw="onWithdraw"
       @transfer-ticket="openChildCreate"
+      @create-aftersale="openAftersaleWork"
       @risk-report="onRiskReport"
     />
 
@@ -3296,12 +3196,6 @@ watch(
       :loading="resultSubmitting"
       :error="resultError"
       @confirm="onAftersaleResultConfirm"
-    />
-
-    <CreateTicketModal
-      v-model:open="createOpen"
-      :prefill="createPrefill"
-      @created="onTicketCreated"
     />
 
     <OpStatDetailModal

@@ -179,6 +179,8 @@ export interface SyncFeishuPayload { space: string; message: string; }
  * 字段与 AftersaleCreateForm 的表单项一一对应。
  */
 export interface AftersalePayload {
+  /** Local creation receipt; no external create request is made by this prototype. */
+  createdNo?: string;
   /* —— 客户信息 —— */
   customerName: string;
   customerPhone: string;
@@ -256,6 +258,7 @@ export function aftersaleDeepLink(no: string): string {
 
 /** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（有关联则封口，不再建单） */
 export interface AftersaleContext {
+  faultAttachments?: string[];
   /** 投诉工单：建关联单、投诉单独立跑（状态不变）；非诉：原单进「已转出」等待售后终态 */
   isComplaint: boolean;
   customerName: string;
@@ -816,7 +819,7 @@ function linkAftersaleFromPayload(
   fromComplaint: boolean,
 ): LinkedAftersale {
   const la: LinkedAftersale = {
-    no: aftersaleNo(),
+    no: data.createdNo ?? aftersaleNo(),
     status: '待接单',
     serviceType: data.serviceType,
     serviceMethod: data.serviceMethod,

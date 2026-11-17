@@ -102,8 +102,6 @@ const emit = defineEmits<{
   selectChip: [chip: import('@/views/tickets/types/operation').SupplementChip];
   'update:form': [form: ProcessFormDraft];
   'update:tabData': [data: OperationTabData];
-  openChildCreate: [];
-  openReopenCreate: [];
   'mark-read': [id: string];
   'feishu-activate': [reason: string];
   'feishu-retry': [];

@@ -228,7 +228,10 @@ export interface CreateTicketFormState {
    * 投诉平台 + 投诉编号：**成对多组**——一个平台对应一个编号，多渠道投诉就加多组
    * （与升级投诉弹窗同一套结构，见 composables/complaintEscalation.ts ComplaintPlatformPick）。
    */
-  complaintPlatforms: { platform: string; customPlatform?: string; complaintNo: string }[];
+  continuationSupplement: string;
+  continuationAttachments: string[];
+  externalComplaintCategories?: { cat1: string; cat2: string }[];
+  complaintPlatforms: { platform: string; customPlatform?: string; complaintNo: string; complaintContent?: string }[];
   businessLine: string;
   /** 归属产品线（升级外投采集） */
   productLine: string;

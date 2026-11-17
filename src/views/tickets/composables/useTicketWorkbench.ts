@@ -7,6 +7,7 @@ import { isRefundTicket } from '@/views/tickets/types/refund';
 import { computed, ref, watch } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
+import { creationRevision } from '@/stores/creationLedger';
 import { useUserStore } from '@/stores/user';
 import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
@@ -75,6 +76,7 @@ export function useTicketWorkbench() {
   // 本会话新建的个册退费单只在快照里，晚于下一行装载则刷新后工作台各页签都取不到它
   const refundStore = useRefundStore();
   const all = ref<Ticket[]>([...TICKETS]);
+  watch(creationRevision, () => { all.value = [...TICKETS]; });
   // 其他页签新建的个册退费单经快照同步进工单库后，并入本工作台数据源
   watch(() => refundStore.revisions, () => {
     const have = new Set(all.value.map((t) => t.no));
