@@ -151,6 +151,9 @@ function missRowCat3(index: number) {
 const showComplainedRole = computed(() =>
   categoryRows().some((r) => needsComplainedRole(r.cat3)),
 );
+const complainedRoleRowIndex = computed(() =>
+  categoryRows().findIndex((r) => needsComplainedRole(r.cat3)),
+);
 function platformKey(p: { platform: string; complaintNo?: string }) {
   return `${p.platform}::${p.complaintNo ?? ''}`;
 }
@@ -411,7 +414,8 @@ const riskMonitorDiff = computed(() => {
       <div
         v-for="(row, rowIndex) in form.complaintCategoryRows"
         :key="`cc-${rowIndex}`"
-        class="complaint-cat-row"
+        class="complaint-cat-row complaint-category-row"
+        :class="{ 'complaint-cat-row--with-role': rowIndex === complainedRoleRowIndex }"
       >
         <div class="cat-item" :class="{ 'is-missing': missRowCat1(rowIndex) }">
           <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类一</label>
@@ -451,6 +455,24 @@ const riskMonitorDiff = computed(() => {
           />
           <p v-if="missRowCat3(rowIndex)" class="field-err">请选择</p>
         </div>
+        <div
+          v-if="showComplainedRole && rowIndex === complainedRoleRowIndex"
+          class="cat-item"
+          :class="{ 'is-missing': missComplainedRole }"
+        >
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>被投诉角色</label>
+          <FormSelect
+            mode="multiple"
+            class="cat-select complained-role-select"
+            :class="{ 'ctrl-missing': missComplainedRole }"
+            :value="form.complainedRole"
+            :options="complainedRoleOptions"
+            :placeholder="readonly ? '' : '请选择或搜索'"
+            :max-tag-count="2"
+            @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
+          />
+          <p v-if="missComplainedRole" class="field-err">请选择</p>
+        </div>
         <div v-if="!readonly" class="cat-row-actions">
           <button
             v-if="form.complaintCategoryRows.length > 1"
@@ -472,28 +494,6 @@ const riskMonitorDiff = computed(() => {
           <span v-else class="cp-add-spacer" aria-hidden="true" />
         </div>
         <span v-else class="cat-row-actions-spacer" aria-hidden="true" />
-      </div>
-      <div
-        v-if="showComplainedRole"
-        class="complaint-cat-row complained-role-row"
-      >
-        <div class="cat-item" :class="{ 'is-missing': missComplainedRole }">
-          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>被投诉角色</label>
-          <FormSelect
-            mode="multiple"
-            class="cat-select complained-role-select"
-            :class="{ 'ctrl-missing': missComplainedRole }"
-            :value="form.complainedRole"
-            :options="complainedRoleOptions"
-            :placeholder="readonly ? '' : '请选择或搜索'"
-            :max-tag-count="2"
-            @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
-          />
-          <p v-if="missComplainedRole" class="field-err">请选择</p>
-        </div>
-        <div class="cat-item cat-item--pad" aria-hidden="true" />
-        <div class="cat-item cat-item--pad" aria-hidden="true" />
-        <span class="cat-row-actions-spacer" aria-hidden="true" />
       </div>
     </div>
     <div class="field">
@@ -699,6 +699,9 @@ const riskMonitorDiff = computed(() => {
     justify-self: start;
   }
 }
+.complaint-cat-row--with-role {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) var(--cat-actions-w);
+}
 .complained-role-select {
   width: 100%;
 }
@@ -721,6 +724,7 @@ const riskMonitorDiff = computed(() => {
   line-height: 24px;
 }
 .complaint-categories-block {
+  container: complaint-categories / inline-size;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -731,8 +735,20 @@ const riskMonitorDiff = computed(() => {
 .complaint-categories-block .complaint-cat-row {
   width: 100%;
 }
-.complained-role-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--cat-actions-w);
+@container complaint-categories (max-width: 1040px) {
+  .complaint-category-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .complaint-category-row .cat-row-actions,
+  .complaint-category-row .cat-row-actions-spacer {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+@container complaint-categories (max-width: 520px) {
+  .complaint-category-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .cp-add {
   flex: none;
