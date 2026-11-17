@@ -1140,7 +1140,7 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? 'ä¸è®
 .form-area :deep(.ant-select-selector),
 .form-area :deep(.ant-input-affix-wrapper),
 .form-area :deep(.ant-picker-input > input) {
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
 }
 .form-area :deep(.ant-checkbox-wrapper),
 .form-area :deep(.ant-radio-wrapper) {

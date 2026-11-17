@@ -580,7 +580,7 @@ watch(() => store.config, (c) => {
   border-radius: 8px !important;
   border-color: #e5e7eb !important;
   background: #fff !important;
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
 }
 .audit-ctl :deep(.ant-select-selector),
 .audit-ctl :deep(.ant-picker) {
@@ -592,17 +592,17 @@ watch(() => store.config, (c) => {
   padding-inline: 11px !important;
 }
 .audit-ctl :deep(.ant-input-affix-wrapper > input.ant-input) {
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
 }
 .audit-ctl :deep(.ant-select-selection-item),
 .audit-ctl :deep(.ant-select-selection-placeholder) {
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
   line-height: 30px !important;
   color: #1f2329;
 }
 .audit-ctl :deep(.ant-select-selection-placeholder) { color: #c9cdd4 !important; }
 .audit-ctl :deep(.ant-picker-input > input) {
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
   color: #1f2329;
 }
 .audit-ctl :deep(.ant-picker-input > input::placeholder) { color: #c9cdd4; }

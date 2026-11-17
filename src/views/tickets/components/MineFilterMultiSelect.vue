@@ -84,7 +84,7 @@ function onChange(v: unknown) {
 
 .fi-multi :deep(.ant-select-selection-placeholder) {
   line-height: 24px !important;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #9ca3af;
   inset-inline-start: 0;
 }

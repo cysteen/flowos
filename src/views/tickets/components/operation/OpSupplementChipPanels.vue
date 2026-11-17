@@ -750,7 +750,7 @@ const riskMonitorDiff = computed(() => {
   padding-bottom: 1px;
 }
 .complained-role-select :deep(.ant-select-selection-item) {
-  font-size: 11px;
+  font-size: var(--flowos-control-font-size);
   line-height: 18px;
   height: 20px;
   margin-top: 1px;

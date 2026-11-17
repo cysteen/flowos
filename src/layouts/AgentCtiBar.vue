@@ -335,7 +335,7 @@ function onMenuClick({ key }: { key: string | number }) {
 /* 带单号时按内容放宽；顶栏放不下时只压缩胶囊本身（单号省略，悬停看全），其余按钮不动 */
 .status-dd.linked { width: auto; min-width: 148px; max-width: 300px; flex: 0 1 auto; }
 .actions:has(.status-dd.linked) { flex: 0 1 auto; min-width: 0; }
-.status-dd .dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-dd .dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--flowos-control-font-size); }
 .status-dd[disabled] { opacity: 0.55; cursor: not-allowed; }
 .status-dd .dd-arr { font-size: 10px; color: #9ca3af; }
 .status-dd.ready { color: #10b981; }

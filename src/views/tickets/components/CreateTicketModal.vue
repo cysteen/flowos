@@ -1403,7 +1403,7 @@ watch(
 }
 .drop-item + .drop-item { border-top: 1px solid #f3f4f6; }
 .drop-item:hover { background: #f0f7ff; }
-.drop-name { font-size: 13px; font-weight: 600; color: #111827; flex: none; }
+.drop-name { font-size: var(--flowos-control-font-size); font-weight: 600; color: #111827; flex: none; }
 .drop-phone { font-size: 12px; color: #4b5563; flex: none; }
 .drop-meta {
   font-size: 11px;
@@ -1690,14 +1690,14 @@ watch(
 .modal-body.is-escalate .inline-control { flex: none; width: 100%; }
 .modal-body.is-escalate :deep(.ant-select-single),
 .modal-body.is-escalate :deep(.ant-select-selector) { height: 36px !important; }
-.modal-body.is-escalate :deep(.ant-select-selector) { border-radius: 6px !important; font-size: 14px; }
+.modal-body.is-escalate :deep(.ant-select-selector) { border-radius: 6px !important; font-size: var(--flowos-control-font-size); }
 .modal-body.is-escalate :deep(.ant-select-selection-item),
-.modal-body.is-escalate :deep(.ant-select-selection-placeholder) { line-height: 34px !important; font-size: 14px; }
+.modal-body.is-escalate :deep(.ant-select-selection-placeholder) { line-height: 34px !important; font-size: var(--flowos-control-font-size); }
 .modal-body.is-escalate :deep(input.ant-input),
-.modal-body.is-escalate :deep(.ant-picker) { height: 36px; border-radius: 6px; font-size: 14px; }
+.modal-body.is-escalate :deep(.ant-picker) { height: 36px; border-radius: 6px; font-size: var(--flowos-control-font-size); }
 .modal-body.is-escalate .search-box,
 .modal-body.is-escalate .btn-outline { height: 36px; }
-.modal-body.is-escalate .search-input { font-size: 14px; color: #606266; }
+.modal-body.is-escalate .search-input { font-size: var(--flowos-control-font-size); color: #606266; }
 .modal-body.is-escalate .btn-outline { color: #606266; font-size: 14px; border-color: #dcdfe6; }
 .modal-body.is-escalate .customer-card { background: #eef3ff; border-color: #c9d7ff; padding: 12px 14px; }
 .modal-body.is-escalate .cust-avatar { background: #dfe7ff; color: #5d87ff; }

@@ -393,7 +393,7 @@ async function syncFromRonglian() {
 .sel-w-sm { width: 88px !important; }
 .sel-w-lg { width: 160px !important; }
 .list-toolbar :deep(.tb-ctl.ant-select .ant-select-selector) {
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   border-radius: 6px;
   background: #fff;
 }
@@ -425,7 +425,7 @@ async function syncFromRonglian() {
   min-width: 0;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #374151;
   background: transparent;
   font-family: inherit;

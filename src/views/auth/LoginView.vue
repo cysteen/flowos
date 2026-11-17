@@ -472,7 +472,7 @@ async function onSubmit() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--flowos-control-font-size);
 }
 .account-option:hover {
   background: #f9fafb;

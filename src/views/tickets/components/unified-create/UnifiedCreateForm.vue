@@ -316,7 +316,10 @@ function onCreate(processAfter = false) {
 <template>
   <div ref="root" class="uc-page">
     <div class="uc-body">
-      <!-- ① 工单基础 -->
+      <!-- ① 客户与代报人 -->
+      <UnifiedCustomerPart :ctx="ctx" :search-only="isAftersaleType" />
+
+      <!-- ② 工单基础（含问题描述与附件） -->
       <CreateTicketPartCard title="工单基础">
         <div class="row-3">
           <div class="inline-field">
@@ -421,39 +424,34 @@ function onCreate(processAfter = false) {
             />
           </div>
         </div>
+        <div v-if="!isAftersaleType" class="detail-body">
+          <div v-if="!isFlashType && !hidesDeviceSn" class="inline-field sn-field">
+            <label class="inline-label xl">设备SN</label>
+            <a-input
+              v-model:value="form.deviceSn"
+              class="inline-control field-control"
+              placeholder="请输入设备SN"
+            />
+          </div>
+          <div class="inline-field desc-field">
+            <label class="inline-label xl"><span class="req">*</span>问题描述</label>
+            <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
+              <OpTextareaAttach
+                v-model="form.description"
+                v-model:attachments="form.descriptionAttachments"
+                :min-input-height="60"
+                :placeholder="isXiaozhiType ? '请描述问题与诉求，可上传截图或文档' : '请描述客户反馈的问题与诉求'"
+              />
+            </div>
+          </div>
+        </div>
       </CreateTicketPartCard>
 
-      <!-- ② 客户信息 -->
-      <UnifiedCustomerPart :ctx="ctx" :search-only="isAftersaleType" />
-
-      <!-- ③ 工单详情 -->
+      <!-- ③ 售后内嵌表单与特殊信息 -->
       <CreateTicketPartCard v-if="isAftersaleType" title="工单详情">
         <AftersaleCreateForm ref="aftersaleForm" :context="aftersaleContext" refresh-changed-only />
       </CreateTicketPartCard>
       <template v-else>
-        <CreateTicketPartCard title="工单详情">
-          <div class="detail-body">
-            <div v-if="!isFlashType && !hidesDeviceSn" class="inline-field sn-field">
-              <label class="inline-label xl">设备SN</label>
-              <a-input
-                v-model:value="form.deviceSn"
-                class="inline-control field-control"
-                placeholder="请输入设备SN"
-              />
-            </div>
-            <div class="inline-field desc-field">
-              <label class="inline-label xl"><span class="req">*</span>问题描述</label>
-              <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
-                <OpTextareaAttach
-                  v-model="form.description"
-                  v-model:attachments="form.descriptionAttachments"
-                  :min-input-height="60"
-                  :placeholder="isXiaozhiType ? '请描述问题与诉求，可上传截图或文档' : '请描述客户反馈的问题与诉求'"
-                />
-              </div>
-            </div>
-          </div>
-        </CreateTicketPartCard>
         <UnifiedComplaintPart v-if="showTypePart" :ctx="ctx" />
         <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" :customer-region="form.customer?.region" />
         <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />

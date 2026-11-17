@@ -1606,7 +1606,7 @@ function renderedBody(ch: NotifyChannel) {
 .sel-w-sm { width: 88px !important; }
 .sel-w-lg { width: 200px !important; }
 .list-toolbar :deep(.tb-ctl.ant-select .ant-select-selector) {
-  font-size: 13px; border-radius: 6px; background: #fff;
+  font-size: var(--flowos-control-font-size); border-radius: 6px; background: #fff;
 }
 .tb-search {
   display: flex; align-items: center; gap: 6px;
@@ -1620,7 +1620,7 @@ function renderedBody(ch: NotifyChannel) {
 .tb-search-ic { color: #9ca3af; font-size: 13px; flex: none; }
 .tb-search-input {
   flex: 1; min-width: 0; border: none; outline: none;
-  font-size: 13px; color: #374151; background: transparent; font-family: inherit;
+  font-size: var(--flowos-control-font-size); color: #374151; background: transparent; font-family: inherit;
 }
 .tb-search-input::placeholder { color: #9ca3af; }
 .tb-btn {

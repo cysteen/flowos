@@ -574,7 +574,7 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
   padding: 0;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #374151;
   background: transparent;
   cursor: pointer;
