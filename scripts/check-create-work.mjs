@@ -309,6 +309,8 @@ try {
   const externalApp = renderer.createApp({ render: () => h({ ...component, render: () => null }, { item: externalItem }) });
   externalApp.use(pinia); externalApp.use(router); externalApp.provide(ssrContextKey, {});
   const externalRoot = externalApp.mount({}); const externalState = externalRoot.$.subTree.component.setupState; await flush();
+  assert.equal(externalState.form.title, `外投·${externalSource.row.title}`);
+  assert.equal(externalState.form.titleManual, true);
   const { CREATE_COMPLAINT_L2_MAP } = await server.ssrLoadModule('/src/views/tickets/types/complaintCreateCategory.ts');
   const validRows = Object.entries(CREATE_COMPLAINT_L2_MAP).filter(([, rows]) => rows.length).slice(0, 2).map(([cat1, rows]) => ({ cat1, cat2: rows[0] }));
   externalState.form.externalComplaintCategories = [validRows[0], { ...validRows[1], cat2: '' }];
@@ -319,6 +321,7 @@ try {
   assert.equal(externalState.form.problemTime, ''); externalState.onCreate(); await flush();
   const externalReceipt = ledger.creationReceipt(externalItem.id); assert.ok(externalReceipt); assert.equal(externalReceipt.phase, 'complete');
   ledger.hydrateCreationRows(); const externalCreated = TICKETS.find((t) => t.no === externalReceipt.no);
+  assert.equal(externalCreated.title, externalState.form.title);
   assert.deepEqual(externalCreated.externalComplaintCategories, validRows); assert.equal(externalCreated.complaintPlatforms.length, 2);
   assert.equal(externalCreated.complaintPlatforms[0].complaintNo, 'ONE'); assert.equal(externalCreated.complaintPlatforms[1].customPlatform, '外部平台二'); assert.equal(externalCreated.complaintPlatforms[1].complaintNo, 'TWO');
   assert.deepEqual(inferCreateComplaintNatures(externalCreated.externalComplaintCategories), [...new Set(inferCreateComplaintNatures(validRows))]);
@@ -386,7 +389,10 @@ try {
   const readonlySaleApp = renderer.createApp({ render: () => h({ ...saleComponent, render: () => null }, { snapshot: pendingState.formSnapshot, readOnly:true, onChange: () => { throw new Error('readonly snapshot must not emit edits'); } }) });
   readonlySaleApp.provide(ssrContextKey, {}); const readonlyRoot = readonlySaleApp.mount({}); assert.equal(readonlyRoot.$.subTree.component.exposed.getPayload(), null); readonlySaleApp.unmount();
   pendingState.save(); assert.equal(useTicketDraftStore().get(pendingSaleItem.draftId).aftersaleForm.customerName, payload.customerName);
-  assert.equal(useTicketDraftStore().get(pendingSaleItem.draftId).resultNo, pendingSaleItem.resultNo); pendingApp.unmount();
+  assert.equal(useTicketDraftStore().get(pendingSaleItem.draftId).resultNo, pendingSaleItem.resultNo);
+  const completedSale = service.finishWorkAftersale(pendingSaleItem); works.complete(pendingSaleItem, completedSale.no);
+  assert.equal(pendingState.readOnly, true); assert.equal(pendingState.needsReconciliation, false);
+  assert.equal(pendingState.formSnapshot.customerName, payload.customerName); pendingApp.unmount();
   checks++; console.log('PASS pending aftersale SFC: persisted order payload is authoritative, professional fields are readonly and cannot resubmit as a new order');
   console.log(`${checks} checks passed`);
 

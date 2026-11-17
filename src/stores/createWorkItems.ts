@@ -13,7 +13,16 @@ export const useCreateWorkItemsStore = defineStore('createWorkItems', () => {
   const all = ref<CreateWorkItem[]>([]);
   const storageError = ref('');
   try { all.value = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { /* editable empty collection */ }
-  all.value.forEach((item) => { if (item.status === 'submitting') item.status = 'unknown'; });
+  function restoreReceipt(item: CreateWorkItem, opening = false) {
+    const receipt = creationReceipt(item.id);
+    if (!receipt) return;
+    item.resultNo = receipt.no;
+    item.status = receipt.phase === 'created' ? 'unknown' : 'complete';
+    item.surface = receipt.kind === 'aftersale' ? 'aftersale' : 'ticket';
+    item.aftersaleOpen = receipt.kind === 'aftersale' && (opening || item.aftersaleOpen);
+    if (item.status === 'complete') item.savedInput = workInput(item);
+  }
+  all.value.forEach((item) => { if (item.status === 'submitting') item.status = 'unknown'; restoreReceipt(item); });
   const items = computed(() => all.value.filter((item) => item.owner === owner.value));
   function persist() {
     try { localStorage.setItem(KEY, JSON.stringify(all.value)); storageError.value = ''; return true; }
@@ -26,8 +35,9 @@ export const useCreateWorkItemsStore = defineStore('createWorkItems', () => {
     const effective = draft?.context ?? context;
     const actionIdentity = `${effective.action}:${effective.source?.no || effective.scene}`;
     const identity = effective.source ? actionIdentity : draftId ? `draft:${draftId}` : actionIdentity;
-    const existing = items.value.find((item) => item.status !== 'complete' && ((draftId && item.draftId === draftId) || item.identity === identity || (effective.source && item.context.source?.no === effective.source.no && item.context.action === effective.action)));
-    if (existing) { if (!existing.draftId && draftId) existing.draftId = draftId; return existing; }
+    const cachedDraft = draftId ? items.value.find((item) => item.draftId === draftId || item.id === draft?.workId) : undefined;
+    const existing = cachedDraft || items.value.find((item) => item.status !== 'complete' && ((draftId && item.draftId === draftId) || item.identity === identity || (effective.source && item.context.source?.no === effective.source.no && item.context.action === effective.action)));
+    if (existing) { if (!existing.draftId && draftId) existing.draftId = draftId; restoreReceipt(existing, true); return existing; }
     const item: CreateWorkItem = {
       id: draft?.workId || `cw-${crypto.randomUUID()}`, owner: owner.value, identity,
       context: copy(draft?.context ?? context), draftId,
@@ -35,8 +45,9 @@ export const useCreateWorkItemsStore = defineStore('createWorkItems', () => {
       aftersaleForm: draft?.aftersaleForm ? copy(draft.aftersaleForm) : undefined,
       aftersaleOpen: (draft ? draft.surface === 'aftersale' : context.action === 'aftersale'),
       surface: draft?.surface ?? (context.action === 'aftersale' ? 'aftersale' : 'ticket'),
-      savedInput: '', status: draft?.workStatus === 'unknown' ? 'unknown' : 'editing', resultNo: draft?.resultNo,
+      savedInput: '', status: draft?.workStatus === 'complete' ? 'complete' : draft?.workStatus === 'unknown' || draft?.workStatus === 'submitting' ? 'unknown' : 'editing', resultNo: draft?.resultNo,
     };
+    restoreReceipt(item, true);
     if (draft) item.savedInput = workInput(item);
     all.value.push(item);
     persist();
@@ -49,7 +60,7 @@ export const useCreateWorkItemsStore = defineStore('createWorkItems', () => {
     const sale = item.surface === 'aftersale' ? item.aftersaleForm : undefined;
     const ok = drafts.save({
       id, title: String(f.title || sale?.fault || CREATE_WORK_LABELS[item.context.action]),
-      typeLabel: sale ? '售后工单' : String(f.ticketType || CREATE_WORK_LABELS[item.context.action]),
+      typeLabel: item.surface === 'aftersale' ? '售后工单' : String(f.ticketType || CREATE_WORK_LABELS[item.context.action]),
       customerName: String((f.customer as { name?: string } | undefined)?.name || sale?.customerName || ''),
       savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
       workId: item.id, workStatus: item.status, resultNo: item.resultNo, surface: item.surface,
