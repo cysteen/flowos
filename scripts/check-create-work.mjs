@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createServer, loadConfigFromFile } from 'vite';
 import { createPinia, setActivePinia } from 'pinia';
-import { effectScope, createRenderer, h, nextTick, ssrContextKey } from 'vue';
+import { effectScope, createRenderer, h, nextTick, ssrContextKey, reactive } from 'vue';
 import { createRouter, createMemoryHistory } from 'vue-router';
 
 const data = new Map();
@@ -323,6 +323,71 @@ try {
   assert.equal(externalCreated.complaintPlatforms[0].complaintNo, 'ONE'); assert.equal(externalCreated.complaintPlatforms[1].customPlatform, '外部平台二'); assert.equal(externalCreated.complaintPlatforms[1].complaintNo, 'TWO');
   assert.deepEqual(inferCreateComplaintNatures(externalCreated.externalComplaintCategories), [...new Set(inferCreateComplaintNatures(validRows))]);
   externalApp.unmount(); checks++; console.log('PASS actual D08 SFC: incomplete second category blocked; complete multiple categories/platform pairs persist successfully, without full-only required time');
+  user.setRole('agent-l2');
+  const historicalSource = origin();
+  Object.assign(historicalSource.row, { problemL1: '旧一类', problemL2: '旧二类', problemL3: '旧三级' });
+  const historicalItem = works.open({ action: 'transfer', scene: 'general', source: historicalSource.detail, prefill: buildChildTicketPrefill(historicalSource.detail) });
+  const historicalApp = renderer.createApp({ render: () => h({ ...component, render: () => null }, { item: historicalItem }) });
+  historicalApp.use(pinia); historicalApp.use(router); historicalApp.provide(ssrContextKey, {});
+  const historicalRoot = historicalApp.mount({}); const historicalState = historicalRoot.$.subTree.component.setupState; await flush();
+  for (const [options, value, label] of [[historicalState.l2PathOptions, historicalState.problemL2Path, '旧二类'], [historicalState.l3PathOptions, historicalState.problemL3Path, '旧三级']]) {
+    const current = options.find((row) => row.value === value); assert.ok(current); assert.equal(current.label, label); assert.equal(current.label.includes('\u001f'), false); assert.equal(current.disabled, true);
+  }
+  const beforeHistorical = TICKETS.length; historicalState.form.priority = 'P3'; historicalState.onCreate();
+  assert.match(historicalItem.error, /问题分类/); assert.equal(TICKETS.length, beforeHistorical); historicalApp.unmount();
+  checks++; console.log('PASS actual unified SFC: historical L2/L3 use human labels while invalid legacy path still blocks creation');
+
+  const productApp = renderer.createApp({ render: () => h({ ...saleComponent, render: () => null }, { snapshot: { ...clone(payload), productCategory: '', productName: '', serviceMethod: '上门', visitTime: '2026-11-18 12:00' } }) });
+  productApp.provide(ssrContextKey, {}); const productRoot = productApp.mount({}); const productInstance = productRoot.$.subTree.component; const productState = productInstance.setupState;
+  assert.equal(productInstance.exposed.getPayload(), null); assert.ok(productState.errs.productCategory); assert.ok(productState.errs.productName);
+  assert.ok(productState.productCategoryOptions.some((row) => row.value === '智能硬件'));
+  productState.form.productCategory = '智能硬件'; productState.onProductCategoryChange();
+  assert.ok(productState.productNameOptions.some((row) => row.value === '智能音箱 X1')); productState.form.productName = '智能音箱 X1';
+  assert.equal(productInstance.exposed.getPayload().productName, '智能音箱 X1');
+  productState.form.productCategory = '翻译机系列'; productState.onProductCategoryChange(); assert.equal(productState.form.productName, '');
+  assert.ok(productState.productNameOptions.some((row) => row.value === '三防翻译机')); productState.form.productName = '三防翻译机'; assert.equal(productInstance.exposed.getPayload().productName, '三防翻译机'); productApp.unmount();
+  checks++; console.log('PASS actual aftersale SFC: missing product is correctable from existing create/product-tree dictionaries; category change clears conflict');
+
+  const historySaleApp = renderer.createApp({ render: () => h({ ...saleComponent, render: () => null }, { snapshot: { ...clone(payload), productCategory: '历史产品分类', productName: '历史产品名称', serviceMethod: '上门', visitTime: '2026-11-18 12:00' } }) });
+  historySaleApp.provide(ssrContextKey, {}); const historySaleRoot = historySaleApp.mount({}); const historySaleState = historySaleRoot.$.subTree.component.setupState;
+  assert.ok(historySaleState.productCategoryOptions.some((row) => row.value === '历史产品分类'));
+  assert.ok(historySaleState.productNameOptions.some((row) => row.value === '历史产品名称')); historySaleApp.unmount();
+  checks++; console.log('PASS actual aftersale SFC: current historical product/category remain selectable and readable');
+
+  const attachComponent = (await server.ssrLoadModule('/src/views/tickets/components/operation/shared/OpTextareaAttach.vue')).default;
+  const attachProps = reactive({ modelValue: '', attachments: [], maxCount: 9, acceptExts: ['png', 'mp4'], maxFileSizeByExtMb: { png:10, mp4:20 }, readonly: false });
+  let added = [];
+  const attachView = { ...attachComponent, render: () => null };
+  const attachApp = renderer.createApp({ render: () => h(attachView, { ...attachProps, 'onUpdate:attachments': (files) => { attachProps.attachments = files; }, onFilesAdded: (files) => { added = files; } }) });
+  attachApp.provide(ssrContextKey, {}); const attachRoot = attachApp.mount({}); const attachState = attachRoot.$.subTree.component.setupState;
+  const selectFiles = async (files) => { added = []; const input = { files, value: 'selected' }; attachState.onFilesSelected({ target: input }); await flush(); return added; };
+  const mb = 1024 * 1024;
+  await selectFiles([{ name:'limit.png', size:10*mb }, { name:'over.png', size:10*mb+1 }, { name:'limit.mp4', size:20*mb }, { name:'over.mp4', size:20*mb+1 }]);
+  assert.deepEqual(attachProps.attachments, ['limit.png', 'limit.mp4']);
+  attachProps.attachments = Array.from({length:7}, (_, i) => `${i}.png`); await flush();
+  await selectFiles([{ name:'eighth.png', size:1 }, { name:'ninth.mp4', size:1 }, { name:'tenth.png', size:1 }]);
+  assert.equal(attachProps.attachments.length, 9); assert.equal(attachProps.attachments.includes('tenth.png'), false);
+  await selectFiles([{ name:'another.png', size:1 }]); assert.equal(added.length, 0); assert.equal(attachProps.attachments.length, 9);
+  checks++; console.log('PASS attachment SFC: exact 10MB image/20MB video allowed, one byte over blocked, ninth allowed and tenth blocked across batches');
+  attachProps.readonly = true; await flush(); await selectFiles([{ name:'readonly.png', size:1 }]); attachState.removeFile('0.png'); assert.equal(attachProps.attachments.length, 9); assert.equal(added.length, 0);
+  checks++; console.log('PASS attachment SFC: readonly blocks adding/removing files'); attachApp.unmount();
+
+  const defaultApp = renderer.createApp({ render: () => h({ ...attachComponent, render: () => null }, { modelValue:'', attachments:[], 'onUpdate:attachments': (files) => { added=files; } }) });
+  defaultApp.provide(ssrContextKey, {}); const defaultRoot = defaultApp.mount({}); added=[];
+  defaultRoot.$.subTree.component.setupState.onFilesSelected({ target: { files: Array.from({length:10}, (_, i) => ({ name:`default-${i}.png`, size:21*mb })), value:'selected' } });
+  assert.equal(added.length, 10); defaultApp.unmount(); checks++; console.log('PASS attachment SFC: omitted new constraints preserve unrestricted existing callers');
+
+  const pendingSaleItem = work('aftersale', origin()); pendingSaleItem.surface = 'aftersale'; pendingSaleItem.aftersaleForm = { ...clone(payload), customerName:'未提交的改动' };
+  service.recordWorkAftersale(pendingSaleItem, payload); pendingSaleItem.status='unknown';
+  const saleModalComponent = (await server.ssrLoadModule('/src/views/tickets/components/unified-create/WorkAftersaleModal.vue')).default;
+  const pendingApp = renderer.createApp({ render: () => h({ ...saleModalComponent, render: () => null }, { item: pendingSaleItem, context:{} }) });
+  pendingApp.use(pinia); pendingApp.use(router); pendingApp.provide(ssrContextKey, {}); const pendingRoot = pendingApp.mount({}); const pendingState = pendingRoot.$.subTree.component.setupState;
+  assert.equal(pendingState.readOnly, true); assert.equal(pendingState.needsReconciliation, true); assert.equal(pendingState.formSnapshot.customerName, payload.customerName);
+  const readonlySaleApp = renderer.createApp({ render: () => h({ ...saleComponent, render: () => null }, { snapshot: pendingState.formSnapshot, readOnly:true, onChange: () => { throw new Error('readonly snapshot must not emit edits'); } }) });
+  readonlySaleApp.provide(ssrContextKey, {}); const readonlyRoot = readonlySaleApp.mount({}); assert.equal(readonlyRoot.$.subTree.component.exposed.getPayload(), null); readonlySaleApp.unmount();
+  pendingState.save(); assert.equal(useTicketDraftStore().get(pendingSaleItem.draftId).aftersaleForm.customerName, payload.customerName);
+  assert.equal(useTicketDraftStore().get(pendingSaleItem.draftId).resultNo, pendingSaleItem.resultNo); pendingApp.unmount();
+  checks++; console.log('PASS pending aftersale SFC: persisted order payload is authoritative, professional fields are readonly and cannot resubmit as a new order');
   console.log(`${checks} checks passed`);
 
 } finally { await server.close(); for (const id of timers) { clearTimeout(id); clearInterval(id); } }

@@ -101,7 +101,7 @@ watch(() => form.problemL1, () => { if (!restoring.value) form.problemL2 = ''; }
 watch(() => form.problemL2, () => { if (!restoring.value) form.problemL3 = ''; }, { flush: 'sync' });
 
 const PROBLEM_PATH_SEPARATOR = '\u001f';
-type ProblemPathOption = { value: string; label: string; l1: string; l2: string; l3?: string };
+type ProblemPathOption = { value: string; label: string; l1: string; l2: string; l3?: string; disabled?: boolean };
 
 function problemPathValue(...parts: string[]) {
   return parts.join(PROBLEM_PATH_SEPARATOR);
@@ -112,7 +112,10 @@ const allL2Paths = computed<ProblemPathOption[]>(() => Object.entries(productPro
 ));
 const l2PathOptions = computed(() => {
   const rows = form.problemL1 ? allL2Paths.value.filter((row) => row.l1 === form.problemL1) : allL2Paths.value;
-  return rows.map((row) => ({ ...row, label: form.problemL1 ? row.l2 : `${row.l1} / ${row.l2}` }));
+  const options = rows.map((row) => ({ ...row, label: form.problemL1 ? row.l2 : `${row.l1} / ${row.l2}` }));
+  const value = problemPathValue(form.problemL1, form.problemL2);
+  return form.problemL1 && form.problemL2 && !options.some((row) => row.value === value)
+    ? [{ value, label: form.problemL2, l1: form.problemL1, l2: form.problemL2, disabled: true }, ...options] : options;
 });
 const allL3Paths = computed<ProblemPathOption[]>(() => Object.entries(productProblemTree.value).flatMap(([l1, l2Map]) =>
   Object.entries(l2Map).flatMap(([l2, l3s]) => l3s.filter(Boolean).map((l3) => ({
@@ -125,12 +128,15 @@ const l3PathOptions = computed(() => {
     if (form.problemL2 && row.l2 !== form.problemL2) return false;
     return true;
   });
-  return rows.map((row) => ({
+  const options = rows.map((row) => ({
     ...row,
     label: form.problemL1 && form.problemL2
       ? row.l3!
       : form.problemL1 ? `${row.l2} / ${row.l3}` : `${row.l1} / ${row.l2} / ${row.l3}`,
   }));
+  const value = problemPathValue(form.problemL1, form.problemL2, form.problemL3);
+  return form.problemL1 && form.problemL2 && form.problemL3 && !options.some((row) => row.value === value)
+    ? [{ value, label: form.problemL3, l1: form.problemL1, l2: form.problemL2, l3: form.problemL3, disabled: true }, ...options] : options;
 });
 
 const problemL2Path = computed<string | undefined>({
@@ -567,7 +573,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
               :disabled="!form.productName || !l2PathOptions.length"
               :status="errors.problemL2 ? 'error' : ''"
               :placeholder="form.problemL1 ? '请选择' : '可直接选择二级'"
-              :options="l2PathOptions.map(({ value, label }) => ({ value, label }))"
+              :options="l2PathOptions.map(({ value, label, disabled }) => ({ value, label, disabled }))"
             />
           </div>
           <div class="inline-field">
@@ -578,7 +584,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
               :disabled="!form.productName || !l3PathOptions.length"
               :status="errors.problemL3 ? 'error' : ''"
               :placeholder="form.problemL2 ? '请选择' : '可直接选择三级'"
-              :options="l3PathOptions.map(({ value, label }) => ({ value, label }))"
+              :options="l3PathOptions.map(({ value, label, disabled }) => ({ value, label, disabled }))"
             />
           </div>
         </div>
