@@ -54,7 +54,7 @@ const {
   problemL3Options,
   productNameOptions,
   showTypePart,
-  hidesSnAndDesc,
+  hidesDeviceSn,
   isFlashType,
   isRefundType,
   isXiaozhiType,
@@ -431,9 +431,9 @@ function onCreate(processAfter = false) {
         <AftersaleCreateForm ref="aftersaleForm" :context="aftersaleContext" refresh-changed-only />
       </CreateTicketPartCard>
       <template v-else>
-        <CreateTicketPartCard v-if="!hidesSnAndDesc" title="工单详情">
+        <CreateTicketPartCard title="工单详情">
           <div class="detail-body">
-            <div v-if="!isFlashType" class="inline-field sn-field">
+            <div v-if="!isFlashType && !hidesDeviceSn" class="inline-field sn-field">
               <label class="inline-label xl">设备SN</label>
               <a-input
                 v-model:value="form.deviceSn"

@@ -87,7 +87,7 @@ const {
   productNameOptions,
   showTypePart,
   typePartSubtitle,
-  hidesSnAndDesc,
+  hidesDeviceSn,
   showChannelComplaintFields,
   showServiceComplaintCategory,
   reset,
@@ -756,7 +756,7 @@ watch(
               />
             </div>
             <!-- 刷机单不出设备SN（改在「刷机信息」卡填）、建议 / 商机单不采集设备SN：产品名称占满剩下两列，长产品名整段可见 -->
-            <div class="inline-field" :class="{ 'span-2': isFlashType || hidesSnAndDesc }">
+            <div class="inline-field" :class="{ 'span-2': isFlashType || hidesDeviceSn }">
               <label class="inline-label xl"><span class="req">*</span>{{ lb('产品名称') }}</label>
               <FormSelect
                 :key="form.productCategory"
@@ -770,7 +770,7 @@ watch(
                 @change="onProductNameChange"
               />
             </div>
-            <div v-if="!isFlashType && !hidesSnAndDesc" class="inline-field">
+            <div v-if="!isFlashType && !hidesDeviceSn" class="inline-field">
               <label class="inline-label xl">{{ lb('设备SN') }}</label>
               <a-input
                 v-model:value="form.deviceSn"
@@ -827,8 +827,8 @@ watch(
             </div>
           </div>
 
-          <!-- 问题描述篇幅长，整行收尾；建议 / 商机单不采集问题描述（含附件） -->
-          <div v-if="!hidesSnAndDesc" class="inline-field desc-field">
+          <!-- 公共问题描述及附件：整行收尾 -->
+          <div class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>{{ lb('问题描述') }}</label>
             <!-- 带附件文本框：与处理页问题原因、处理结果同一组件；小智单附件亦在此上传，不放在「小智工单信息」卡 -->
             <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">

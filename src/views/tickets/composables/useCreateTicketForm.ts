@@ -263,19 +263,13 @@ export function useCreateTicketForm(
 
   /** 类型专属卡：只剩投诉（建议分类已删，10-29 建单字段表） */
   const showTypePart = computed(() => form.ticketType === '投诉');
-  /**
-   * 建议单、商机单不采集设备SN 与问题描述（含附件）（10-29 建单字段表）：
-   * 两处控件不渲染、不校验、不落库；切到这两类时清空已填内容。
-   */
-  const hidesSnAndDesc = computed(
+  /** 建议单、商机单不采集设备 SN；公共问题描述及附件始终保留。 */
+  const hidesDeviceSn = computed(
     () => form.ticketType === '建议' || form.ticketType === '商机',
   );
-  watch(hidesSnAndDesc, (on) => {
+  watch(hidesDeviceSn, (on) => {
     if (!on) return;
     form.deviceSn = '';
-    form.description = '';
-    form.descriptionAttachments = [];
-    errors.description = false;
   });
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
   /**
@@ -1005,7 +999,7 @@ export function useCreateTicketForm(
     errors.problemL2 = !form.problemL2;
     errors.problemL3 = !form.problemL3
       && !(options?.twoLevelProblem && !!form.problemL2 && !problemL3Options.value.some(Boolean));
-    errors.description = !hidesSnAndDesc.value && !form.description.trim();
+    errors.description = !form.description.trim();
     errors.title = !form.title.trim();
     errors.problemTime = false;
     errors.complaintType =
@@ -1109,8 +1103,8 @@ export function useCreateTicketForm(
         } : {}),
       } : {}),
       productCategory: form.productCategory || undefined,
-      // 建议 / 商机单不采集 SN 与问题描述（含附件），不落库
-      sn: hidesSnAndDesc.value ? undefined : (form.deviceSn.trim() || undefined),
+      // 建议 / 商机单不采集设备 SN，不落库
+      sn: hidesDeviceSn.value ? undefined : (form.deviceSn.trim() || undefined),
       problemL1: form.problemL1 || undefined,
       problemL2: form.problemL2 || undefined,
       problemL3: form.problemL3 || undefined,
@@ -1122,8 +1116,8 @@ export function useCreateTicketForm(
         ? (form.serviceComplaintCategory || undefined)
         : undefined,
       product: form.productName,
-      problemDesc: hidesSnAndDesc.value ? '' : form.description.trim(),
-      problemDescAttachments: hidesSnAndDesc.value ? [] : [...form.descriptionAttachments],
+      problemDesc: form.description.trim(),
+      problemDescAttachments: [...form.descriptionAttachments],
       // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
       closureMode: form.closureMode,
       // 建单时刻：处理页页头建单时间与履历首条「创建工单」取它（D3：新单只画本单数据）
@@ -1203,7 +1197,7 @@ export function useCreateTicketForm(
     productNameOptions,
     showTypePart,
     typePartSubtitle,
-    hidesSnAndDesc,
+    hidesDeviceSn,
     showChannelComplaintFields,
     showServiceComplaintCategory,
     reset,
