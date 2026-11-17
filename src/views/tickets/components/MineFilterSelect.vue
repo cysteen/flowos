@@ -71,7 +71,7 @@ function onChange(v: unknown) {
 .fi-select :deep(.ant-select-selection-item),
 .fi-select :deep(.ant-select-selection-placeholder) {
   line-height: 24px !important;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #374151;
   padding-inline-end: 0 !important;
 }

@@ -54,7 +54,7 @@
 .uc-page .field-control.ant-input { min-height: 32px; }
 .uc-page .ant-picker.field-control { width: 100%; min-height: 32px; }
 .uc-page .row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.uc-page .detail-body { display: flex; flex-direction: column; gap: 8px; }
+.uc-page .detail-body { display: flex; flex-direction: column; gap: 10px; }
 .uc-page .sn-field { max-width: calc((100% - 28px) / 3); }
 
 /* 问题描述、服务回溯：整行长文本，标签与首行对齐 */
@@ -110,9 +110,13 @@
 .uc-page .cp-del:disabled { color: #e4e7ed; cursor: not-allowed; }
 
 /* 客户信息 */
-.uc-page .customer-body { display: flex; flex-direction: column; gap: 6px; }
-.uc-page .customer-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
-.uc-page .search-wrap { position: relative; flex: 1; min-width: 0; }
+.uc-page .customer-layout { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; min-width: 0; }
+.uc-page .customer-part { flex: 3 1 460px; min-width: 0; box-sizing: border-box; }
+.uc-page .reporter-part { flex: 2 1 300px; min-width: 0; box-sizing: border-box; }
+.uc-page .customer-layout .part-head { min-height: 28px; }
+.uc-page .customer-body { display: flex; flex-direction: column; gap: 8px; }
+.uc-page .customer-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.uc-page .search-wrap { position: relative; flex: 1 1 220px; min-width: 0; }
 .uc-page .search-box {
   width: 100%;
   min-width: 0;
@@ -126,7 +130,7 @@
   border-radius: 6px;
   box-sizing: border-box;
 }
-.uc-page .search-input { flex: 1; border: none; outline: none; font-size: 13px; color: #374151; background: transparent; }
+.uc-page .search-input { flex: 1; min-width: 0; border: none; outline: none; font-size: 13px; color: #374151; background: transparent; }
 .uc-page .search-input::placeholder { color: #9ca3af; }
 .uc-page .search-drop {
   position: absolute;
@@ -142,6 +146,7 @@
 }
 .uc-page .drop-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -153,7 +158,7 @@
 }
 .uc-page .drop-item + .drop-item { border-top: 1px solid #f3f4f6; }
 .uc-page .drop-item:hover { background: #f0f7ff; }
-.uc-page .drop-name { flex: none; font-size: 13px; font-weight: 600; color: #111827; }
+.uc-page .drop-name { flex: none; font-size: var(--flowos-control-font-size); font-weight: 600; color: #111827; }
 .uc-page .drop-phone { flex: none; font-size: 12px; color: #4b5563; }
 .uc-page .drop-meta {
   flex: 1;
@@ -192,7 +197,8 @@
   box-sizing: border-box;
   cursor: pointer;
 }
-.uc-page .reporter-row { display: grid; grid-template-columns: 1fr 1fr 120px; gap: 8px; }
+.uc-page .reporter-toggle { height: 28px; padding: 0 8px; font-size: 12px; }
+.uc-page .reporter-fields { display: flex; flex-direction: column; gap: 8px; }
 .uc-page .customer-card {
   display: flex;
   align-items: center;
@@ -204,7 +210,7 @@
   border-radius: 6px;
   box-sizing: border-box;
 }
-.uc-page .customer-empty { padding: 10px 12px; font-size: 12px; color: #9ca3af; border: 1px dashed #d1d5db; border-radius: 6px; }
+.uc-page .customer-empty { display: flex; align-items: center; min-height: 58px; padding: 10px 12px; font-size: 12px; color: #9ca3af; border: 1px dashed #d1d5db; border-radius: 6px; box-sizing: border-box; }
 .uc-page .customer-empty.error { border-color: #fca5a5; color: #ef4444; background: #fef2f2; }
 .uc-page .cust-avatar {
   flex: none;
@@ -221,9 +227,9 @@
 }
 .uc-page .cust-info { flex: 1; min-width: 0; }
 .uc-page .cust-line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.uc-page .cust-name { font-size: 13px; font-weight: 600; color: #111827; }
+.uc-page .cust-name { font-size: 13px; font-weight: 600; color: #111827; overflow-wrap: anywhere; }
 .uc-page .cust-phone { font-size: 12px; color: #6b7280; }
-.uc-page .cust-line2 { margin-top: 3px; font-size: 11px; line-height: 1.4; color: #9ca3af; }
+.uc-page .cust-line2 { margin-top: 3px; font-size: 11px; line-height: 1.4; color: #9ca3af; overflow-wrap: anywhere; }
 .uc-page .cust-actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex: none; align-self: stretch; }
 .uc-page .link { flex: none; font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; }
 .uc-page .cust-phone-error { font-size: 12px; line-height: 18px; color: #ef4444; }
@@ -274,7 +280,6 @@
 .uc-page .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 @media (max-width: 768px) {
-  .uc-page .row-3,
-  .uc-page .reporter-row { grid-template-columns: 1fr; }
+  .uc-page .row-3 { grid-template-columns: 1fr; }
   .uc-page .sn-field { max-width: none; }
 }

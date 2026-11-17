@@ -152,7 +152,7 @@ function pick(r: RiskTagResult) {
   text-align: center;
 }
 .rlf-card .op-rc-title {
-  font-size: 11px;
+  font-size: var(--flowos-control-font-size);
   font-weight: 500;
   line-height: 1.3;
 }

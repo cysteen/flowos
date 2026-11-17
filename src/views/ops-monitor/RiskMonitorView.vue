@@ -8314,7 +8314,7 @@ function toggleWordEnabled(w: RiskWord) {
 }
 .tb-ctl { flex: 1; min-width: 0; width: auto !important; }
 .list-toolbar :deep(.tb-ctl.ant-select .ant-select-selector) {
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   border-radius: 6px;
   background: #fff;
   min-height: 28px !important;
@@ -8399,7 +8399,7 @@ function toggleWordEnabled(w: RiskWord) {
   min-width: 0;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #374151;
   background: transparent;
   font-family: inherit;
@@ -8908,7 +8908,7 @@ function toggleWordEnabled(w: RiskWord) {
   line-height: 1.3;
 }
 .tag-modal-form :deep(.tag-radio-compact) { gap: 4px; }
-.tag-modal-form :deep(.tag-radio-4 .op-rc-title) { font-size: 11px; }
+.tag-modal-form :deep(.tag-radio-4 .op-rc-title) { font-size: var(--flowos-control-font-size); }
 .tag-modal-form :deep(.tag-radio-4 .op-radio-card) { padding: 2px 4px; }
 /* 已结论条目的「无风险」一档：置灰、不可选 */
 .tag-modal-form .op-radio-card.tag-rc-locked {

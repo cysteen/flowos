@@ -258,7 +258,7 @@ function openProgress() {
   border-radius: 8px;
   background: #fff;
   color: #1d2129;
-  font-size: 15px;
+  font-size: var(--flowos-control-font-size);
   cursor: pointer;
 }
 .fs-choice.is-error {

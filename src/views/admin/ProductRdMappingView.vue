@@ -1185,7 +1185,7 @@ function filterProductOption(input: string, opt: { label?: string }): boolean {
 .fl { font-size: 12px; color: #6b7280; white-space: nowrap; }
 .sel-w { width: 120px !important; }
 .toolbar-row :deep(.tb-ctl.ant-select .ant-select-selector) {
-  font-size: 13px; border-radius: 6px; background: #fff;
+  font-size: var(--flowos-control-font-size); border-radius: 6px; background: #fff;
 }
 .toolbar-row :deep(.ant-select-selection-placeholder) { color: #9ca3af; }
 
@@ -1207,7 +1207,7 @@ function filterProductOption(input: string, opt: { label?: string }): boolean {
 }
 .wb-toolbar__search-input {
   flex: 1; min-width: 0; border: none; outline: none;
-  font-size: 13px; color: #374151; background: transparent;
+  font-size: var(--flowos-control-font-size); color: #374151; background: transparent;
 }
 .wb-toolbar__search-input::placeholder { color: #9ca3af; }
 .wb-toolbar__btn {

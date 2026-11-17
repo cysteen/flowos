@@ -28,6 +28,7 @@ body {
   --flowos-primary: #1a6fff;
   --flowos-primary-hover: #0f4fcc;
   --flowos-primary-light: #eff6ff;
+  --flowos-control-font-size: 12px;
   --flowos-text: #374151;
   --flowos-text-secondary: #6b7280;
   --flowos-content-bg: #f9fafb;
@@ -37,4 +38,141 @@ body {
   /* 与 config/layout.ts SIDER_WIDTH 保持一致 */
   --flowos-sider-width: 200px;
   --flowos-sider-collapsed-width: 64px;
+}
+
+/*
+ * 原生及 Ant 实际输入节点直接指定字号，覆盖 scoped / 普通 inline / small / large。
+ * 不处理按钮、文件按钮及非文字 input；禁用态、只读态仍命中同一规则。
+ */
+input:not(:where(
+  [type='button'], [type='submit'], [type='reset'], [type='checkbox'], [type='radio'],
+  [type='file'], [type='color'], [type='range'], [type='hidden'], [type='image']
+)),
+textarea,
+select,
+option,
+optgroup {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/* 保留原生下拉的字体族兜底；输入框原有字体族不变。 */
+select,
+option {
+  font-family: inherit;
+}
+
+/*
+ * 表单下拉统一字号。触发区和选项浮层都可能由 Ant Design 挂载到 body，
+ * 因此使用全局选择器兜底，避免页面局部样式或弹层挂载位置造成字号不一致。
+ */
+.ant-select,
+.ant-select-selector,
+.ant-select-selection-item,
+.ant-select-selection-placeholder,
+.ant-select-selection-search-input {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+.ant-select-dropdown,
+.ant-select-dropdown .ant-select-item,
+.ant-select-dropdown .ant-select-item-option-content,
+.ant-cascader-dropdown .ant-cascader-menu-item,
+.ant-cascader-dropdown .ant-cascader-menu-item-content,
+.ant-tree-select-dropdown .ant-select-tree,
+.ant-tree-select-dropdown .ant-select-tree-title,
+.ant-dropdown .ant-dropdown-menu-item,
+.ant-dropdown .ant-dropdown-menu-submenu-title,
+.ant-dropdown .ant-dropdown-menu-title-content {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/* placeholder 单独设定，避免页面的伪元素字号覆盖；颜色与透明度沿用现有样式。 */
+input::placeholder,
+textarea::placeholder {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/* 复合输入的文字附属区，以及 Mentions 定位测量层均与输入值一致。 */
+.ant-input-prefix,
+.ant-input-suffix,
+.ant-input-group-addon,
+.ant-input-number-prefix,
+.ant-input-number-suffix,
+.ant-input-number-group-addon,
+.ant-input-show-count-suffix,
+.ant-input-textarea-suffix,
+.ant-input-textarea-show-count::after,
+.ant-mentions-measure,
+.ant-mentions-measure > span,
+.ant-mentions-dropdown,
+.ant-mentions-dropdown-menu-item {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/* large 输入仍保留原 24px 文本行高，主题中的按钮字号和尺寸保持原值。 */
+input.ant-input-lg,
+.ant-input-affix-wrapper-lg > input.ant-input,
+.ant-input-group-lg input.ant-input {
+  line-height: 24px;
+}
+
+/* 只改 Picker 文字，保留主题计算的 padding、范围分隔符及日期/清除图标。 */
+.ant-picker-input > input {
+  line-height: 22px;
+}
+
+.ant-picker-large .ant-picker-input > input {
+  line-height: calc(22px * 16 / 14);
+}
+
+.ant-picker-dropdown .ant-picker-panel,
+.ant-picker-dropdown .ant-picker-content th,
+.ant-picker-dropdown .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-time-panel-cell-inner,
+.ant-picker-dropdown .ant-picker-header-view,
+.ant-picker-dropdown .ant-picker-header-view button,
+.ant-picker-dropdown .ant-picker-footer,
+.ant-picker-dropdown .ant-picker-now-btn,
+.ant-picker-dropdown .ant-picker-today-btn,
+.ant-picker-dropdown .ant-picker-ok .ant-btn,
+.ant-picker-dropdown .ant-picker-presets li {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/*
+ * 选择类输入只统一文字，不改主题及方框/圆点/滑块度量；Switch 文字沿用原有 12px。
+ * Checkbox / Radio 直接文字 span 也兜底，覆盖局部 13px 和禁用态。
+ */
+.ant-checkbox-wrapper,
+.ant-radio-wrapper,
+.ant-radio-button-wrapper,
+.ant-checkbox-wrapper > .ant-checkbox + span,
+.ant-radio-wrapper > .ant-radio + span,
+.ant-radio-button-wrapper > .ant-radio-button + span,
+.ant-segmented .ant-segmented-item-label {
+  font-size: var(--flowos-control-font-size) !important;
+}
+
+/* 普通 Checkbox / Radio 原为 14px × 22/14；缩字后仍保留 22px 行高。 */
+.ant-checkbox-wrapper,
+.ant-radio-wrapper {
+  line-height: 22px;
+}
+
+/* 低优先级保留复合输入内原有图标尺寸；组件/页面显式图标样式仍可覆盖。 */
+:where(.ant-input-prefix, .ant-input-suffix, .ant-input-group-addon,
+  .ant-input-number-prefix, .ant-input-number-suffix, .ant-input-number-group-addon,
+  .ant-mentions-suffix, .ant-segmented-item-icon) .anticon {
+  font-size: 14px;
+}
+
+:where(.ant-input-affix-wrapper-lg, .ant-input-group-lg,
+  .ant-input-number-affix-wrapper-lg, .ant-input-number-group-lg)
+  :where(.ant-input-prefix, .ant-input-suffix, .ant-input-group-addon,
+    .ant-input-number-prefix, .ant-input-number-suffix, .ant-input-number-group-addon) .anticon {
+  font-size: 16px;
+}
+
+:where(.ant-segmented-lg) :where(.ant-segmented-item-icon) .anticon {
+  font-size: 16px;
 }

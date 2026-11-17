@@ -255,10 +255,10 @@ function onCancel() {
 .op-delegate-person { flex: 0 0 140px; width: 140px; min-width: 0; }
 .op-delegate-person .ant-select-selector { height: 36px !important; border-radius: 6px !important; }
 .op-delegate-person .ant-select-selection-item,
-.op-delegate-person .ant-select-selection-placeholder { line-height: 34px !important; font-size: 14px; }
+.op-delegate-person .ant-select-selection-placeholder { line-height: 34px !important; font-size: var(--flowos-control-font-size); }
 .op-delegate-task { position: relative; flex: 1; min-width: 0; }
 .op-delegate-task textarea.ant-input {
-  display: block; min-height: 36px; padding: 7px 11px; font-size: 14px; line-height: 20px; border-radius: 6px; resize: none;
+  display: block; min-height: 36px; padding: 7px 11px; font-size: var(--flowos-control-font-size); line-height: 20px; border-radius: 6px; resize: none;
 }
 .op-delegate-text-count {
   position: absolute; right: 8px; bottom: 3px; padding-left: 4px;

@@ -415,7 +415,7 @@ function exportCsv() {
   border-radius: 8px !important;
   border-color: #e5e7eb !important;
   background: #fff !important;
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
 }
 .lp-ctl :deep(.ant-select-selector),
 .lp-ctl :deep(.ant-picker) {
@@ -424,13 +424,13 @@ function exportCsv() {
   align-items: center;
 }
 .lp-ctl :deep(.ant-input-affix-wrapper) { padding-inline: 11px !important; }
-.lp-ctl :deep(.ant-input-affix-wrapper > input.ant-input) { font-size: 13px !important; }
+.lp-ctl :deep(.ant-input-affix-wrapper > input.ant-input) { font-size: var(--flowos-control-font-size) !important; }
 .lp-ctl :deep(.ant-select-selection-item),
 .lp-ctl :deep(.ant-select-selection-placeholder) {
-  font-size: 13px !important;
+  font-size: var(--flowos-control-font-size) !important;
   line-height: 30px !important;
 }
-.lp-ctl :deep(.ant-picker-input > input) { font-size: 13px !important; }
+.lp-ctl :deep(.ant-picker-input > input) { font-size: var(--flowos-control-font-size) !important; }
 
 .lp-table-head {
   display: flex;

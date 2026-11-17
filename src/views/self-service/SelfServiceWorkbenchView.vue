@@ -805,7 +805,7 @@ function exportRows() {
   padding: 0;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: var(--flowos-control-font-size);
   color: #374151;
   background: transparent;
 }
