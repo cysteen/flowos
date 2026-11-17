@@ -26,6 +26,10 @@ const props = withDefaults(defineProps<{
   acceptExts?: readonly string[];
   /** 单个附件大小上限（MB）；不传不限 */
   maxFileSizeMb?: number;
+  /** Per-extension size limit overrides the general limit; keys are lowercase without dots. */
+  maxFileSizeByExtMb?: Readonly<Record<string, number>>;
+  /** Total attachment count, including existing attachments; omitted means unlimited. */
+  maxCount?: number;
   /** 同名文件改为重命名追加（{原名}_{yyyyMMddHHmmss}{.扩展名}）；不传则同名不重复添加 */
   renameDuplicates?: boolean;
   /** 父级 flex 容器内纵向撑满（自建单「处理结果」等场景） */
@@ -83,15 +87,18 @@ function onFilesSelected(e: Event) {
   // 同名文件（与列表内或同一次多选内重名）：renameDuplicates 时重命名追加，否则不再新增标签
   const seen = new Set(props.attachments);
   let rejected = 0;
+  let overCount = 0;
   const picked: { name: string; size: number; file: File }[] = [];
   Array.from(input.files ?? []).forEach((f) => {
     if (seen.has(f.name) && !props.renameDuplicates) return;
     const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : '';
+    const sizeLimit = props.maxFileSizeByExtMb?.[ext] ?? props.maxFileSizeMb;
     if ((props.acceptExts && !props.acceptExts.includes(ext))
-      || (props.maxFileSizeMb && f.size > props.maxFileSizeMb * 1024 * 1024)) {
+      || (sizeLimit != null && f.size > sizeLimit * 1024 * 1024)) {
       rejected += 1;
       return;
     }
+    if (props.maxCount != null && props.attachments.length + picked.length >= props.maxCount) { overCount += 1; return; }
     const name = seen.has(f.name) ? renameWithTimestamp(f.name, seen) : f.name;
     seen.add(name);
     const file = name === f.name ? f : new File([f], name, { type: f.type, lastModified: f.lastModified });
@@ -99,9 +106,10 @@ function onFilesSelected(e: Event) {
   });
   input.value = '';
   if (rejected) {
-    const reason = props.acceptExts ? `格式不支持或超过 ${props.maxFileSizeMb}MB` : `超过 ${props.maxFileSizeMb}MB`;
+    const reason = props.maxFileSizeByExtMb ? '格式或大小不符合要求' : props.acceptExts ? `格式不支持或超过 ${props.maxFileSizeMb}MB` : `超过 ${props.maxFileSizeMb}MB`;
     message.warning(`${rejected} 个文件${reason}，未添加`);
   }
+  if (overCount) message.warning(`附件最多 ${props.maxCount} 个，${overCount} 个文件未添加`);
   if (!picked.length) return;
   const names = picked.map((f) => f.name);
   emit('filesAdded', picked);

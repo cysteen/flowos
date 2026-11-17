@@ -4,6 +4,8 @@
 import { reactive, computed, watch } from 'vue';
 import { AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS } from '../../composables/opActions';
 import type { AftersaleContext, AftersalePayload } from '../../composables/opActions';
+import { PRODUCT_CATEGORIES, PRODUCT_NAMES, filterSelectOption } from '../../types/createTicket';
+import { PRODUCT_TREE_DATA, type ProductTreeNode } from '@/mock/productTree';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 
 const props = defineProps<{
@@ -11,6 +13,7 @@ const props = defineProps<{
   /** 预填变化时只更新变了的客户、产品字段，已填的其余内容保留（统一建单页用；默认关闭，整份重写） */
   refreshChangedOnly?: boolean;
   snapshot?: Record<string, unknown>;
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{ change: [snapshot: Record<string, unknown>] }>();
@@ -86,11 +89,36 @@ function refreshChanged(ctx?: AftersaleContext, old?: AftersaleContext) {
 }
 prefill(props.context);
 if (props.snapshot) Object.assign(form, JSON.parse(JSON.stringify(props.snapshot)));
-watch(form, () => emit('change', JSON.parse(JSON.stringify(form))), { deep: true, flush: 'sync' });
+watch(form, () => { if (!props.readOnly) emit('change', JSON.parse(JSON.stringify(form))); }, { deep: true, flush: 'sync' });
 watch(() => props.context, (ctx, old) => {
+  if (props.readOnly) return;
   if (props.refreshChangedOnly) refreshChanged(ctx, old);
   else prefill(ctx);
 });
+
+watch(() => [props.readOnly, props.snapshot], () => {
+  if (props.readOnly && props.snapshot) Object.assign(form, JSON.parse(JSON.stringify(props.snapshot)));
+});
+const inheritedCategory = form.productCategory;
+const inheritedProduct = form.productName;
+const productCatalog: Record<string, string[]> = Object.fromEntries(Object.entries(PRODUCT_NAMES).map(([key, names]) => [key, [...names]]));
+function collectProducts(nodes: ProductTreeNode[], category = '') {
+  for (const node of nodes) {
+    const next = node.kind === '产品分类' ? node.title : category;
+    if (node.kind === '产品' && category) productCatalog[category] = [...new Set([...(productCatalog[category] || []), node.title])];
+    if (node.children) collectProducts(node.children, next);
+  }
+}
+collectProducts(PRODUCT_TREE_DATA);
+const productCategoryOptions = computed(() => opt([...new Set([...PRODUCT_CATEGORIES, ...Object.keys(productCatalog), ...(form.productCategory ? [form.productCategory] : [])])]));
+const productNameOptions = computed(() => opt([...new Set([
+  ...(productCatalog[form.productCategory] || []),
+  ...(form.productCategory === inheritedCategory && inheritedProduct ? [inheritedProduct] : []),
+  ...(form.productCategory === props.context?.productCategory && props.context.productName ? [props.context.productName] : []),
+])]));
+function onProductCategoryChange() {
+  if (!productNameOptions.value.some((row) => row.value === form.productName)) form.productName = '';
+}
 
 const isVisit = computed(() => form.serviceMethod === '上门');
 const isMail = computed(() => form.serviceMethod === '寄修');
@@ -151,7 +179,7 @@ watch(form, () => {
  * 避免把上一次切换留下的残值一并送出。
  */
 function getPayload(): AftersalePayload | null {
-  if (!validate()) return null;
+  if (props.readOnly || !validate()) return null;
   const base = {
     customerName: form.customerName,
     customerPhone: form.customerPhone,
@@ -197,6 +225,7 @@ defineExpose({ getPayload, snapshot: () => JSON.parse(JSON.stringify(form)) as R
 </script>
 
 <template>
+  <a-config-provider :component-disabled="readOnly">
   <div class="as-form">
     <!-- 客户信息 -->
     <div class="as-section">
@@ -247,7 +276,9 @@ defineExpose({ getPayload, snapshot: () => JSON.parse(JSON.stringify(form)) as R
             :rows="3"
             :maxlength="200"
             :accept-exts="['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi']"
-            :max-file-size-mb="20"
+            :max-count="9"
+            :max-file-size-by-ext-mb="{ jpg:10, jpeg:10, png:10, gif:10, webp:10, mp4:20, mov:20, avi:20 }"
+            :readonly="readOnly"
             placeholder="请输入描述"
           />
           <div class="as-file-hint">最多9个；单张图片≤10M，单个视频≤20M</div>
@@ -260,6 +291,16 @@ defineExpose({ getPayload, snapshot: () => JSON.parse(JSON.stringify(form)) as R
     <div class="as-section">
       <div class="as-sec-title">产品信息</div>
       <div class="as-grid">
+        <div class="as-field">
+          <div class="as-label is-required">产品分类</div>
+          <a-select v-model:value="form.productCategory" :options="productCategoryOptions" show-search :filter-option="filterSelectOption" option-filter-prop="label" placeholder="请选择产品分类" :status="errs.productCategory ? 'error' : undefined" @change="onProductCategoryChange" />
+          <div v-if="errs.productCategory" class="as-err">{{ errs.productCategory }}</div>
+        </div>
+        <div class="as-field">
+          <div class="as-label is-required">产品名称</div>
+          <a-select v-model:value="form.productName" :options="productNameOptions" :disabled="readOnly || !form.productCategory" show-search :filter-option="filterSelectOption" option-filter-prop="label" placeholder="请选择产品名称" :status="errs.productName ? 'error' : undefined" />
+          <div v-if="errs.productName" class="as-err">{{ errs.productName }}</div>
+        </div>
         <div class="as-field">
           <div class="as-label is-required">售后服务类型</div>
           <a-select v-model:value="form.serviceType" :options="opt(AFTERSALE_SERVICE_TYPES)" style="width:100%" />
@@ -341,6 +382,7 @@ defineExpose({ getPayload, snapshot: () => JSON.parse(JSON.stringify(form)) as R
       <a-textarea v-model:value="form.detail" :rows="2" placeholder="请填写转出说明" />
     </div>
   </div>
+  </a-config-provider>
 </template>
 
 <style scoped>
