@@ -6,12 +6,12 @@ import { useDelegateTaskStore } from '@/stores/delegateTasks';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { commitCreation, creationReceipt, persistCreatedRows, localAftersaleOrders, type LocalAftersaleOrder } from '@/stores/creationLedger';
 import { copy, type CreateWorkItem } from '../types/createWork';
-import { headerActionsByRole, currentHandlerName, isCurrentHandler, WORKBENCH_HANDLER, type Ticket } from '../types/ticket';
+import { headerActionsByRole, currentHandlerName, isCurrentHandler, isTicketClosed, resolveStoppedClockStatus, WORKBENCH_HANDLER, type Ticket } from '../types/ticket';
 import { isFlashTicket } from '../types/flash';
 import { inflightRefundRun, isRefundTicket } from '../types/refund';
 import { isXiaozhiTicket, XIAOZHI_RD_PENDING_BLOCKED } from '../types/xiaozhi';
 import { tabWritableFor } from '../types/operation';
-import { applyOpAction, mapUserRole, type AftersalePayload } from './opActions';
+import { applyOpAction, isAftersaleInbound, mapUserRole, type AftersalePayload } from './opActions';
 import { availableActions, escalateComplaintBlockTip } from './opActionRegistry';
 import { isTicketTerminated, resolveEscalateButtons, flashLinkComplaintBlockTip } from './complaintEscalation';
 import { resolveAftersaleButtonForm } from './aftersaleButtonForm';
@@ -33,7 +33,15 @@ export function currentWorkSource(item: CreateWorkItem) {
   if (!row) throw new Error('原工单不存在或当前无查看权限，请重新核对原单。');
   const latest = observed.get(origin.no);
   const detail = copy(latest?.row === JSON.stringify(row) ? latest.detail : origin);
-  if (!latest || latest.row !== JSON.stringify(row)) detail.status = row.nodeStatus;
+  if (!latest || latest.row !== JSON.stringify(row)) {
+    // Match the detail page: specialized/aftersale flows keep their live row status after its base normalization.
+    const ownStatus = isFlashTicket(row) || isRefundTicket(row) || isXiaozhiTicket(row)
+      || !!row.linkedAftersaleNo && row.type !== '投诉' && row.nodeStatus === '已转出'
+      || (row.returnedFromAftersale || isAftersaleInbound({ source: row.ticketSource ?? detail.source })) && row.tab !== 'done';
+    detail.status = !ownStatus && row.slaText === '—' && !row.escalatedToNo
+      ? isTicketClosed(row.nodeStatus) ? row.nodeStatus : resolveStoppedClockStatus(row)
+      : row.nodeStatus;
+  }
   detail.product.afterSaleEnabled = productHasAfterSaleService(row.product);
   detail.type = row.type;
   detail.source = row.ticketSource ?? detail.source;

@@ -41,7 +41,7 @@ try {
   const clone = (value) => JSON.parse(JSON.stringify(value));
   let seq = 0;
   function origin(type = '咨询', source = '电话', status = '处理中') {
-    const row = { ...clone(TICKETS.find((ticket) => ticket.type === '咨询' && !ticket.flash && !ticket.refund && !ticket.xiaozhi)), id: `check-source-${++seq}`, no: `CHECK-SOURCE-${seq}`, type, ticketSource: source, nodeStatus: status, assignee: user.name, groupId: 'support', flash: undefined, refund: undefined, xiaozhi: undefined, closureMode: '正常流程', creationLinks: undefined, escalatedToNo: undefined, linkedAftersaleNo: undefined, aftersaleOriginNo: undefined, eventTimeline: [] };
+    const row = { ...clone(TICKETS.find((ticket) => ticket.type === '咨询' && !ticket.flash && !ticket.refund && !ticket.xiaozhi)), id: `check-source-${++seq}`, no: `CHECK-SOURCE-${seq}`, type, ticketSource: source, nodeStatus: status, slaText: ['已结案', '已关闭', '已强结'].includes(status) ? '—' : '08:00:00', assignee: user.name, groupId: 'support', flash: undefined, refund: undefined, xiaozhi: undefined, closureMode: '正常流程', creationLinks: undefined, escalatedToNo: undefined, linkedAftersaleNo: undefined, aftersaleOriginNo: undefined, eventTimeline: [] };
     TICKETS.push(row);
     const detail = { ...clone(TICKET_DETAIL), no: row.no, title: row.title, type, source, status, lastHandler: row.assignee, groupId: row.groupId, linkedRecords: [], childTickets: [], linkedAftersale: undefined, delegateInfo: null, isExternalAppeal: false };
     detail.product.afterSaleEnabled = true;
@@ -120,7 +120,7 @@ try {
   });
   check('weak complaint link leaves original status unchanged', () => {
     const source = origin(); source.row.isXiaozhi = true; source.row.xiaozhi = { linkedComplaintNos: [] };
-    source.detail.isXiaozhi = true;
+    source.detail.isXiaozhi = true; source.row.slaText = '—';
     const created = ticket('投诉'); service.submitWorkTicket(work('linkComplaint', source), created, true);
     assert.equal(source.row.nodeStatus, '处理中'); assert.ok(source.row.xiaozhi.linkedComplaintNos.includes(created.no));
   });
