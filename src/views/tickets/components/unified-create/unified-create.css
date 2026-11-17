@@ -181,8 +181,8 @@
 
 /* 客户信息 */
 .uc-page .customer-layout { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; min-width: 0; }
-.uc-page .customer-part { flex: 2 1 360px; min-width: 0; box-sizing: border-box; }
-.uc-page .reporter-part { flex: 3 1 520px; min-width: 0; box-sizing: border-box; }
+.uc-page .customer-part,
+.uc-page .reporter-part { flex: 1 1 0; min-width: 0; box-sizing: border-box; }
 .uc-page .customer-layout .part-head { min-height: 28px; }
 .uc-page .customer-body { display: flex; flex-direction: column; gap: 8px; }
 .uc-page .customer-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -271,7 +271,7 @@
 .uc-page .reporter-fields { display: flex; flex-direction: column; gap: 8px; }
 .uc-page .reporter-item {
   display: grid;
-  grid-template-columns: auto minmax(150px, 1fr) minmax(185px, 1.15fr) minmax(145px, 0.68fr) 24px;
+  grid-template-columns: 16px minmax(85px, 1fr) minmax(110px, 1.2fr) minmax(70px, 0.55fr) 24px;
   align-items: center;
   gap: 8px;
   padding: 8px;
@@ -280,6 +280,7 @@
   background: #f9fafb;
 }
 .uc-page .reporter-index {
+  text-align: center;
   white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
@@ -292,7 +293,7 @@
   min-width: 0;
 }
 .uc-page .reporter-item .inline-label { width: auto; }
-.uc-page .reporter-relation-field { grid-template-columns: 60px minmax(92px, 1fr) !important; }
+.uc-page .reporter-relation-field { min-width: 70px; }
 .uc-page .reporter-remove {
   display: inline-flex;
   align-items: center;
@@ -303,10 +304,10 @@
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #9ca3af;
+  color: #ef4444;
   cursor: pointer;
 }
-.uc-page .reporter-remove:hover { color: #ef4444; background: #fef2f2; }
+.uc-page .reporter-remove:hover { color: #dc2626; background: #fef2f2; }
 
 /* 下拉弹层 Teleport 到 body，仅统一建单通过 provide 注入此类名。 */
 .uc-select-dropdown .ant-select-item {
@@ -378,7 +379,7 @@
 
 @media (min-width: 769px) {
   .uc-page .reporter-part .reporter-item {
-    grid-template-columns: auto minmax(150px, 1fr) minmax(185px, 1.15fr) minmax(145px, 0.68fr) 24px;
+    grid-template-columns: 16px minmax(85px, 1fr) minmax(110px, 1.2fr) minmax(70px, 0.55fr) 24px;
     align-items: end;
   }
   .uc-page .reporter-part .reporter-index,

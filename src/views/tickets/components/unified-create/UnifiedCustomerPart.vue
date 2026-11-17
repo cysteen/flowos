@@ -168,7 +168,7 @@ function removeReporter(index: number) {
     <CreateTicketPartCard v-if="form.showReporter" :title="`代报人信息（${form.reporters.length}）`" class="reporter-part">
       <div class="reporter-fields">
         <div v-for="(reporter, index) in form.reporters" :key="index" class="reporter-item">
-          <span class="reporter-index">代报人 {{ index + 1 }}</span>
+          <span class="reporter-index" :aria-label="`第 ${index + 1} 位代报人`">{{ index + 1 }}</span>
           <div class="inline-field reporter-name-field">
             <label :for="`uc-reporter-name-${index}`" class="inline-label">姓名</label>
             <a-input :id="`uc-reporter-name-${index}`" v-model:value="reporter.name" class="inline-control field-control" placeholder="代报人姓名" />
