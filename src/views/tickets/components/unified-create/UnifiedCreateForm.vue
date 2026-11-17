@@ -63,6 +63,7 @@ const {
   flashBlock,
   refundErrors,
   xiaozhiErrors,
+  onTitleInput,
   onProductNameChange,
   validate,
   buildTicket,
@@ -73,7 +74,6 @@ const {
   applyXiaozhiFrontlineDefault,
 } = ctx;
 
-const pageTitle = computed(() => form.title.trim() || (props.scene === 'xiaozhi' ? '小智工单登记' : '统一建单'));
 provide('create-ticket-select-popup-class', 'uc-select-dropdown');
 
 if (prefill) {
@@ -378,7 +378,14 @@ function onCreate(processAfter = false) {
     <header class="uc-header">
       <button type="button" class="uc-back" @click="onCancel">‹ 返回</button>
       <div class="uc-heading-line">
-        <h1>{{ pageTitle }}</h1>
+        <a-input
+          v-model:value="form.title"
+          class="uc-title-input"
+          :status="errors.title ? 'error' : ''"
+          :placeholder="props.scene === 'xiaozhi' ? '小智工单登记' : '统一建单'"
+          aria-label="工单标题"
+          @input="onTitleInput"
+        />
         <span class="uc-status-chip">新建</span>
         <div class="uc-heading-meta">
           <span aria-hidden="true">|</span>
