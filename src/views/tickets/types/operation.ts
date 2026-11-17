@@ -279,7 +279,7 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
  * Tab × 角色：取值为「无」的格子 —— 该角色**整个 Tab 不渲染**。
  *
  * 取自《用户角色与权限矩阵 · 运行工作区》#41–51 的九列取值（0830 角色口径，见基线 §3.0）：
- * - **技术支持处理**：二线专员（不接手技术侧处理）、客诉专员、工单运营、质检
+ * - **技术支持处理**：客诉专员、工单运营、质检；二线专员可见但只读
  * - **风险监控**：一线坐席（该 Tab 不在它的页面上）、工单运营（0830 起风险监控整块不给它）
  * - **预约**：一线坐席、技术支持（预约是对客动作；本 Tab 对技术支持无业务意义，暂行「无」）
  *
@@ -299,7 +299,7 @@ const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
   // ⚠️ 原注释写「升级技术支持的口子仍在，由技术支持办，**D15**」—— **D15 已被一·补 B10 推翻**
   // （本轮不做技术支持路径），该断言作废；这一行留下小智坐席只是因为它本来就不接技术侧处理。
   // 🔴 **光靠这条角色黑名单挡不住小智单** —— 见下面 `visibleProcessTabs` 里的单维那一道。
-  tech: ['agent-l2', 'complaint-handler', 'ops-monitor', 'qa', 'xiaozhi-agent'],
+  tech: ['complaint-handler', 'ops-monitor', 'qa', 'xiaozhi-agent'],
   // 1130 D18：小智工单不涉及风险报备，故小智坐席整个 Tab 不渲染
   risk: ['agent-l1', 'ops-monitor', 'xiaozhi-agent'],
   appointment: ['agent-l1', 'tech-support'],
@@ -421,7 +421,7 @@ const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   // 小智坐席：催产研在这个 Tab 上做。⚠️ 这里**没有「二次提交产研」** —— 产研办结后由提报人确认，
   // 确认未解决的回传是系统动作（1130 一·补 B5）；TPD 驳回本轮只留痕不给动作（T1）。
   feishu: ['xiaozhi-agent', 'agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
-  // #42 技术支持处理：① 只读 ② 无 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
+  // #42 技术支持处理：① 只读 ② 只读 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
   tech: ['tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #43 风险报备：**本 Tab 整块是"发起报备"这一件事**，写动作只有一个，故只需一套判据、
   // 不必拆 canReport / canTag（2026-09-09 拍板）。可写 ＝ 基线 v1.20 §4「风险报备」行取「可用」
