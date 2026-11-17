@@ -206,6 +206,8 @@ export interface CreateTicketFormState {
   customerQuery: string;
   customer: CustomerInfo | null;
   showReporter: boolean;
+  /** 统一建单支持多名代报人；`reporter` 保留为首条兼容旧草稿与存量入口。 */
+  reporters: ReporterInfo[];
   reporter: ReporterInfo;
   productCategory: string;
   productName: string;

@@ -101,6 +101,7 @@ function defaultForm(): CreateTicketFormState {
     customerQuery: '',
     customer: null,
     showReporter: false,
+    reporters: [],
     reporter: { name: '', phone: '', relation: '家属' },
     productCategory: '',
     productName: '',
@@ -141,6 +142,24 @@ export function useCreateTicketForm(
   options?: { twoLevelProblem?: boolean },
 ) {
   const form = reactive<CreateTicketFormState>(defaultForm());
+
+  function ticketReporters() {
+    const rows = form.reporters.length
+      ? form.reporters
+      : (form.showReporter ? [form.reporter] : []);
+    return rows
+      .map((row) => ({
+        name: row.name.trim(),
+        phone: row.phone.trim(),
+        relation: row.relation.trim(),
+      }))
+      .filter((row) => row.name || row.phone);
+  }
+
+  function attachTicketReporters(ticket: Ticket) {
+    const reporters = ticketReporters();
+    if (reporters.length) ticket.reporters = reporters;
+  }
   const snVerified = ref(true);
   const assignAdopted = ref(false);
   const submitting = ref(false);
@@ -423,6 +442,7 @@ export function useCreateTicketForm(
       }
       return null;
     }
+    attachTicketReporters(ticket);
     return { ticket, evaluation };
   }
 
@@ -600,6 +620,7 @@ export function useCreateTicketForm(
       }
       return null;
     }
+    attachTicketReporters(result.ticket);
     return { ticket: result.ticket, degraded: !!result.degraded, escalated: escalate };
   }
 
@@ -690,7 +711,7 @@ export function useCreateTicketForm(
     const channel: Channel = form.ticketSource === 'IM'
       ? '在线客服'
       : form.ticketSource === '客户服务小程序' ? '小程序' : '电话';
-    return useRefundStore().createRefundTicket(
+    const result = useRefundStore().createRefundTicket(
       {
         schoolId: f.schoolId,
         schoolName: school?.name ?? '',
@@ -721,6 +742,8 @@ export function useCreateTicketForm(
       { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) },
       ALL_REFUND_MANAGERS.find((m) => m.account === f.managerAccount) ?? null,
     );
+    attachTicketReporters(result.ticket);
+    return result;
   }
 
   function syncTitle() {
@@ -1059,6 +1082,7 @@ export function useCreateTicketForm(
     const no = genNo();
     const createdAt = nowStamp();
     const user = useUserStore();
+    const reporters = ticketReporters();
     // 接入渠道与工单来源照所选来源（与刷机单 `flashBase` 同一映射），不再一律记「电话」
     const channel: Channel = form.ticketSource === 'IM'
       ? '在线客服'
@@ -1084,6 +1108,7 @@ export function useCreateTicketForm(
       customerRegion: form.customer?.region || undefined,
       customerAddress: form.customer?.address || undefined,
       vip: form.customer?.vip ?? false,
+      ...(reporters.length ? { reporters } : {}),
       // 业务类型 / 产品 / SN / 问题分类按建单所填落工单行：处理页侧栏「工单信息」只取本单（不落样例单的台账）
       businessType: form.businessType || undefined,
       // 归属业务线 / 投诉类型只在投诉渠道字段区（showChannelComplaintFields）采集；
@@ -1194,6 +1219,7 @@ export function useCreateTicketForm(
     problemL1Options,
     problemL2Options,
     problemL3Options,
+    productProblemTree,
     productNameOptions,
     showTypePart,
     typePartSubtitle,

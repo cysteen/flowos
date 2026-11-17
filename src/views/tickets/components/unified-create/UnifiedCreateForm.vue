@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, provide, ref, shallowRef, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
-import { WarningOutlined } from '@ant-design/icons-vue';
+import {
+  CheckCircleOutlined, CloseOutlined, FileAddOutlined, SaveOutlined, WarningOutlined,
+} from '@ant-design/icons-vue';
 import type { CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
@@ -50,8 +52,7 @@ const {
   errors,
   submitting,
   problemL1Options,
-  problemL2Options,
-  problemL3Options,
+  productProblemTree,
   productNameOptions,
   showTypePart,
   hidesDeviceSn,
@@ -62,7 +63,6 @@ const {
   flashBlock,
   refundErrors,
   xiaozhiErrors,
-  onTitleInput,
   onProductNameChange,
   validate,
   buildTicket,
@@ -73,21 +73,81 @@ const {
   applyXiaozhiFrontlineDefault,
 } = ctx;
 
+const pageTitle = computed(() => form.title.trim() || (props.scene === 'xiaozhi' ? '小智工单登记' : '统一建单'));
+provide('create-ticket-select-popup-class', 'uc-select-dropdown');
+
 if (prefill) {
   applyPrefill(prefill);
   void nextTick(() => applyXiaozhiFrontlineDefault(true));
 }
 
-/* ---------------- 问题分类：不带首项，换上级即清下级 ---------------- */
+/* ---------------- 问题分类：支持逐级选择，也支持从任一级直接反带完整路径 ---------------- */
 
 // 同步执行：要赶在表单内部「分类回落首项」的监听之前把下级清掉
 watch(() => form.productName, () => { form.problemL1 = ''; }, { flush: 'sync' });
 watch(() => form.problemL1, () => { form.problemL2 = ''; }, { flush: 'sync' });
 watch(() => form.problemL2, () => { form.problemL3 = ''; }, { flush: 'sync' });
 
-const l3Options = computed(() => problemL3Options.value.filter(Boolean));
+const PROBLEM_PATH_SEPARATOR = '\u001f';
+type ProblemPathOption = { value: string; label: string; l1: string; l2: string; l3?: string };
+
+function problemPathValue(...parts: string[]) {
+  return parts.join(PROBLEM_PATH_SEPARATOR);
+}
+
+const allL2Paths = computed<ProblemPathOption[]>(() => Object.entries(productProblemTree.value).flatMap(([l1, l2Map]) =>
+  Object.keys(l2Map).map((l2) => ({ value: problemPathValue(l1, l2), label: l2, l1, l2 })),
+));
+const l2PathOptions = computed(() => {
+  const rows = form.problemL1 ? allL2Paths.value.filter((row) => row.l1 === form.problemL1) : allL2Paths.value;
+  return rows.map((row) => ({ ...row, label: form.problemL1 ? row.l2 : `${row.l1} / ${row.l2}` }));
+});
+const allL3Paths = computed<ProblemPathOption[]>(() => Object.entries(productProblemTree.value).flatMap(([l1, l2Map]) =>
+  Object.entries(l2Map).flatMap(([l2, l3s]) => l3s.filter(Boolean).map((l3) => ({
+    value: problemPathValue(l1, l2, l3), label: l3, l1, l2, l3,
+  }))),
+));
+const l3PathOptions = computed(() => {
+  const rows = allL3Paths.value.filter((row) => {
+    if (form.problemL1 && row.l1 !== form.problemL1) return false;
+    if (form.problemL2 && row.l2 !== form.problemL2) return false;
+    return true;
+  });
+  return rows.map((row) => ({
+    ...row,
+    label: form.problemL1 && form.problemL2
+      ? row.l3!
+      : form.problemL1 ? `${row.l2} / ${row.l3}` : `${row.l1} / ${row.l2} / ${row.l3}`,
+  }));
+});
+
+const problemL2Path = computed<string | undefined>({
+  get: () => form.problemL1 && form.problemL2 ? problemPathValue(form.problemL1, form.problemL2) : undefined,
+  set: (value) => {
+    const row = allL2Paths.value.find((item) => item.value === value);
+    if (!row) { form.problemL2 = ''; return; }
+    form.problemL1 = row.l1;
+    form.problemL2 = row.l2;
+  },
+});
+const problemL3Path = computed<string | undefined>({
+  get: () => form.problemL1 && form.problemL2 && form.problemL3
+    ? problemPathValue(form.problemL1, form.problemL2, form.problemL3)
+    : undefined,
+  set: (value) => {
+    const row = allL3Paths.value.find((item) => item.value === value);
+    if (!row) { form.problemL3 = ''; return; }
+    form.problemL1 = row.l1;
+    form.problemL2 = row.l2;
+    form.problemL3 = row.l3 ?? '';
+  },
+});
+
+const exactL3Options = computed(() => form.problemL1 && form.problemL2
+  ? (productProblemTree.value[form.problemL1]?.[form.problemL2] ?? []).filter(Boolean)
+  : []);
 /** 选到二级后，该路径有没有三级（无线音乐类分类只到二级） */
-const hasL3 = computed(() => l3Options.value.length > 0);
+const hasL3 = computed(() => exactL3Options.value.length > 0);
 
 /** 售后：选到末级，且本产品这条分类的专属类型为售后 */
 const isAftersaleType = computed(() => {
@@ -315,6 +375,19 @@ function onCreate(processAfter = false) {
 
 <template>
   <div ref="root" class="uc-page">
+    <header class="uc-header">
+      <button type="button" class="uc-back" @click="onCancel">‹ 返回</button>
+      <div class="uc-heading-line">
+        <h1>{{ pageTitle }}</h1>
+        <span class="uc-status-chip">新建</span>
+        <div class="uc-heading-meta">
+          <span aria-hidden="true">|</span>
+          <span>建单人 {{ userStore.name }}</span>
+          <span aria-hidden="true">|</span>
+          <span class="muted">保存后生成单号</span>
+        </div>
+      </div>
+    </header>
     <div class="uc-body">
       <!-- ① 客户与代报人 -->
       <UnifiedCustomerPart :ctx="ctx" :search-only="isAftersaleType" />
@@ -371,23 +444,23 @@ function onCreate(processAfter = false) {
           <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>问题二类</label>
             <FormSelect
-              v-model:value="form.problemL2"
+              v-model:value="problemL2Path"
               class="inline-control field-control"
-              :disabled="!form.problemL1"
+              :disabled="!form.productName || !l2PathOptions.length"
               :status="errors.problemL2 ? 'error' : ''"
-              placeholder="请选择"
-              :options="problemL2Options.map((v) => ({ value: v, label: v }))"
+              :placeholder="form.problemL1 ? '请选择' : '可直接选择二级'"
+              :options="l2PathOptions.map(({ value, label }) => ({ value, label }))"
             />
           </div>
           <div class="inline-field">
             <label class="inline-label xl"><span v-if="hasL3 || !form.problemL2" class="req">*</span>问题三类</label>
             <FormSelect
-              v-model:value="form.problemL3"
+              v-model:value="problemL3Path"
               class="inline-control field-control"
-              :disabled="!hasL3"
+              :disabled="!form.productName || !l3PathOptions.length"
               :status="errors.problemL3 ? 'error' : ''"
-              placeholder="请选择"
-              :options="l3Options.map((v) => ({ value: v, label: v }))"
+              :placeholder="form.problemL2 ? '请选择' : '可直接选择三级'"
+              :options="l3PathOptions.map(({ value, label }) => ({ value, label }))"
             />
           </div>
         </div>
@@ -458,19 +531,6 @@ function onCreate(processAfter = false) {
         <RefundInfoPart v-if="isRefundType" v-model:info="form.refund" :errors="refundErrors" :customer-region="form.customer?.region" />
       </template>
 
-      <!-- ④ 标题 -->
-      <CreateTicketPartCard v-if="!isFlashType && !isAftersaleType" compact>
-        <div class="inline-field">
-          <label class="inline-label title-label">工单标题</label>
-          <a-input
-            v-model:value="form.title"
-            class="inline-control field-control"
-            :status="errors.title ? 'error' : ''"
-            :placeholder="isXiaozhiType ? '小智 · 产品名称 + 问题三级 + 工单来源' : '产品名称 + 问题三级 + 工单来源'"
-            @input="onTitleInput"
-          />
-        </div>
-      </CreateTicketPartCard>
     </div>
 
     <div class="uc-footer-wrap">
@@ -500,23 +560,34 @@ function onCreate(processAfter = false) {
           </span>
         </div>
         <div class="footer-btns">
-          <button type="button" class="btn-ghost" @click="onCancel">取消</button>
+          <button type="button" class="uc-action" @click="onCancel">
+            <CloseOutlined />
+            <span>取消</span>
+          </button>
           <template v-if="isAftersaleType">
-            <button type="button" class="btn-primary" @click="onConfirmAftersale">确认</button>
+            <button type="button" class="uc-action is-process" @click="onConfirmAftersale">
+              <CheckCircleOutlined />
+              <span>确认</span>
+            </button>
           </template>
           <template v-else>
-            <button type="button" class="btn-ghost" @click="onDraft">存草稿</button>
-            <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
-              {{ createPrimaryLabel }}
+            <button type="button" class="uc-action" @click="onDraft">
+              <SaveOutlined />
+              <span>存草稿</span>
+            </button>
+            <button type="button" class="uc-action is-create" :disabled="submitting" @click="onCreate(false)">
+              <FileAddOutlined />
+              <span>{{ createPrimaryLabel }}</span>
             </button>
             <button
               v-if="!isXiaozhiType && !isRefundType"
               type="button"
-              class="btn-ghost"
+              class="uc-action is-process"
               :disabled="submitting"
               @click="onCreate(true)"
             >
-              创建并处理
+              <CheckCircleOutlined />
+              <span>创建并处理</span>
             </button>
           </template>
         </div>

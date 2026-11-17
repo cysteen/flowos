@@ -5,6 +5,67 @@
   min-height: 100%;
   background: #fff;
 }
+.uc-page .uc-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.05);
+}
+.uc-page .uc-back {
+  flex: none;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.uc-page .uc-back:hover { color: #1a6fff; }
+.uc-page .uc-heading-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.uc-page .uc-heading-line h1 {
+  max-width: min(420px, 42vw);
+  margin: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uc-page .uc-status-chip {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 20px;
+}
+.uc-page .uc-status-chip { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; }
+.uc-page .uc-heading-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.uc-page .uc-heading-meta .muted { color: #9ca3af; }
 .uc-page .uc-body {
   flex: 1;
   display: flex;
@@ -45,7 +106,6 @@
   white-space: nowrap;
   line-height: 32px;
 }
-.uc-page .inline-label.title-label { width: 68px; }
 .uc-page .inline-control { flex: 1; min-width: 0; }
 .uc-page .req { color: #f56c6c; margin-right: 1px; }
 .uc-page .field-control .ant-select-selector { min-height: 32px; align-items: center; }
@@ -109,8 +169,8 @@
 
 /* 客户信息 */
 .uc-page .customer-layout { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; min-width: 0; }
-.uc-page .customer-part { flex: 3 1 460px; min-width: 0; box-sizing: border-box; }
-.uc-page .reporter-part { flex: 2 1 300px; min-width: 0; box-sizing: border-box; }
+.uc-page .customer-part { flex: 2 1 360px; min-width: 0; box-sizing: border-box; }
+.uc-page .reporter-part { flex: 3 1 520px; min-width: 0; box-sizing: border-box; }
 .uc-page .customer-layout .part-head { min-height: 28px; }
 .uc-page .customer-body { display: flex; flex-direction: column; gap: 8px; }
 .uc-page .customer-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -197,6 +257,52 @@
 }
 .uc-page .reporter-toggle { height: 28px; padding: 0 8px; font-size: 12px; }
 .uc-page .reporter-fields { display: flex; flex-direction: column; gap: 8px; }
+.uc-page .reporter-item {
+  display: grid;
+  grid-template-columns: auto minmax(150px, 1fr) minmax(185px, 1.15fr) minmax(145px, 0.68fr) 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+.uc-page .reporter-index {
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+}
+.uc-page .reporter-item .inline-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+.uc-page .reporter-item .inline-label { width: auto; }
+.uc-page .reporter-relation-field { grid-template-columns: 60px minmax(92px, 1fr) !important; }
+.uc-page .reporter-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+}
+.uc-page .reporter-remove:hover { color: #ef4444; background: #fef2f2; }
+
+/* 下拉弹层 Teleport 到 body，仅统一建单通过 provide 注入此类名。 */
+.uc-select-dropdown .ant-select-item {
+  min-height: 36px;
+  padding: 8px 12px;
+  line-height: 20px;
+}
+.uc-select-dropdown .ant-select-item-option-content { line-height: 20px; }
 .uc-page .customer-card {
   display: flex;
   align-items: center;
@@ -244,31 +350,25 @@
 
 /* 代报人：单条与多条均采用标签在上、控件在下的布局 */
 .uc-page .reporter-part .reporter-fields .inline-field {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
 }
 .uc-page .reporter-part .reporter-fields .inline-label {
   width: auto;
-  line-height: 18px;
+  line-height: 32px;
 }
 .uc-page .reporter-part .reporter-fields .inline-control {
-  flex: none;
+  flex: 1;
   width: 100%;
 }
 
 @media (min-width: 769px) {
   .uc-page .reporter-part .reporter-item {
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.78fr) 24px;
-    align-items: end;
+    grid-template-columns: auto minmax(150px, 1fr) minmax(185px, 1.15fr) minmax(145px, 0.68fr) 24px;
+    align-items: center;
   }
-  .uc-page .reporter-part .reporter-index,
-  .uc-page .reporter-part .reporter-remove {
-    align-self: end;
-    margin-bottom: 4px;
-  }
-  .uc-page .reporter-part .reporter-index { line-height: 24px; }
 }
 
 /* 底栏 */
@@ -282,30 +382,56 @@
 }
 .uc-page .flash-block-link { margin: 0 2px; color: #1a6fff; text-decoration: underline; }
 .uc-page .footer-hint { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: #9ca3af; }
-.uc-page .footer-btns { display: flex; align-items: center; gap: 10px; flex: none; margin-left: auto; }
-.uc-page .btn-ghost {
-  font-size: 13px;
-  color: #374151;
+.uc-page .footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-left: auto;
+  padding: 5px 8px;
   background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 9px 18px;
-  cursor: pointer;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
 }
-.uc-page .btn-primary {
-  font-size: 13px;
+.uc-page .uc-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.uc-page .uc-action .anticon { color: #4b5563; font-size: 16px; }
+.uc-page .uc-action:hover:not(:disabled) { color: #1a6fff; background: #f3f4f6; }
+.uc-page .uc-action:hover:not(:disabled) .anticon { color: #1a6fff; }
+.uc-page .uc-action.is-create {
   font-weight: 600;
-  color: #fff;
-  background: #1a6fff;
-  border: 1px solid #1a6fff;
-  border-radius: 6px;
-  padding: 9px 18px;
-  cursor: pointer;
+  color: #1a6fff;
 }
-.uc-page .btn-ghost:disabled,
-.uc-page .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.uc-page .uc-action.is-create .anticon { color: #1a6fff; }
+.uc-page .uc-action.is-process { color: #059669; font-weight: 600; }
+.uc-page .uc-action.is-process .anticon { color: #059669; }
+.uc-page .uc-action.is-process:hover:not(:disabled) { color: #047857; background: #ecfdf5; }
+.uc-page .uc-action.is-process:hover:not(:disabled) .anticon { color: #047857; }
+.uc-page .uc-action:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 768px) {
+  .uc-page .uc-header { align-items: flex-start; }
+  .uc-page .uc-heading-line { flex-wrap: wrap; }
+  .uc-page .uc-heading-meta { flex-basis: 100%; justify-content: flex-start; margin-left: 0; }
   .uc-page .row-3 { grid-template-columns: 1fr; }
+  .uc-page .reporter-item { grid-template-columns: 1fr 24px; }
+  .uc-page .reporter-index { grid-column: 1; }
+  .uc-page .reporter-item .inline-field { grid-column: 1 / -1; }
+  .uc-page .reporter-remove { grid-column: 2; grid-row: 1; }
   .uc-page .sn-field { max-width: none; }
 }

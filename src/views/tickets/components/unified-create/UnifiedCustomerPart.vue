@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { PlusOutlined, SearchOutlined, UserAddOutlined } from '@ant-design/icons-vue';
+import { computed, watch } from 'vue';
+import { DeleteOutlined, PlusOutlined, SearchOutlined, UserAddOutlined } from '@ant-design/icons-vue';
 import { formatCustomerSubline, maskPhone } from '@/views/tickets/types/createTicket';
+import type { ReporterInfo } from '@/views/tickets/types/createTicket';
 import type { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
 import CreateTicketPartCard from '../create-ticket/CreateTicketPartCard.vue';
 import CustomerInfoModal from '../create-ticket/CustomerInfoModal.vue';
@@ -40,8 +41,41 @@ const newCustomerPrefill = computed(() => {
   return q && !q.includes(' · ') ? q : '';
 });
 
-function toggleReporter() {
-  form.showReporter = !form.showReporter;
+function emptyReporter(): ReporterInfo {
+  return { name: '', phone: '', relation: '家属' };
+}
+
+/** 旧草稿只有 `reporter` 单对象，打开统一建单时迁入多代报人列表。 */
+watch(
+  () => form.showReporter,
+  (visible) => {
+    if (visible && !form.reporters.length) form.reporters.push({ ...form.reporter });
+  },
+  { immediate: true },
+);
+
+/** 首条同步回旧字段，保证旧的提交/草稿读取逻辑仍能拿到同一名代报人。 */
+watch(
+  () => form.reporters,
+  (rows) => { Object.assign(form.reporter, rows[0] ?? emptyReporter()); },
+  { deep: true },
+);
+
+function addReporter() {
+  if (!form.showReporter || !form.reporters.length) {
+    form.showReporter = true;
+    if (!form.reporters.length) form.reporters.push({ ...form.reporter });
+    return;
+  }
+  form.reporters.push(emptyReporter());
+}
+
+function removeReporter(index: number) {
+  form.reporters.splice(index, 1);
+  if (!form.reporters.length) {
+    form.showReporter = false;
+    Object.assign(form.reporter, emptyReporter());
+  }
 }
 </script>
 
@@ -49,9 +83,9 @@ function toggleReporter() {
   <div class="customer-layout">
     <CreateTicketPartCard title="客户信息" class="customer-part">
       <template #head-extra>
-        <button type="button" class="btn-outline reporter-toggle" :aria-expanded="form.showReporter" @click="toggleReporter">
+        <button type="button" class="btn-outline reporter-toggle" :aria-expanded="form.showReporter" @click="addReporter">
           <UserAddOutlined />
-          {{ form.showReporter ? '移除代报人' : '新增代报人' }}
+          {{ form.showReporter ? '继续添加代报人' : '新增代报人' }}
         </button>
       </template>
       <div class="customer-body">
@@ -131,24 +165,30 @@ function toggleReporter() {
       />
     </CreateTicketPartCard>
 
-    <CreateTicketPartCard v-if="form.showReporter" title="代报人信息" class="reporter-part">
+    <CreateTicketPartCard v-if="form.showReporter" :title="`代报人信息（${form.reporters.length}）`" class="reporter-part">
       <div class="reporter-fields">
-        <div class="inline-field">
-          <label for="uc-reporter-name" class="inline-label">姓名</label>
-          <a-input id="uc-reporter-name" v-model:value="form.reporter.name" class="inline-control field-control" placeholder="代报人姓名" />
-        </div>
-        <div class="inline-field">
-          <label for="uc-reporter-phone" class="inline-label">手机</label>
-          <a-input id="uc-reporter-phone" v-model:value="form.reporter.phone" class="inline-control field-control" placeholder="代报人手机" />
-        </div>
-        <div class="inline-field">
-          <label for="uc-reporter-relation" class="inline-label">与客户关系</label>
-          <FormSelect
-            id="uc-reporter-relation"
-            v-model:value="form.reporter.relation"
-            class="inline-control field-control"
-            :options="['校园代理', '家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
-          />
+        <div v-for="(reporter, index) in form.reporters" :key="index" class="reporter-item">
+          <span class="reporter-index">代报人 {{ index + 1 }}</span>
+          <div class="inline-field reporter-name-field">
+            <label :for="`uc-reporter-name-${index}`" class="inline-label">姓名</label>
+            <a-input :id="`uc-reporter-name-${index}`" v-model:value="reporter.name" class="inline-control field-control" placeholder="代报人姓名" />
+          </div>
+          <div class="inline-field reporter-phone-field">
+            <label :for="`uc-reporter-phone-${index}`" class="inline-label">手机号</label>
+            <a-input :id="`uc-reporter-phone-${index}`" v-model:value="reporter.phone" class="inline-control field-control" placeholder="代报人手机号" />
+          </div>
+          <div class="inline-field reporter-relation-field">
+            <label :for="`uc-reporter-relation-${index}`" class="inline-label">与客户关系</label>
+            <FormSelect
+              :id="`uc-reporter-relation-${index}`"
+              v-model:value="reporter.relation"
+              class="inline-control field-control"
+              :options="['校园代理', '家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
+            />
+          </div>
+          <button type="button" class="reporter-remove" :title="`删除代报人 ${index + 1}`" :aria-label="`删除代报人 ${index + 1}`" @click="removeReporter(index)">
+            <DeleteOutlined />
+          </button>
         </div>
       </div>
     </CreateTicketPartCard>
