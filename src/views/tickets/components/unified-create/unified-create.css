@@ -308,6 +308,7 @@
   cursor: pointer;
 }
 .uc-page .reporter-remove:hover { color: #dc2626; background: #fef2f2; }
+.uc-page .reporter-remove-placeholder { width: 24px; height: 24px; }
 
 /* 下拉弹层 Teleport 到 body，仅统一建单通过 provide 注入此类名。 */
 .uc-select-dropdown .ant-select-item {
@@ -383,7 +384,8 @@
     align-items: end;
   }
   .uc-page .reporter-part .reporter-index,
-  .uc-page .reporter-part .reporter-remove { margin-bottom: 4px; }
+  .uc-page .reporter-part .reporter-remove,
+  .uc-page .reporter-part .reporter-remove-placeholder { margin-bottom: 4px; }
 }
 
 /* 底栏 */
