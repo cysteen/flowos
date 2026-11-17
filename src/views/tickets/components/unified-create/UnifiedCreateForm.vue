@@ -386,7 +386,6 @@ function onCreate(processAfter = false) {
           aria-label="工单标题"
           @input="onTitleInput"
         />
-        <span class="uc-status-chip">新建</span>
         <div class="uc-heading-meta">
           <span aria-hidden="true">|</span>
           <span>建单人 {{ userStore.name }}</span>
