@@ -6,6 +6,7 @@ import { useFlashStore } from '@/stores/flash';
 import { useRefundStore } from '@/stores/refund';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { TICKETS } from '@/mock/tickets';
+import { creationRevision, hydrateCreationRows } from '@/stores/creationLedger';
 
 // Keep all existing standard-ticket behavior isolated from the business-form editor.
 defineOptions({ name: 'TicketOperationView' });
@@ -19,8 +20,10 @@ const flash = useFlashStore();
 const refund = useRefundStore();
 const xiaozhi = useXiaozhiStore();
 xiaozhi.hydrate();
+hydrateCreationRows();
 const ticketNo = computed(() => String(route.params.ticketNo ?? ''));
 const sourceTicket = computed(() => {
+  creationRevision.value;
   flash.revisionOf(ticketNo.value);
   refund.revisionOf(ticketNo.value);
   xiaozhi.revisionOf(ticketNo.value);

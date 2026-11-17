@@ -12,6 +12,8 @@ import {
   SearchOutlined,
   EyeOutlined,
 } from '@ant-design/icons-vue';
+import { localAftersaleOrders } from '@/stores/creationLedger';
+import { useOpenUnifiedCreate } from '@/views/tickets/composables/unifiedCreateEntry';
 import AppPagination from '@/components/AppPagination.vue';
 import {
   AFTERSALE_KPIS,
@@ -20,6 +22,7 @@ import {
   type AftersaleTabKey,
 } from '@/mock/aftersaleWorkbench';
 
+const openCreateAftersale = useOpenUnifiedCreate();
 const KPI_ICONS = [
   FileAddOutlined,
   CarOutlined,
@@ -31,6 +34,7 @@ const KPI_ICONS = [
 ];
 
 const activeTab = ref<AftersaleTabKey>('outlet');
+const detailOrder = ref<(typeof localAftersaleOrders.value)[number] | null>(null);
 const current = ref(1);
 const pageSize = ref(10);
 
@@ -45,7 +49,7 @@ const filters = reactive({
 const tabLabel = computed(() => AFTERSALE_TABS.find((t) => t.key === activeTab.value)?.label ?? '');
 
 const filtered = computed(() => {
-  return AFTERSALE_ORDERS.filter((o) => o.tab === activeTab.value).filter((o) => {
+  return [...localAftersaleOrders.value, ...AFTERSALE_ORDERS].filter((o) => o.tab === activeTab.value).filter((o) => {
     if (filters.customer && !o.customer.includes(filters.customer)) return false;
     if (filters.phone && !o.phone.includes(filters.phone)) return false;
     if (filters.serviceType && o.serviceType !== filters.serviceType) return false;
@@ -83,7 +87,8 @@ function onKpiClick(label: string) {
 }
 
 function onView(no: string) {
-  message.info(`${no} → 售后单处理页`);
+  const row = localAftersaleOrders.value.find((order) => order.no === no);
+  if (row) { detailOrder.value = row; } else message.info(`${no} → 售后单处理页`);
 }
 
 function setPage(page: number, size: number) {
@@ -94,6 +99,10 @@ function setPage(page: number, size: number) {
 
 <template>
   <div class="aftersale-workbench">
+    <div style="padding:12px 24px;background:white"><a-button type="primary" @click="openCreateAftersale({ action: 'aftersale', scene: 'general' })">新建售后工单</a-button></div>
+    <a-modal :open="!!detailOrder" title="售后工单详情" :footer="null" @cancel="detailOrder = null">
+      <template v-if="detailOrder"><p>{{ detailOrder.no }} · {{ detailOrder.status }}</p><p>{{ detailOrder.customer }} · {{ detailOrder.phone }}</p><p>{{ detailOrder.product }} · {{ detailOrder.payload.sn }}</p><p>{{ detailOrder.address }}</p><p>{{ detailOrder.payload.fault }}</p><p>{{ detailOrder.serviceType }} · {{ detailOrder.payload.serviceMethod }}</p><p v-if="detailOrder.sourceNo">关联客服单：{{ detailOrder.sourceNo }}</p></template>
+    </a-modal>
     <!-- Tabs 全宽贴顶 -->
     <div class="workbench-tabs">
       <div class="as-tabs">

@@ -6,6 +6,8 @@ import {
   PhoneOutlined,
   ToolOutlined,
 } from '@ant-design/icons-vue';
+import { TICKETS } from '@/mock/tickets';
+import { creationRevision } from '@/stores/creationLedger';
 import type { TicketDetailMeta, SlaClock } from '@/mock/ticketDetail';
 import { flashSlaClocks, type SlaClockSource } from '@/views/tickets/utils/slaClock';
 
@@ -14,6 +16,9 @@ const props = defineProps<{
   /** 悬停浮层的起算行改写（刷机单「SLA 起算 〈时间〉」，930 教育刷机单 M88）；不传按起算 → 终止展示 */
   startText?: string;
 }>();
+
+const creationSla = computed(() => { void creationRevision.value; return TICKETS.find((t) => t.no === props.detail.no)?.creationSla; });
+const spent = (ms: number) => `${Math.floor(ms / 60000)}分钟`;
 
 type Vis = 'normal' | 'warn' | 'over' | 'paused' | 'stopped';
 
@@ -317,6 +322,11 @@ const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
 </script>
 
 <template>
+  <div v-if="creationSla" style="font-size:12px;color:#64748b;padding:6px 16px">
+    <template v-if="creationSla.inheritedFromNo">对客时效继承自 {{ creationSla.inheritedFromNo }} · 首响已计 {{ spent(creationSla.customer.firstElapsedMs) }} · 解决已计 {{ spent(creationSla.customer.solveElapsedMs) }} · {{ creationSla.customer.responded ? '已首响' : '未首响' }}</template>
+    <template v-else>对客时效自 {{ creationSla.customer.startedAt }} 起算</template>
+    <span>；本单考核首响／解决自 {{ creationSla.assessment.startedAt }} 从零起算</span>
+  </div>
   <div class="sla-bar">
     <div
       v-for="d in dials"

@@ -10,6 +10,9 @@ import ApprovalWorkspaceView from '@/views/approval/ApprovalWorkspaceView.vue';
 import { useUserStore } from '@/stores/user';
 import { useBusinessRegistrationStore } from '@/stores/businessRegistration';
 import { TICKETS } from '@/mock/tickets';
+import { useCreateWorkItemsStore } from '@/stores/createWorkItems';
+import { workPath } from '@/views/tickets/types/createWork';
+import { hydrateCreationRows } from '@/stores/creationLedger';
 import { clearLegacyRegistrationProjections } from '@/views/self-service/legacyRegistrationProjection';
 import { firstMenuPath } from '@/config/navigation';
 import { adminHomePath, canAccessAdminItem } from '@/config/roles';
@@ -177,7 +180,7 @@ const routes: RouteRecordRaw[] = [
         meta: { menu: 'tickets', title: '工单处理' },
       },
       {
-        path: 'unified-create',
+        path: 'unified-create/:workId?',
         name: 'unified-create',
         component: () => import('@/views/tickets/UnifiedCreateView.vue'),
         meta: { menu: 'tickets', title: '统一建单' },
@@ -290,6 +293,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
+hydrateCreationRows();
 clearLegacyRegistrationProjections(TICKETS);
 const router = createRouter({
   history: createWebHistory('/flowos/'),
@@ -333,6 +337,10 @@ router.beforeEach((to) => {
   if (['tickets', 'query-center', 'unified-create'].includes(String(to.name))
     && to.query.template === 'wireless-operator') {
     return { path: to.name === 'unified-create' ? '/self-service/new' : '/self-service', query: typeof to.query.kw === 'string' ? { kw: to.query.kw } : {} };
+  }
+  if (to.name === 'unified-create' && !to.params.workId && user.canAccess('tickets')) {
+    const item = useCreateWorkItemsStore().open({ action: 'create', scene: 'general' });
+    return { path: workPath(item.id), replace: true };
   }
   if (to.name === 'ticket-operation') {
     const no = String(to.params.ticketNo ?? '');

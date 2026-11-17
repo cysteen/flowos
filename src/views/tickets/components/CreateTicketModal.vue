@@ -435,7 +435,7 @@ function onCreate(processAfter = false) {
 function onDraft() {
   const id = activeDraftId.value || 'draft-' + Date.now();
   activeDraftId.value = id;
-  draftStore.save({
+  const saved = draftStore.save({
     id,
     // 刷机单标题已随产品与问题分类同步为「刷机 · …」（1013 A3）
     title: form.title || '未命名草稿',
@@ -445,6 +445,7 @@ function onDraft() {
     form: JSON.parse(JSON.stringify(form)),
     ...(isXiaozhiType.value ? { xiaozhiScene: true } : {}),
   });
+  if (!saved) { message.error('草稿保存失败，已保留输入，请重试'); return; }
   message.success('已存草稿，可在工作台「草稿箱」继续编辑');
   emit('update:open', false);
 }
@@ -888,6 +889,7 @@ watch(
                   class="field-control cp-cell"
                   placeholder="投诉编号，可留空"
                 />
+                <a-textarea v-model:value="row.complaintContent" class="field-control cp-cell" placeholder="该平台投诉内容" :auto-size="{ minRows: 1, maxRows: 4 }" :status="errors.complaintPlatform ? 'error' : ''" />
                 <button
                   v-if="!isEscalateMode || form.complaintPlatforms.length > 1"
                   type="button"
@@ -910,10 +912,11 @@ watch(
                 <span v-else class="cp-add-spacer" aria-hidden="true" />
               </div>
             </div>
+            <div v-if="errors.complaintPlatform" style="color:#ef4444">请逐组选择平台、填写投诉内容；“其他”须填写平台名称，编号可留空。</div>
 
             <div class="row-3">
               <div class="inline-field">
-                <label class="inline-label xl"><span class="req">*</span>{{ lb('投诉类型') }}</label>
+                <label class="inline-label xl">{{ lb('投诉类型') }}</label>
                 <FormSelect
                   v-model:value="form.complaintType"
                   class="inline-control field-control"
@@ -969,6 +972,11 @@ watch(
                 :status="errors.complaintL2 ? 'error' : ''"
                 :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
               />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
+              <a-date-picker v-model:value="form.problemTime" class="inline-control field-control" show-time value-format="YYYY-MM-DD HH:mm" format="YYYY-MM-DD HH:mm" :status="errors.problemTime ? 'error' : ''" placeholder="请选择问题发生时间" />
+              <span v-if="errors.problemTime" style="color:#ef4444">请选择问题发生时间</span>
             </div>
             <div v-if="showServiceComplaintCategory" class="inline-field">
               <label class="inline-label xl"><span class="req">*</span>{{ lb('服务投诉分类') }}</label>

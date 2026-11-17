@@ -10,7 +10,10 @@ const props = defineProps<{
   context?: AftersaleContext;
   /** 预填变化时只更新变了的客户、产品字段，已填的其余内容保留（统一建单页用；默认关闭，整份重写） */
   refreshChangedOnly?: boolean;
+  snapshot?: Record<string, unknown>;
 }>();
+
+const emit = defineEmits<{ change: [snapshot: Record<string, unknown>] }>();
 
 /** 展示用的空值占位（「—」等）不是值：预填时按空处理，不写进售后单与履历 */
 const PLACEHOLDER = /^[\s—–\-－]*$/;
@@ -50,6 +53,7 @@ function prefill(ctx?: AftersaleContext) {
   form.province = p; form.city = c; form.district = d;
   form.address = val(ctx.address);
   form.fault = val(ctx.fault);
+  form.faultAttachments = [...(ctx.faultAttachments ?? [])];
   form.productCategory = val(ctx.productCategory);
   form.productName = val(ctx.productName);
   form.sn = val(ctx.sn);
@@ -81,6 +85,8 @@ function refreshChanged(ctx?: AftersaleContext, old?: AftersaleContext) {
   if (ctx.productName !== old?.productName) form.productName = val(ctx.productName);
 }
 prefill(props.context);
+if (props.snapshot) Object.assign(form, JSON.parse(JSON.stringify(props.snapshot)));
+watch(form, () => emit('change', JSON.parse(JSON.stringify(form))), { deep: true, flush: 'sync' });
 watch(() => props.context, (ctx, old) => {
   if (props.refreshChangedOnly) refreshChanged(ctx, old);
   else prefill(ctx);
@@ -100,7 +106,7 @@ const REQUIRED: { key: ReqKey; msg: string; when?: () => boolean }[] = [
   { key: 'customerName', msg: '请输入客户名称' },
   { key: 'customerPhone', msg: '请输入联系号码' },
   { key: 'region', msg: '请选择省市区' },
-  { key: 'address', msg: '请输入详细地址' },
+  { key: 'visitTime', msg: '请选择上门预约时间', when: () => isVisit.value },
   { key: 'fault', msg: '请输入故障描述' },
   { key: 'productCategory', msg: '请选择产品分类' },
   { key: 'productName', msg: '请选择产品名称' },
@@ -187,7 +193,7 @@ function getPayload(): AftersalePayload | null {
   return base;
 }
 
-defineExpose({ getPayload });
+defineExpose({ getPayload, snapshot: () => JSON.parse(JSON.stringify(form)) as Record<string, unknown> });
 </script>
 
 <template>
@@ -217,14 +223,15 @@ defineExpose({ getPayload });
         <div v-if="errs.region" class="as-err">{{ errs.region }}</div>
       </div>
       <div class="as-field">
-        <div class="as-label is-required">详细地址</div>
+        <div class="as-label">详细地址</div>
         <a-input v-model:value="form.address" placeholder="请输入地址" :status="errs.address ? 'error' : undefined" />
         <div v-if="errs.address" class="as-err">{{ errs.address }}</div>
       </div>
       <div v-if="isVisit" class="as-grid">
         <div class="as-field">
-          <div class="as-label">上门预约时间</div>
-          <a-input v-model:value="form.visitTime" placeholder="年月日 时分" />
+          <div class="as-label is-required">上门预约时间</div>
+          <a-date-picker v-model:value="form.visitTime" show-time value-format="YYYY-MM-DD HH:mm" format="YYYY-MM-DD HH:mm" :status="errs.visitTime ? 'error' : undefined" placeholder="请选择上门预约时间" style="width:100%" />
+          <div v-if="errs.visitTime" class="as-err">{{ errs.visitTime }}</div>
         </div>
         <div class="as-field">
           <div class="as-label">预约备注</div>

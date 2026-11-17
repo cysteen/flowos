@@ -40,6 +40,8 @@ import TicketToolbar from './components/TicketToolbar.vue';
 import TicketRichList from './components/TicketRichList.vue';
 import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
+import { useOpenUnifiedCreate } from './composables/unifiedCreateEntry';
+import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import SaveFilterModal from './components/SaveFilterModal.vue';
 import OpActionDialogs from './components/OpActionDialogs.vue';
 import OpActionModal from './components/operation/OpActionModal.vue';
@@ -543,8 +545,15 @@ function openCreateXiaozhi() {
   createPrefill.value = { xiaozhiScene: true };
   createOpen.value = true;
 }
-function editDraft(id: string) { editingDraftId.value = id; createOpen.value = true; }
-function removeDraft(id: string) { wb.removeDraft(id); message.success('草稿已删除'); }
+const openUnifiedDraft = useOpenUnifiedCreate();
+function editDraft(id: string) {
+  const draft = useTicketDraftStore().get(id);
+  if (draft) openUnifiedDraft(draft.context ?? { action: 'create', scene: draft.xiaozhiScene ? 'xiaozhi' : 'general' }, id);
+}
+function removeDraft(id: string) {
+  if (wb.removeDraft(id)) message.success('草稿已删除');
+  else message.warning('草稿未删除；已有售后号的事项请继续核对，完成后自动清理。');
+}
 
 /**
  * 打开工单处理页。从「工单池」页签打开的带工单池入口标记，处理页据此自动领取（用户 10-19，不分工单类型）；

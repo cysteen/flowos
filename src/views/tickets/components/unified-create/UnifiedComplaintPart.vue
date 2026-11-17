@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { CloseOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import {
   BUSINESS_LINE_OPTIONS,
+  PRODUCT_LINES_BY_BUSINESS_LINE,
   COMPLAINT_TYPE_OPTIONS,
   CUSTOM_PLATFORM_OPTION,
   PRIOR_FEEDBACK_OPTIONS,
@@ -17,7 +18,7 @@ import type { useCreateTicketForm } from '@/views/tickets/composables/useCreateT
 import CreateTicketPartCard from '../create-ticket/CreateTicketPartCard.vue';
 import FormSelect from '../create-ticket/FormSelect.vue';
 
-const props = defineProps<{ ctx: ReturnType<typeof useCreateTicketForm> }>();
+const props = defineProps<{ ctx: ReturnType<typeof useCreateTicketForm>; simplifiedExternal?: boolean; standardUpgrade?: boolean }>();
 
 // eslint-disable-next-line vue/no-setup-props-destructure -- ctx 随表单实例创建，生命周期内不换
 const { form, errors, typePartSubtitle, showChannelComplaintFields, showServiceComplaintCategory } = props.ctx;
@@ -60,6 +61,7 @@ function removeComplaintPlatform(i: number) {
             class="field-control cp-cell"
             placeholder="投诉编号，可留空"
           />
+          <a-textarea v-model:value="row.complaintContent" class="field-control cp-cell" placeholder="该平台投诉内容" :auto-size="{ minRows: 1, maxRows: 4 }" :status="errors.complaintPlatform ? 'error' : ''" />
           <button
             type="button"
             class="cp-del"
@@ -75,10 +77,11 @@ function removeComplaintPlatform(i: number) {
           <span v-else class="cp-add-spacer" aria-hidden="true" />
         </div>
       </div>
+      <div v-if="errors.complaintPlatform" style="color:#ef4444">请逐组选择平台、填写投诉内容；“其他”须填写平台名称，编号可留空。</div>
 
-      <div class="row-3">
+      <div v-if="!simplifiedExternal" class="row-3">
         <div class="inline-field">
-          <label class="inline-label xl"><span class="req">*</span>投诉类型</label>
+          <label class="inline-label xl">投诉类型</label>
           <FormSelect
             v-model:value="form.complaintType"
             class="inline-control field-control"
@@ -91,6 +94,7 @@ function removeComplaintPlatform(i: number) {
           <FormSelect
             v-model:value="form.businessLine"
             class="inline-control field-control"
+            :status="errors.businessLine ? 'error' : ''"
             :options="BUSINESS_LINE_OPTIONS.map((v) => ({ value: v, label: v }))"
           />
         </div>
@@ -99,9 +103,14 @@ function removeComplaintPlatform(i: number) {
           <FormSelect
             v-model:value="form.priorFeedback"
             class="inline-control field-control"
+            :status="errors.priorFeedback ? 'error' : ''"
             :options="PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }))"
           />
         </div>
+      </div>
+      <div v-if="standardUpgrade" class="inline-field">
+        <label class="inline-label xl"><span class="req">*</span>归属产品线</label>
+        <FormSelect v-model:value="form.productLine" class="inline-control field-control" :status="errors.productLine ? 'error' : ''" :options="(PRODUCT_LINES_BY_BUSINESS_LINE[form.businessLine] || []).map((v) => ({ value:v, label:v }))" />
       </div>
     </template>
 
@@ -124,6 +133,11 @@ function removeComplaintPlatform(i: number) {
           :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
         />
       </div>
+      <div class="inline-field">
+        <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
+        <a-date-picker v-model:value="form.problemTime" class="inline-control field-control" show-time value-format="YYYY-MM-DD HH:mm" format="YYYY-MM-DD HH:mm" :status="errors.problemTime ? 'error' : ''" placeholder="请选择问题发生时间" />
+        <span v-if="errors.problemTime" style="color:#ef4444">请选择问题发生时间</span>
+      </div>
       <div v-if="showServiceComplaintCategory" class="inline-field">
         <label class="inline-label xl"><span class="req">*</span>服务投诉分类</label>
         <FormSelect
@@ -133,7 +147,7 @@ function removeComplaintPlatform(i: number) {
           :options="SERVICE_COMPLAINT_CATEGORY_OPTIONS.map((v) => ({ value: v, label: v }))"
         />
       </div>
-      <div v-if="showChannelComplaintFields" class="inline-field">
+      <div v-if="showChannelComplaintFields && !simplifiedExternal" class="inline-field">
         <label class="inline-label xl">投诉接收时间</label>
         <a-date-picker
           v-model:value="form.complaintReceiveTime"
@@ -146,7 +160,7 @@ function removeComplaintPlatform(i: number) {
       </div>
     </div>
 
-    <div v-if="showChannelComplaintFields" class="inline-field review-field">
+    <div v-if="showChannelComplaintFields && !simplifiedExternal" class="inline-field review-field">
       <label class="inline-label xl">服务回溯</label>
       <a-textarea
         v-model:value="form.serviceReview"

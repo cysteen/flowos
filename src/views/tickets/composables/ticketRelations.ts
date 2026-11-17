@@ -18,6 +18,7 @@ export type RelationKind =
   /** 本单升级派生出的新投诉/外投单（本单是来源） */
   | 'escalatedTo'
   /** 本单由某单升级而来（本单是结果） */
+  | 'transferredFrom' | 'reopenedFrom'
   | 'escalatedFrom'
   /**
    * 本单**已转单为**该新单：原单关闭、新单继续跑（基线 ※16），原单落已转咨询 / 已转建议 / 已转商机。
@@ -60,6 +61,8 @@ export interface TicketRelation {
 
 const META: Record<RelationKind, { label: string; arrow: string }> = {
   escalatedTo: { label: '已升级为', arrow: '↓' },
+  transferredFrom: { label: '转单自', arrow: '↑' },
+  reopenedFrom: { label: '承接自', arrow: '↑' },
   escalatedFrom: { label: '升级自', arrow: '↑' },
   transferredTo: { label: '已转单为', arrow: '↳' },
   aftersale: { label: '关联售后', arrow: '⇄' },
@@ -112,6 +115,10 @@ function resolveWeakLinks(detail: TicketDetailMeta): TicketRelation[] {
 /** 父方向：本单从哪来（最多一个） */
 function resolveParent(detail: TicketDetailMeta): TicketRelation | null {
   if (detail.escalatedFromNo) return rel('escalatedFrom', detail.escalatedFromNo);
+  const transfer = detail.linkedRecords?.find((r) => r.tag === '转单自');
+  if (transfer) return rel('transferredFrom', transfer.no);
+  const reopen = detail.linkedRecords?.find((r) => r.tag === '承接自' || r.tag === '重新建单自');
+  if (reopen) return rel('reopenedFrom', reopen.no);
   if (detail.followingNo) return rel('following', detail.followingNo);
   return null;
 }
@@ -130,6 +137,8 @@ function resolveChild(detail: TicketDetailMeta): TicketRelation | null {
       href: aftersaleDeepLink(detail.linkedAftersale.no),
     });
   }
+  const continuation = detail.linkedRecords?.find((r) => r.tag === '转单子单');
+  if (continuation) return rel('child', continuation.no, { title: continuation.title });
   const child = (detail.childTickets ?? [])[0];
   if (child) return rel('child', child.no, { title: child.title, status: child.statusTag });
   const reopen = (detail.linkedRecords ?? []).find((r) => r.tag === 'Reopen');

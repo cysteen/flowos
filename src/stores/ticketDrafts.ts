@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { creationReceipt } from './creationLedger';
 import { useUserStore } from '@/stores/user';
+import type { CreateWorkContext } from '@/views/tickets/types/createWork';
 
 // 工单草稿（建单弹窗「存草稿」→ 工作台草稿箱 → 继续编辑/提交）。localStorage 持久化形成闭环。
 const LS_KEY = 'flowos-ticket-drafts';
@@ -16,6 +18,18 @@ export interface TicketDraft {
   form: Record<string, unknown>;
   /** 从小智入口存的草稿：继续编辑时仍是小智表单。此前存的草稿没有这一项，按普通草稿恢复 */
   xiaozhiScene?: boolean;
+  workId?: string;
+  workStatus?: 'editing' | 'submitting' | 'unknown' | 'complete';
+  resultNo?: string;
+  surface?: 'ticket' | 'aftersale';
+  context?: CreateWorkContext;
+  aftersaleForm?: Record<string, unknown>;
+}
+
+export function isPendingAftersaleDraft(d: TicketDraft) {
+  const receipt = d.workId ? creationReceipt(d.workId) : undefined;
+  if (receipt?.phase === 'complete') return false;
+  return (receipt?.kind === 'aftersale' && receipt.phase === 'created') || (d.surface === 'aftersale' && !!d.resultNo && d.workStatus !== 'complete');
 }
 
 export const useTicketDraftStore = defineStore('ticketDrafts', () => {
@@ -35,26 +49,34 @@ export const useTicketDraftStore = defineStore('ticketDrafts', () => {
   const owner = computed(() => user.account || `role:${user.roleKey}`);
   const drafts = computed(() => all.value.filter((d) => d.owner === owner.value));
 
-  function persist() {
+  function persist(next = all.value) {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(all.value));
+      localStorage.setItem(LS_KEY, JSON.stringify(next));
+      return true;
     } catch {
-      /* 配额超限等忽略 */
+      return false;
     }
   }
 
   /** 新增或更新本人的草稿（按 id）；归属账号取当前登录人 */
   function save(d: Omit<TicketDraft, 'owner'>) {
     const next: TicketDraft = { ...d, owner: owner.value };
-    const i = all.value.findIndex((x) => x.id === d.id && x.owner === owner.value);
-    if (i >= 0) all.value[i] = next;
-    else all.value.unshift(next);
-    persist();
+    const rows = [...all.value];
+    const i = rows.findIndex((x) => x.id === d.id && x.owner === owner.value);
+    if (i >= 0) rows[i] = next;
+    else rows.unshift(next);
+    if (!persist(rows)) return false;
+    all.value = rows;
+    return true;
   }
 
   function remove(id: string) {
-    all.value = all.value.filter((x) => !(x.id === id && x.owner === owner.value));
-    persist();
+    const draft = get(id);
+    if (draft && isPendingAftersaleDraft(draft)) return false;
+    const rows = all.value.filter((x) => !(x.id === id && x.owner === owner.value));
+    if (!persist(rows)) return false;
+    all.value = rows;
+    return true;
   }
 
   function get(id: string) {

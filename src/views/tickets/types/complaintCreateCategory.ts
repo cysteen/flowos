@@ -87,3 +87,8 @@ export function needsServiceComplaintCategory(
     && ticketType === '投诉'
     && complaintL2 === SERVICE_COMPLAINT_TRIGGER_L2;
 }
+
+/** 【830】§3.2: nature is derived from each second-level category, deduplicated. */
+export function inferCreateComplaintNatures(rows: { cat1: string; cat2: string }[]): string[] {
+  return [...new Set(rows.filter((row) => row.cat2).map((row) => row.cat2 === '对人员服务态度不满' ? '人员投诉' : row.cat1 === '服务质量投诉' ? '服务投诉' : '业务投诉'))];
+}

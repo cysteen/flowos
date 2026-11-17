@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FileTextOutlined } from '@ant-design/icons-vue';
-import type { TicketDraft } from '@/stores/ticketDrafts';
+import { isPendingAftersaleDraft, type TicketDraft } from '@/stores/ticketDrafts';
 
 defineProps<{ drafts: TicketDraft[] }>();
 const emit = defineEmits<{
@@ -39,9 +39,9 @@ const emit = defineEmits<{
           <span class="title-text">{{ d.title }}</span>
         </div>
         <div class="title-line2">
-          <span class="draft-flag">草稿</span>
+          <span class="draft-flag">{{ isPendingAftersaleDraft(d) ? '售后关联待核对' : '草稿' }}</span>
           <span class="sep">·</span>
-          <span class="hint">点击继续编辑</span>
+          <span class="hint">{{ d.resultNo ? `售后单 ${d.resultNo} · 点击核对` : '点击继续编辑' }}</span>
         </div>
       </div>
 
@@ -51,7 +51,7 @@ const emit = defineEmits<{
 
       <div class="col-action cell-action" @click.stop>
         <span class="act" @click="emit('open', d.id)">继续编辑</span>
-        <span class="act danger" @click="emit('remove', d.id)">删除</span>
+        <span v-if="!isPendingAftersaleDraft(d)" class="act danger" @click="emit('remove', d.id)">删除</span>
       </div>
     </div>
   </div>
