@@ -23,8 +23,6 @@ const expanded = ref(true);
     <OpCollapsibleSection
       title="处理记录"
       :icon="FileTextOutlined"
-      badge="必填"
-      badge-variant="required"
       :expanded="expanded"
       @toggle="expanded = !expanded"
     >
@@ -34,6 +32,7 @@ const expanded = ref(true);
         :problem-cause-attachments="draft.problemCauseAttachments"
         :process-result-attachments="draft.processResultAttachments"
         :readonly="readonly"
+        :required="!readonly"
         @update:problem-cause="(v) => emit('update:draft', { ...draft, problemCause: v })"
         @update:process-result="(v) => emit('update:draft', { ...draft, processResult: v })"
         @update:problem-cause-attachments="(v) => emit('update:draft', { ...draft, problemCauseAttachments: v })"
