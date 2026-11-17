@@ -423,6 +423,7 @@ const riskMonitorDiff = computed(() => {
             class="cat-select"
             :class="{ 'ctrl-missing': missRowCat1(rowIndex) }"
             :value="row.cat1 || undefined"
+            :dropdown-match-select-width="360"
             :options="complaintL1Options"
             :placeholder="readonly ? '' : '请选择或搜索'"
             @update:value="(v) => onRowCat1Change(rowIndex, v)"
@@ -435,6 +436,7 @@ const riskMonitorDiff = computed(() => {
             class="cat-select"
             :class="{ 'ctrl-missing': missRowCat2(rowIndex) }"
             :value="row.cat2 || undefined"
+            :dropdown-match-select-width="360"
             :options="complaintL2OptionsOf(row.cat1)"
             :disabled="readonly || !row.cat1"
             :placeholder="readonly ? '' : '请选择或搜索'"
@@ -448,6 +450,7 @@ const riskMonitorDiff = computed(() => {
             class="cat-select"
             :class="{ 'ctrl-missing': missRowCat3(rowIndex) }"
             :value="row.cat3 || undefined"
+            :dropdown-match-select-width="360"
             :options="complaintL3OptionsOf(row.cat2)"
             :disabled="readonly || !row.cat2 || !l3Required(row.cat2)"
             :placeholder="readonly ? '' : '请选择或搜索'"
@@ -466,6 +469,7 @@ const riskMonitorDiff = computed(() => {
             class="cat-select complained-role-select"
             :class="{ 'ctrl-missing': missComplainedRole }"
             :value="form.complainedRole"
+            :dropdown-match-select-width="280"
             :options="complainedRoleOptions"
             :placeholder="readonly ? '' : '请选择或搜索'"
             :max-tag-count="2"
@@ -699,8 +703,42 @@ const riskMonitorDiff = computed(() => {
     justify-self: start;
   }
 }
+.complaint-category-row {
+  --cat-actions-w: 96px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--cat-actions-w);
+  column-gap: 6px;
+}
 .complaint-cat-row--with-role {
   grid-template-columns: repeat(4, minmax(0, 1fr)) var(--cat-actions-w);
+}
+.complaint-category-row .cat-row-actions,
+.complaint-category-row .cat-row-actions-spacer {
+  grid-column: auto;
+  align-self: start;
+}
+.complaint-category-row .cat-row-actions { gap: 4px; }
+.complaint-category-row .cp-add,
+.complaint-category-row .cp-add-spacer { width: 66px; }
+.complaint-category-row .cp-add { gap: 2px; }
+.complaint-category-row .cp-del { align-self: start; }
+.complaint-category-row .cat-item {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 2px;
+}
+.complaint-categories-block .complaint-category-row .field-label-sm { width: auto; }
+.complaint-categories-block .complaint-category-row .field-err {
+  grid-column: 2;
+  padding-left: 0;
+}
+.complaint-category-row .complained-role-select :deep(.ant-select-selection-overflow) {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.complaint-category-row .complained-role-select :deep(.ant-select-selection-overflow-item) {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 .complained-role-select {
   width: 100%;
@@ -724,7 +762,6 @@ const riskMonitorDiff = computed(() => {
   line-height: 24px;
 }
 .complaint-categories-block {
-  container: complaint-categories / inline-size;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -734,21 +771,6 @@ const riskMonitorDiff = computed(() => {
 }
 .complaint-categories-block .complaint-cat-row {
   width: 100%;
-}
-@container complaint-categories (max-width: 1040px) {
-  .complaint-category-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .complaint-category-row .cat-row-actions,
-  .complaint-category-row .cat-row-actions-spacer {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-}
-@container complaint-categories (max-width: 520px) {
-  .complaint-category-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 .cp-add {
   flex: none;
