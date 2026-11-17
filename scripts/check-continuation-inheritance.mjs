@@ -19,6 +19,7 @@ try {
   const pinia=createPinia();setActivePinia(pinia);
   const { TICKETS }=await server.ssrLoadModule('/src/mock/tickets.ts');
   const { useUserStore }=await server.ssrLoadModule('/src/stores/user.ts');
+  const { useDispatchStore }=await server.ssrLoadModule('/src/stores/dispatch.ts');
   const { useCreateWorkItemsStore }=await server.ssrLoadModule('/src/stores/createWorkItems.ts');
   const { useTicketOperation }=await server.ssrLoadModule('/src/views/tickets/composables/useTicketOperation.ts');
   const service=await server.ssrLoadModule('/src/views/tickets/composables/createWorkSubmission.ts');
@@ -46,7 +47,8 @@ try {
   assert.deepEqual([child.problemL1,child.problemL2,child.problemL3],detail.product.issueTags);
   assert.equal(child.ticketSource,detail.source);assert.equal(child.customerRegion,detail.customer.region);assert.equal(child.customerAddress,detail.customer.address);
   assert.equal(child.title,source.title);assert.equal(child.type,source.type);assert.equal(child.priority,source.priority);
-  assert.equal(child.nodeStatus,'未认领');assert.equal(child.assignee,null);assert.equal(child.groupId,source.groupId);assert.equal(source.nodeStatus,'已结案');
+  const dispatch=useDispatchStore(),dispatchState=dispatch.ticketStateOf(child.no);assert.ok(dispatchState);assert.equal(dispatchState.relatedNo,source.no);
+  assert.equal(child.groupId,dispatch.poolGroupIdOf(dispatchState.poolId));assert.ok(dispatch.logsOf(child.no).length > 0);assert.equal(source.nodeStatus,'已结案');
   assert.equal(source.businessType,undefined);assert.equal(source.sn,undefined);assert.equal(child.creationSla.customer.solveElapsedMs,0);assert.equal(child.creationSla.inheritedFromNo,undefined);
   ledger.hydrateCreationRows();await router.push(`/tickets/${child.no}`);await nextTick();operation.reloadDetail();
   const reopened=operation.detail.value;

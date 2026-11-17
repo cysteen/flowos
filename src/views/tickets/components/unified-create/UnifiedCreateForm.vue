@@ -513,7 +513,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
 
       <!-- ② 工单基础（含问题描述与附件） -->
       <CreateTicketPartCard v-if="isContinuation" title="本次补充">
-        <p>客户、产品、类型、来源、问题分类、优先级与归属组继承原单；承接单进入原组工单池。</p>
+        <p>客户、产品、类型、来源、问题分类与优先级继承原单；承接单按现行入池与派单规则分配。</p>
         <p>{{ item.context.source?.demand }}</p>
         <OpTextareaAttach v-model="form.continuationSupplement" v-model:attachments="form.continuationAttachments" placeholder="填写本次补充内容" />
       </CreateTicketPartCard>
