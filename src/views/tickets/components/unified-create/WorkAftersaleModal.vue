@@ -31,13 +31,15 @@ void nextTick(() => {
   openingInput.value = JSON.stringify(props.item.aftersaleForm);
   if (!props.item.savedInput) props.item.savedInput = workInput(props.item);
 });
-const pendingOrder = computed(() => localAftersaleOrders.value.find((order) => order.workId === props.item.id && order.bindingStatus === 'pending'));
-const readOnly = computed(() => !!pendingOrder.value || !!props.item.resultNo && props.item.status === 'unknown');
-const needsReconciliation = computed(() => readOnly.value || props.item.status === 'unknown');
-const formSnapshot = computed(() => pendingOrder.value ? { ...props.item.aftersaleForm, ...pendingOrder.value.payload } : props.item.aftersaleForm);
+const recordedOrder = computed(() => localAftersaleOrders.value.find((order) => order.workId === props.item.id));
+const pendingOrder = computed(() => recordedOrder.value?.bindingStatus === 'pending' ? recordedOrder.value : undefined);
+const readOnly = computed(() => props.item.status === 'complete' || !!pendingOrder.value || !!props.item.resultNo && props.item.status === 'unknown');
+const needsReconciliation = computed(() => props.item.status !== 'complete' && (readOnly.value || props.item.status === 'unknown'));
+const formSnapshot = computed(() => readOnly.value && recordedOrder.value ? { ...props.item.aftersaleForm, ...recordedOrder.value.payload } : props.item.aftersaleForm);
 const busy = computed(() => props.item.status === 'submitting');
 async function close() {
   if (busy.value) return;
+  if (props.item.status === 'complete') { if (props.item.resultNo) works.complete(props.item, props.item.resultNo); props.item.aftersaleOpen = false; return; }
   if (readOnly.value) { save(); return; }
   const modified = JSON.stringify(props.item.aftersaleForm) !== openingInput.value;
   if (modified && !await confirmWorkClose(props.item)) return;
@@ -89,12 +91,13 @@ function confirm() {
       <a :href="sourceSummary.href" target="_blank" rel="noopener noreferrer" title="打开原工单">{{ sourceSummary.no }}</a>
       <span class="as-source-title">{{ sourceSummary.title }}</span>
     </div>
-    <a-alert v-if="readOnly" :message="`售后单 ${item.resultNo || pendingOrder?.no} 已生成，客服关联待核对；只继续核对，不再创建。`" type="warning" style="margin-bottom:12px" />
+    <a-alert v-if="item.status === 'complete'" :message="`售后工单 ${item.resultNo} 已创建，本事项已完成。`" type="success" style="margin-bottom:12px" />
+    <a-alert v-else-if="readOnly" :message="`售后单 ${item.resultNo || pendingOrder?.no} 已生成，客服关联待核对；只继续核对，不再创建。`" type="warning" style="margin-bottom:12px" />
     <a-alert v-if="item.error" :message="item.error" type="error" show-icon style="margin-bottom:12px" />
     <AftersaleCreateForm ref="saleForm" :context="context" :snapshot="formSnapshot" :read-only="readOnly" @change="!readOnly && (item.aftersaleForm = $event)" />
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px">
-      <a-button v-if="!readOnly" :disabled="busy" @click="close">取消</a-button>
-      <a-button :disabled="busy" @click="save">{{ readOnly ? '暂存退出' : '存草稿' }}</a-button>
+      <a-button v-if="!readOnly || item.status === 'complete'" :disabled="busy" @click="close">{{ item.status === 'complete' ? '关闭' : '取消' }}</a-button>
+      <a-button v-if="item.status !== 'complete'" :disabled="busy" @click="save">{{ readOnly ? '暂存退出' : '存草稿' }}</a-button>
       <a-button v-if="item.status === 'complete'" @click="router.push('/aftersale')">查看售后工作台</a-button>
       <a-button v-else type="primary" :loading="busy" @click="confirm">{{ needsReconciliation ? '核对本次结果' : '创建售后工单' }}</a-button>
     </div>

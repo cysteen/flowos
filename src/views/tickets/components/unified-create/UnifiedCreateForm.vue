@@ -458,7 +458,12 @@ const savedForm = item.form ? copy(item.form) : null;
 if (savedForm) applyDraft(savedForm);
 if (fixedComplaint) form.ticketType = '投诉';
 if (isContinuation) { form.title = item.context.source?.title ?? ''; form.titleManual = true; }
-if (simplifiedExternal) form.ticketSource = '外投渠道';
+if (simplifiedExternal) {
+  const source = item.context.source;
+  form.ticketSource = '外投渠道';
+  form.title = `外投·${TICKETS.find((row) => row.no === source?.no)?.title ?? source?.title ?? ''}`;
+  form.titleManual = true;
+}
 void nextTick(() => {
   item.form = copy(form) as unknown as Record<string, unknown>;
   if (item.context.action === 'transfer' && (form.priority === 'P0' || form.priority === 'P1')) form.priority = '';
@@ -700,7 +705,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
             </button>
             <button type="button" class="uc-action is-create" :disabled="submitting" @click="onCreate(false)">
               <FileAddOutlined />
-              <span>{{ item.status === 'unknown' ? '核对本次结果' : item.status === 'complete' ? '已完成' : item.context.action === 'create' ? createPrimaryLabel : CREATE_WORK_LABELS[item.context.action] }}</span>
+              <span>{{ item.status === 'unknown' ? '核对本次结果' : item.status === 'complete' ? '已完成' : simplifiedExternal ? '确认升级为外投' : item.context.action === 'create' ? createPrimaryLabel : CREATE_WORK_LABELS[item.context.action] }}</span>
             </button>
             <button
               v-if="!isXiaozhiType && !isRefundType && !simplifiedExternal && !isContinuation"
