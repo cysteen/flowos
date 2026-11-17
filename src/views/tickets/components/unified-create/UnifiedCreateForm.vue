@@ -22,6 +22,7 @@ import type { AftersaleContext } from '@/views/tickets/composables/opActions';
 import { useCreateWorkItemsStore } from '@/stores/createWorkItems';
 import { copy, workInput, workPath, CREATE_WORK_LABELS, type CreateWorkItem } from '../../types/createWork';
 import { submitWorkTicket, validateWorkSource } from '../../composables/createWorkSubmission';
+import { inheritedReadonlyTicketFields } from '../../composables/inheritedSourceFields';
 import { creationReceipt } from '@/stores/creationLedger';
 import { confirmWorkClose } from '../../composables/createWorkGuard';
 import { XIAOZHI_TIP } from '@/views/tickets/types/xiaozhi';
@@ -432,11 +433,7 @@ function onCreate(processAfter = false) {
       if (simplifiedExternal) {
         const source = validateWorkSource(item)!;
         Object.assign(ticket, {
-          customer: source.row.customer, customerPhone: source.row.customerPhone,
-          customerRegion: source.row.customerRegion, customerAddress: source.row.customerAddress,
-          product: source.row.product, productCategory: source.row.productCategory, sn: source.row.sn,
-          businessType: source.row.businessType, businessLine: source.row.businessLine, productLine: source.row.productLine,
-          priority: source.row.priority, problemL1: source.row.problemL1, problemL2: source.row.problemL2, problemL3: source.row.problemL3,
+          ...inheritedReadonlyTicketFields(source.row, source.detail),
           externalComplaintCategories: copy(form.externalComplaintCategories ?? []), complaintL1: form.externalComplaintCategories?.[0]?.cat1, complaintL2: form.externalComplaintCategories?.[0]?.cat2,
           ticketSource: '外投渠道', type: '投诉', title: `外投·${source.row.title}`,
           problemDesc: `【升级投诉·原单 ${source.row.no}】投诉 → 外投\n工单来源：外投渠道\n投诉分类：${form.externalComplaintCategories?.map((row) => `${row.cat1} / ${row.cat2}`).join('；')}（${inferCreateComplaintNatures(form.externalComplaintCategories ?? []).join('、')}）\n投诉平台：${form.complaintPlatforms.map((p) => `${p.customPlatform || p.platform} ${p.complaintNo}`).join('；')}\n${form.description.trim()}\n原客户诉求：${source.detail.demand}`,
