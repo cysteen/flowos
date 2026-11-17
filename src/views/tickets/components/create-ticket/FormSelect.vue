@@ -1,7 +1,16 @@
 <script setup lang="ts">
+import { computed, inject, useAttrs } from 'vue';
 import { filterSelectOption } from '@/views/tickets/types/createTicket';
 
 defineOptions({ inheritAttrs: false });
+
+const attrs = useAttrs();
+const inheritedPopupClassName = inject<string | undefined>('create-ticket-select-popup-class', undefined);
+const popupClassName = computed(() =>
+  (attrs.popupClassName as string | undefined)
+  ?? (attrs['popup-class-name'] as string | undefined)
+  ?? inheritedPopupClassName,
+);
 
 const props = defineProps<{
   value?: string | number | string[] | undefined;
@@ -37,6 +46,7 @@ function onChange(v: unknown) {
     :value="value"
     :options="options"
     :mode="mode"
+    :popup-class-name="popupClassName"
     show-search
     :filter-option="filterSelectOption"
     option-filter-prop="label"

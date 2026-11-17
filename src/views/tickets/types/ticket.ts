@@ -468,6 +468,12 @@ export interface Ticket {
   customerAddress?: string;
   /** 客户性别 */
   customerGender?: string;
+  /** 代报人列表；统一建单允许同一工单登记多名代报人。 */
+  reporters?: Array<{
+    name: string;
+    phone: string;
+    relation: string;
+  }>;
   /** 设备 SN（筛选） */
   sn?: string;
   /** 业务类型（新建工单 · 工单基础） */
