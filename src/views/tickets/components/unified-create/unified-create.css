@@ -34,16 +34,28 @@
   flex: 1;
   min-width: 0;
 }
-.uc-page .uc-heading-line h1 {
+.uc-page .uc-title-input.ant-input {
+  flex: 0 1 420px;
+  width: min(420px, 42vw);
   max-width: min(420px, 42vw);
-  margin: 0;
-  overflow: hidden;
+  height: 28px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
   color: #111827;
   font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.uc-page .uc-title-input.ant-input:hover,
+.uc-page .uc-title-input.ant-input:focus {
+  border-color: #91caff;
+  background: #fff;
+}
+.uc-page .uc-title-input.ant-input::placeholder {
+  color: #111827;
+  opacity: 1;
 }
 .uc-page .uc-status-chip {
   flex: none;
@@ -350,25 +362,27 @@
 
 /* 代报人：单条与多条均采用标签在上、控件在下的布局 */
 .uc-page .reporter-part .reporter-fields .inline-field {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 .uc-page .reporter-part .reporter-fields .inline-label {
   width: auto;
-  line-height: 32px;
+  line-height: 18px;
 }
 .uc-page .reporter-part .reporter-fields .inline-control {
-  flex: 1;
+  flex: none;
   width: 100%;
 }
 
 @media (min-width: 769px) {
   .uc-page .reporter-part .reporter-item {
     grid-template-columns: auto minmax(150px, 1fr) minmax(185px, 1.15fr) minmax(145px, 0.68fr) 24px;
-    align-items: center;
+    align-items: end;
   }
+  .uc-page .reporter-part .reporter-index,
+  .uc-page .reporter-part .reporter-remove { margin-bottom: 4px; }
 }
 
 /* 底栏 */
