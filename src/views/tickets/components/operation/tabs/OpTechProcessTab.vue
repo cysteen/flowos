@@ -8,7 +8,7 @@ import type { TechProcessDraft } from '@/views/tickets/types/operationTabs';
 defineProps<{
   draft: TechProcessDraft;
   /**
-   * 本 Tab 对当前角色只读。矩阵 #42：④ ⑤ ⑨ 可用、① ⑧ 只读、② ③ ⑥ ⑦ 无（整个 Tab 不渲染）。
+   * 本 Tab 对当前角色只读。矩阵 #42：④ ⑤ ⑨ 可用、① ② ⑧ 只读、③ ⑥ ⑦ 无（整个 Tab 不渲染）。
    * 本 Tab 通篇是写区（问题原因 / 处理结果 + 附件），只读态下正文框与附件入口都不给。
    */
   readonly?: boolean;
