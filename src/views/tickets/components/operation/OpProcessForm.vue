@@ -271,7 +271,10 @@ function chipActiveClass(key: SupplementChip): string {
 </script>
 
 <template>
-  <a-config-provider :component-disabled="contentLocked">
+  <a-config-provider
+    :component-disabled="contentLocked"
+    :theme="{ components: { Select: { controlHeight: 24 } } }"
+  >
   <div class="process-form">
 
     <!-- 处理记录（所有工单类型共用核心区） -->
