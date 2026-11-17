@@ -11,7 +11,6 @@
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  max-width: 1120px;
   margin: 0 auto;
   padding: 16px 20px;
   box-sizing: border-box;
@@ -29,7 +28,6 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  max-width: 1120px;
   margin: 0 auto;
   padding: 12px 20px;
   box-sizing: border-box;
@@ -244,9 +242,37 @@
 }
 .uc-page .vip-tag.sm { font-size: 9px; padding: 0 4px; }
 
+/* 代报人：单条与多条均采用标签在上、控件在下的布局 */
+.uc-page .reporter-part .reporter-fields .inline-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.uc-page .reporter-part .reporter-fields .inline-label {
+  width: auto;
+  line-height: 18px;
+}
+.uc-page .reporter-part .reporter-fields .inline-control {
+  flex: none;
+  width: 100%;
+}
+
+@media (min-width: 769px) {
+  .uc-page .reporter-part .reporter-item {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.78fr) 24px;
+    align-items: end;
+  }
+  .uc-page .reporter-part .reporter-index,
+  .uc-page .reporter-part .reporter-remove {
+    align-self: end;
+    margin-bottom: 4px;
+  }
+  .uc-page .reporter-part .reporter-index { line-height: 24px; }
+}
+
 /* 底栏 */
 .uc-page .flash-block-tip {
-  max-width: 1120px;
   margin: 0 auto;
   padding: 8px 20px 0;
   box-sizing: border-box;
