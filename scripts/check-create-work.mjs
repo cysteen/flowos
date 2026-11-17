@@ -19,7 +19,7 @@ const interval = globalThis.setInterval, timeout = globalThis.setTimeout;
 globalThis.setInterval = (...args) => { const id = interval(...args); timers.add(id); return id.unref(); };
 globalThis.setTimeout = (...args) => { const id = timeout(...args); timers.add(id); return id; };
 globalThis.fetch = async () => { throw new Error('External requests are forbidden in this check'); };
-const { config: testConfig } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, '.release-build.config.ts');
+const { config: testConfig } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, 'vite.config.ts');
 const server = await createServer({ ...testConfig, configFile: false, plugins: testConfig.plugins.filter((p) => p?.name !== 'unplugin-vue-components'), server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' });
 let checks = 0;
 function check(name, fn) { fn(); checks += 1; console.log(`PASS ${name}`); }

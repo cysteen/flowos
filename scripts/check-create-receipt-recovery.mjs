@@ -14,7 +14,7 @@ globalThis.localStorage = globalThis.sessionStorage = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.removeEventListener = () => {};
 globalThis.fetch = async () => { throw new Error('External requests are forbidden'); };
-const { config } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, '.release-build.config.ts');
+const { config } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, 'vite.config.ts');
 const server = await createServer({ ...config, configFile:false, plugins:config.plugins.filter((p) => p?.name !== 'unplugin-vue-components'), server:{ middlewareMode:true, hmr:false }, appType:'custom', logLevel:'error' });
 try {
   const { useUserStore } = await server.ssrLoadModule('/src/stores/user.ts');

@@ -12,7 +12,7 @@ globalThis.fetch = async () => { throw new Error('External requests are forbidde
 const timers = new Set(), interval = globalThis.setInterval, timeout = globalThis.setTimeout;
 globalThis.setInterval = (...args) => { const id=interval(...args);timers.add(id);return id.unref(); };
 globalThis.setTimeout = (...args) => { const id=timeout(...args);timers.add(id);return id; };
-const { config } = await loadConfigFromFile({ command:'serve', mode:'test' }, '.release-build.config.ts');
+const { config } = await loadConfigFromFile({ command:'serve', mode:'test' }, 'vite.config.ts');
 const server = await createServer({ ...config, configFile:false, plugins:config.plugins.filter((p) => p?.name !== 'unplugin-vue-components'), server:{ middlewareMode:true, hmr:false }, appType:'custom', logLevel:'error' });
 let app;
 try {
