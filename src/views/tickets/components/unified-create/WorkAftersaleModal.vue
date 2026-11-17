@@ -99,7 +99,7 @@ function confirm() {
       <a-button v-if="!readOnly || item.status === 'complete'" :disabled="busy" @click="close">{{ item.status === 'complete' ? '关闭' : '取消' }}</a-button>
       <a-button v-if="item.status !== 'complete'" :disabled="busy" @click="save">{{ readOnly ? '暂存退出' : '存草稿' }}</a-button>
       <a-button v-if="item.status === 'complete'" @click="router.push('/aftersale')">查看售后工作台</a-button>
-      <a-button v-else type="primary" :loading="busy" @click="confirm">{{ needsReconciliation ? '核对本次结果' : '创建售后工单' }}</a-button>
+      <a-button v-else type="primary" :loading="busy" @click="confirm">{{ needsReconciliation ? '核对关联' : '创建售后工单' }}</a-button>
     </div>
   </a-modal>
 </template>
