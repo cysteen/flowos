@@ -4,12 +4,7 @@ import type { CreateWorkItem } from '../types/createWork';
 import { copy } from '../types/createWork';
 import { currentHandlerName } from '../types/ticket';
 import { useUserStore } from '@/stores/user';
-
-/** A present row value is authoritative, including an explicit clear; only missing values use this source's detail. */
-function inheritedText(rowValue?: string, detailValue?: string) {
-  const value = rowValue ?? detailValue;
-  return value && !/^[\s—–\-－]*$/.test(value) ? value : undefined;
-}
+import { inheritedText } from './inheritedSourceFields';
 
 /** 【915】7.3.1: immutable inherited identity; only the new supplement is collected. */
 export function prepareContinuation(item: CreateWorkItem, ticket: Ticket, row: Ticket, detail: TicketDetailMeta) {
