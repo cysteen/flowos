@@ -14,6 +14,15 @@ const props = defineProps<{ item: CreateWorkItem; context: AftersaleContext }>()
 const emit = defineEmits<{ completed: [no: string] }>();
 const works = useCreateWorkItemsStore();
 const router = useRouter();
+const sourceSummary = computed(() => {
+  const { source, aftersaleAction } = props.item.context;
+  if (!source) return null;
+  return {
+    action: aftersaleAction || (source.type === '投诉' ? '关联售后' : '转售后'),
+    no: source.no, title: source.title,
+    href: router.resolve(`/tickets/${encodeURIComponent(source.no)}`).href,
+  };
+});
 const saleForm = ref<InstanceType<typeof AftersaleCreateForm> | null>(null);
 const openingSnapshot = copy(props.item.aftersaleForm ?? {});
 const openingInput = ref('');
@@ -74,6 +83,12 @@ function confirm() {
 </script>
 <template>
   <a-modal :open="item.aftersaleOpen" title="新建售后工单" :width="1000" :footer="null" :mask-closable="false" :destroy-on-close="true" @cancel="close">
+    <div v-if="sourceSummary" class="as-source-summary" role="note">
+      <strong>{{ sourceSummary.action }}</strong>
+      <span>原工单</span>
+      <a :href="sourceSummary.href" target="_blank" rel="noopener noreferrer" title="打开原工单">{{ sourceSummary.no }}</a>
+      <span class="as-source-title">{{ sourceSummary.title }}</span>
+    </div>
     <a-alert v-if="readOnly" :message="`售后单 ${item.resultNo || pendingOrder?.no} 已生成，客服关联待核对；只继续核对，不再创建。`" type="warning" style="margin-bottom:12px" />
     <a-alert v-if="item.error" :message="item.error" type="error" show-icon style="margin-bottom:12px" />
     <AftersaleCreateForm ref="saleForm" :context="context" :snapshot="formSnapshot" :read-only="readOnly" @change="!readOnly && (item.aftersaleForm = $event)" />
@@ -85,3 +100,8 @@ function confirm() {
     </div>
   </a-modal>
 </template>
+
+<style scoped>
+.as-source-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f8fafc; font-size: 12px; line-height: 20px; color: #475569; }
+.as-source-summary a, .as-source-title { min-width: 0; overflow-wrap: anywhere; }
+</style>
