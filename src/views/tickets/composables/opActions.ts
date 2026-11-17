@@ -189,6 +189,8 @@ export interface AftersalePayload {
   address: string;
   /** 故障描述（售后侧的必填项，与客服工单的问题描述不是同一个字段） */
   fault: string;
+  /** 故障描述内上传的图片或视频附件 */
+  faultAttachments?: string[];
   /* —— 产品信息 —— */
   productCategory: string;
   productName: string;
@@ -208,9 +210,15 @@ export interface AftersalePayload {
   /* —— 取件 / 回寄信息：仅服务方式＝寄修时收 —— */
   pickName?: string;
   pickPhone?: string;
+  pickProvince?: string;
+  pickCity?: string;
+  pickDistrict?: string;
   pickAddress?: string;
   backName?: string;
   backPhone?: string;
+  backProvince?: string;
+  backCity?: string;
+  backDistrict?: string;
   backAddress?: string;
   /** 转出说明 */
   detail: string;
@@ -458,8 +466,8 @@ export const FEISHU_FEEDBACK_CATEGORIES = ['软件问题', '硬件问题', '效�
 export const FEISHU_SPACES = ['飞书项目 · 售后协同', '飞书群 · 二线技术支持', '飞书群 · 产品反馈'];
 export const AFTERSALE_GROUPS = ['售后维修组', '退换货处理组', '上门服务组'];
 /** 售后服务类型 / 方式（数据字典，与售后建单页对齐，表1/表5） */
-export const AFTERSALE_SERVICE_TYPES = ['维修', '投诉', '咨询', '安装', '展示样机拆装'];
-export const AFTERSALE_SERVICE_METHODS = ['上门', '送修', '寄修', '沟通调解'];
+export const AFTERSALE_SERVICE_TYPES = ['维修', '投诉', '咨询', '展示样机拆装', '安装', '巡检', '培训', '变更信息'];
+export const AFTERSALE_SERVICE_METHODS = ['上门', '送修', '寄修', '沟通调解', '远程指导'];
 /**
  * ⚠️ **本常量零消费方**（2026-10-19 全仓 grep 核实：除本行定义外只有紧随其后那句注释提到它）。
  *

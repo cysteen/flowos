@@ -45,14 +45,9 @@ function emptyReporter(): ReporterInfo {
   return { name: '', phone: '', relation: '家属' };
 }
 
-/** 旧草稿只有 `reporter` 单对象，打开统一建单时迁入多代报人列表。 */
-watch(
-  () => form.showReporter,
-  (visible) => {
-    if (visible && !form.reporters.length) form.reporters.push({ ...form.reporter });
-  },
-  { immediate: true },
-);
+/** 代报人区域固定展示；旧草稿只有 `reporter` 单对象时迁入首行。 */
+form.showReporter = true;
+if (!form.reporters.length) form.reporters.push({ ...form.reporter });
 
 /** 首条同步回旧字段，保证旧的提交/草稿读取逻辑仍能拿到同一名代报人。 */
 watch(
@@ -62,32 +57,18 @@ watch(
 );
 
 function addReporter() {
-  if (!form.showReporter || !form.reporters.length) {
-    form.showReporter = true;
-    if (!form.reporters.length) form.reporters.push({ ...form.reporter });
-    return;
-  }
-  form.reporters.push(emptyReporter());
+  form.reporters = [...form.reporters, emptyReporter()];
 }
 
 function removeReporter(index: number) {
-  form.reporters.splice(index, 1);
-  if (!form.reporters.length) {
-    form.showReporter = false;
-    Object.assign(form.reporter, emptyReporter());
-  }
+  if (form.reporters.length <= 1) return;
+  form.reporters = form.reporters.filter((_, rowIndex) => rowIndex !== index);
 }
 </script>
 
 <template>
   <div class="customer-layout">
     <CreateTicketPartCard title="客户信息" class="customer-part">
-      <template #head-extra>
-        <button type="button" class="btn-outline reporter-toggle" :aria-expanded="form.showReporter" @click="addReporter">
-          <UserAddOutlined />
-          {{ form.showReporter ? '继续添加代报人' : '新增代报人' }}
-        </button>
-      </template>
       <div class="customer-body">
         <div class="customer-toolbar">
           <div class="search-wrap">
@@ -165,7 +146,13 @@ function removeReporter(index: number) {
       />
     </CreateTicketPartCard>
 
-    <CreateTicketPartCard v-if="form.showReporter" :title="`代报人信息（${form.reporters.length}）`" class="reporter-part">
+    <CreateTicketPartCard :title="`代报人信息（${form.reporters.length}）`" class="reporter-part">
+      <template #head-extra>
+        <button type="button" class="btn-outline reporter-toggle" @click="addReporter">
+          <UserAddOutlined />
+          新增代报人
+        </button>
+      </template>
       <div class="reporter-fields">
         <div v-for="(reporter, index) in form.reporters" :key="index" class="reporter-item">
           <span class="reporter-index" :aria-label="`第 ${index + 1} 位代报人`">{{ index + 1 }}</span>
@@ -186,9 +173,10 @@ function removeReporter(index: number) {
               :options="['校园代理', '家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
             />
           </div>
-          <button type="button" class="reporter-remove" :title="`删除代报人 ${index + 1}`" :aria-label="`删除代报人 ${index + 1}`" @click="removeReporter(index)">
+          <button v-if="form.reporters.length > 1" type="button" class="reporter-remove" :title="`删除代报人 ${index + 1}`" :aria-label="`删除代报人 ${index + 1}`" @click="removeReporter(index)">
             <DeleteOutlined />
           </button>
+          <span v-else class="reporter-remove-placeholder" aria-hidden="true" />
         </div>
       </div>
     </CreateTicketPartCard>
