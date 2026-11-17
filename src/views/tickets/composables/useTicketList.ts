@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import { TICKETS } from '@/mock/tickets';
-import { creationRevision } from '@/stores/creationLedger';
+import { creationRevision, hydrateCreationRows } from '@/stores/creationLedger';
 import {
   inGroupPoolScope,
   inMineTaskScope,
@@ -50,6 +50,8 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
 }
 
 export function useTicketList(scope: TicketListScope = 'workbench') {
+  // Direct query/list entry must not depend on a detail page being opened first.
+  hydrateCreationRows();
   const all = ref<Ticket[]>([...TICKETS]);
   watch(creationRevision, () => { all.value = [...TICKETS]; });
 
