@@ -70,27 +70,29 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: none;
   margin-left: auto;
   color: #6b7280;
   font-size: 11px;
+  line-height: 20px;
   white-space: nowrap;
 }
-.uc-page .uc-heading-meta .muted { color: #9ca3af; }
+.uc-page .uc-creator { display: inline-flex; align-items: center; gap: 5px; }
+.uc-page .uc-meta-divider { color: #cbd5e1; }
+.uc-page .uc-creator-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.uc-page .uc-heading-scene { color: #9ca3af; }
 .uc-page .has-source .uc-title-input.ant-input { flex: 1 1 320px; min-width: 240px; width: 0; }
-.uc-page .has-source .uc-heading-meta { flex: none; margin-left: 0; }
+.uc-page .has-source .uc-heading-meta { margin-left: 0; }
 .uc-page .uc-source-summary {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  flex: 1 1 400px;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 480px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: #fff7e6;
-  color: #8c6d1f;
+  margin-left: auto;
+  color: #6b7280;
   font-size: 11px;
   white-space: nowrap;
   box-sizing: border-box;
@@ -98,7 +100,7 @@
 .uc-page .uc-source-label,
 .uc-page .uc-source-link { flex: none; }
 .uc-page .uc-source-link { color: #1a6fff; }
-.uc-page .uc-source-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.uc-page .uc-source-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .uc-page .uc-body {
   flex: 1;
   display: flex;
@@ -462,10 +464,16 @@
 .uc-page .uc-action.is-process:hover:not(:disabled) .anticon { color: #047857; }
 .uc-page .uc-action:disabled { opacity: 0.45; cursor: not-allowed; }
 
+@media (min-width: 769px) and (max-width: 1024px) {
+  .uc-page .has-source { flex-wrap: wrap; }
+  .uc-page .has-source .uc-title-input.ant-input { flex: 1 1 0; min-width: 0; max-width: none; }
+  .uc-page .has-source .uc-source-summary { order: 1; flex-basis: 100%; max-width: none; }
+}
+
 @media (max-width: 768px) {
   .uc-page .uc-header { align-items: flex-start; }
   .uc-page .uc-heading-line { flex-wrap: wrap; }
-  .uc-page .uc-heading-meta { flex-basis: 100%; justify-content: flex-start; margin-left: 0; }
+  .uc-page .uc-heading-meta { flex-basis: 100%; justify-content: flex-end; margin-left: 0; padding-left: 0; border-left: 0; }
   .uc-page .has-source .uc-title-input.ant-input { flex-basis: 100%; min-width: 0; width: 100%; max-width: none; }
   .uc-page .has-source .uc-heading-meta { flex-basis: 100%; }
   .uc-page .uc-source-summary { flex-basis: 100%; max-width: 100%; }
