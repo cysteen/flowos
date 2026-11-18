@@ -504,7 +504,7 @@ export interface Ticket {
   problemL3?: string;
   /** 产品分类（筛选） */
   productCategory?: string;
-  /** 问题发生时间（新建工单 · 产品问题，选填；处理页侧栏「工单信息」取它） */
+  /** 存量问题发生时间，仅保留历史数据兼容；建单不采集，页面不展示。 */
   problemOccurredAt?: string;
   /** 产品线（五级产品体系 · 查询筛选） */
   productLine?: string;

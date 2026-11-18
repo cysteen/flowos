@@ -31,7 +31,6 @@ export function prepareContinuation(item: CreateWorkItem, ticket: Ticket, row: T
     problemL1: inheritedText(row.problemL1, tags[0]),
     problemL2: inheritedText(row.problemL2, tags[1]),
     problemL3: inheritedText(row.problemL3, tags[2]),
-    problemOccurredAt: inheritedText(row.problemOccurredAt, detail.issueOccurredAt),
     priority: row.priority, businessLine: inheritedText(row.businessLine, detail.businessLine), productLine: row.productLine,
     complaintType: inheritedText(row.complaintType, complaint?.complaintType),
     complaintL1: inheritedText(row.complaintL1, row.type === '投诉' ? detail.createComplaintL1 : undefined),

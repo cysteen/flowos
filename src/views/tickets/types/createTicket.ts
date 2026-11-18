@@ -243,7 +243,6 @@ export interface CreateTicketFormState {
   serviceComplaintCategory: string;
   /** 投诉接收时间（非必填，日期时间） */
   complaintReceiveTime: string;
-  problemTime: string;
   /** 刷机专属：「刷机信息」卡（930 教育刷机单 P1 / PRD §2.4） */
   flash: CreateTicketFlashForm;
   /** 小智专属：「小智工单信息」卡（1130 小智工单 D1 / D27） */

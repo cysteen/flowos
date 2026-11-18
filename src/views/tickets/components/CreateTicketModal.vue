@@ -973,11 +973,6 @@ watch(
                 :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
               />
             </div>
-            <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-              <a-date-picker v-model:value="form.problemTime" class="inline-control field-control" show-time value-format="YYYY-MM-DD HH:mm" format="YYYY-MM-DD HH:mm" :status="errors.problemTime ? 'error' : ''" placeholder="请选择问题发生时间" />
-              <span v-if="errors.problemTime" style="color:#ef4444">请选择问题发生时间</span>
-            </div>
             <div v-if="showServiceComplaintCategory" class="inline-field">
               <label class="inline-label xl"><span class="req">*</span>{{ lb('服务投诉分类') }}</label>
               <FormSelect

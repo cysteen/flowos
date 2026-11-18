@@ -126,7 +126,6 @@ function defaultForm(): CreateTicketFormState {
     complaintL2: '产品质量故障',
     serviceComplaintCategory: '',
     complaintReceiveTime: '',
-    problemTime: '',
     flash: defaultCreateTicketFlashForm(),
     xiaozhi: defaultCreateTicketXiaozhiForm(),
     refund: defaultCreateTicketRefundForm(),
@@ -194,7 +193,6 @@ export function useCreateTicketForm(
     problemL3: false,
     description: false,
     title: false,
-    problemTime: false,
     complaintType: false,
     complaintL1: false,
     complaintL2: false,
@@ -302,7 +300,6 @@ export function useCreateTicketForm(
    * 投诉平台 / 投诉编号 / 投诉类型 / 归属业务线 / 前期是否反馈 / 服务回溯 / 投诉接收时间
    * 仅当 **工单类型=投诉 且 工单来源=内投渠道 或 外投渠道** 时出现——
    * 热线、IM、小程序等来源的投诉单不涉及投诉渠道台账，这些字段不该占版面。
-   * 投诉一类/二类不受门控（必填）；问题发生时间已上移至产品区（优先级右侧，非必填）。
    * 校验与显隐共用本判据，避免隐藏字段被判必填而卡住提交。
    */
   const showChannelComplaintFields = computed(
@@ -1032,7 +1029,6 @@ export function useCreateTicketForm(
       && !(options?.twoLevelProblem && !!form.problemL2 && !problemL3Options.value.some(Boolean));
     errors.description = !form.description.trim();
     errors.title = !form.title.trim();
-    errors.problemTime = form.ticketType === '投诉' && !form.problemTime.trim();
     errors.complaintType =
       false; // 投诉类型是独立可选字段（830 §3.2.1）
     errors.complaintL1 = form.ticketType === '投诉' && !form.complaintL1;
@@ -1145,7 +1141,6 @@ export function useCreateTicketForm(
       problemL1: form.problemL1 || undefined,
       problemL2: form.problemL2 || undefined,
       problemL3: form.problemL3 || undefined,
-      problemOccurredAt: form.problemTime.trim() || undefined,
       complaintType: showChannelComplaintFields.value ? (form.complaintType || undefined) : undefined,
       complaintL1: form.ticketType === '投诉' ? (form.complaintL1 || undefined) : undefined,
       complaintL2: form.ticketType === '投诉' ? (form.complaintL2 || undefined) : undefined,
