@@ -527,16 +527,16 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
           aria-label="工单标题"
           @input="onTitleInput"
         />
-        <div class="uc-heading-meta">
-          <span aria-hidden="true">|</span>
-          <span>建单人 {{ userStore.name }}</span>
-          <span aria-hidden="true">|</span>
-          <span class="muted">{{ CREATE_WORK_LABELS[item.context.action] }}</span>
-        </div>
         <div v-if="item.context.source" class="uc-source-summary">
           <span class="uc-source-label">原工单</span>
           <a class="uc-source-link" :href="ticketHref(item.context.source.no)" target="_blank" rel="noopener">{{ item.context.source.no }}</a>
           <span class="uc-source-title" :title="item.context.source.title">{{ item.context.source.title }}</span>
+        </div>
+        <div class="uc-heading-meta">
+          <span class="uc-meta-divider" aria-hidden="true">|</span>
+          <span class="uc-creator"><span class="uc-meta-label">建单人</span><span class="uc-creator-name" :title="userStore.name">{{ userStore.name }}</span></span>
+          <span class="uc-meta-divider" aria-hidden="true">|</span>
+          <span class="uc-heading-scene">{{ CREATE_WORK_LABELS[item.context.action] }}</span>
         </div>
       </div>
     </header>
