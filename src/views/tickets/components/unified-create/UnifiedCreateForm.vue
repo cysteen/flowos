@@ -691,7 +691,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
       <template v-else-if="!isContinuation">
         <ExternalEscalationPart v-if="simplifiedExternal" :ctx="ctx" />
         <UnifiedComplaintPart v-else-if="showTypePart" :ctx="ctx" :standard-upgrade="item.context.action === 'escalateComplaint'" />
-        <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" :customer-region="form.customer?.region" />
+        <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" :customer-region="form.customer?.region" student-row />
         <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />
         <RefundInfoPart v-if="isRefundType" v-model:info="form.refund" :errors="refundErrors" :customer-region="form.customer?.region" />
       </template>

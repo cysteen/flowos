@@ -20,6 +20,8 @@ defineProps<{
   errors: Record<CreateTicketFlashField, string>;
   /** 客户信息的省市区（学校检索的默认地区） */
   customerRegion?: string;
+  /** 统一建单页将学生姓名、类型、账号排在同一行 */
+  studentRow?: boolean;
 }>();
 
 type PhotoKey = 'snPhotos' | 'mdmPhotos';
@@ -60,8 +62,8 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
 
 <template>
   <CreateTicketPartCard title="刷机信息" :body-gap="8">
-    <div class="fi-grid">
-      <div class="fi-field">
+    <div class="fi-grid" :class="{ 'fi-grid--student-row': studentRow }">
+      <div class="fi-field fi-sn">
         <label class="fi-label"><span class="req">*</span>{{ L.sn }}</label>
         <div class="fi-control">
           <a-input
@@ -74,7 +76,20 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
         </div>
       </div>
 
-      <div class="fi-field">
+      <div v-if="studentRow" class="fi-field fi-student-name">
+        <label class="fi-label"><span class="req">*</span>{{ L.studentName }}</label>
+        <div class="fi-control">
+          <a-input
+            v-model:value="info.studentName"
+            class="fi-input"
+            placeholder="请输入学生姓名"
+            :status="errors.studentName ? 'error' : ''"
+          />
+          <div v-if="errors.studentName" class="fi-error">{{ errors.studentName }}</div>
+        </div>
+      </div>
+
+      <div class="fi-field fi-student-type">
         <label class="fi-label"><span class="req">*</span>{{ L.studentType }}</label>
         <div class="fi-control">
           <FormSelect
@@ -89,7 +104,7 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
         </div>
       </div>
 
-      <div class="fi-field">
+      <div v-if="!studentRow" class="fi-field fi-student-name">
         <label class="fi-label"><span class="req">*</span>{{ L.studentName }}</label>
         <div class="fi-control">
           <a-input
@@ -101,7 +116,7 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
           <div v-if="errors.studentName" class="fi-error">{{ errors.studentName }}</div>
         </div>
       </div>
-      <div class="fi-field">
+      <div class="fi-field fi-student-account">
         <label class="fi-label"><span class="req">*</span>{{ L.studentAccount }}</label>
         <div class="fi-control">
           <a-input
@@ -167,6 +182,12 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 14px;
 }
+.fi-grid--student-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.fi-grid--student-row > .fi-field { grid-column: span 3; }
+.fi-grid--student-row > .fi-sn { grid-column: 1 / -1; }
+.fi-grid--student-row > .fi-student-name { grid-column: 1 / span 2; grid-row: 2; }
+.fi-grid--student-row > .fi-student-type { grid-column: 3 / span 2; grid-row: 2; }
+.fi-grid--student-row > .fi-student-account { grid-column: 5 / span 2; grid-row: 2; }
 .fi-field {
   display: flex;
   align-items: flex-start;
@@ -226,5 +247,6 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
 
 @media (max-width: 768px) {
   .fi-grid { grid-template-columns: 1fr; }
+  .fi-grid--student-row > .fi-field { grid-column: 1 / -1; grid-row: auto; }
 }
 </style>
