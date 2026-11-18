@@ -643,6 +643,8 @@ function onClearFilters() {
 
         v-show="filtersExpanded"
 
+        custom-ticket-filter
+
         :expanded="true"
 
         :model-value="list.query.value"

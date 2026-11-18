@@ -13,6 +13,7 @@ import {
 import { useProblemTagsStore } from '@/stores/problemTags';
 import {
   DEFAULT_DONE_QUERY,
+  CUSTOM_TICKET_TYPES,
   EMPTY_MINE_QUERY,
   PRODUCT_CATEGORIES,
   productNamesForCategory,
@@ -34,8 +35,9 @@ const props = withDefaults(
     variant?: 'mine' | 'done' | 'pool';
     poolGroups?: PoolGroupMeta[];
     optionalVisible: Record<string, boolean>;
+    customTicketFilter?: boolean;
   }>(),
-  { expanded: false, variant: 'mine', poolGroups: () => [] },
+  { expanded: false, variant: 'mine', poolGroups: () => [], customTicketFilter: false },
 );
 
 const emit = defineEmits<{
@@ -228,6 +230,7 @@ const nodeStatusOptions = computed(() =>
 
 const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
 const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
+const customTicketOptions = toStrOpts(CUSTOM_TICKET_TYPES);
 const flashMarkOptions = toStrOpts(['是', '否']);
 /** 小智工单标识筛选（1130 D1）：与刷机单标识同一套是 / 否选项 */
 const xiaozhiMarkOptions = flashMarkOptions;
@@ -370,14 +373,24 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
             />
           </label>
 
-          <label v-else-if="f.key === 'ticketType'" class="filter-item">
-            <span class="fi-label">{{ fieldLabel('ticketType') }}</span>
-            <MineFilterSelect
-              :model-value="modelValue.ticketType"
-              :options="ticketTypeOptions"
-              @update:model-value="patch('ticketType', $event as MineQueryFilter['ticketType'])"
-            />
-          </label>
+          <template v-else-if="f.key === 'ticketType'">
+            <label class="filter-item">
+              <span class="fi-label">{{ fieldLabel('ticketType') }}</span>
+              <MineFilterSelect
+                :model-value="modelValue.ticketType"
+                :options="ticketTypeOptions"
+                @update:model-value="patch('ticketType', $event as MineQueryFilter['ticketType'])"
+              />
+            </label>
+            <label v-if="customTicketFilter && modelValue.ticketType === '咨询'" class="filter-item">
+              <span class="fi-label">定制工单</span>
+              <MineFilterSelect
+                :model-value="modelValue.customTicketType || ''"
+                :options="customTicketOptions"
+                @update:model-value="patch('customTicketType', $event as MineQueryFilter['customTicketType'])"
+              />
+            </label>
+          </template>
 
           <label v-else-if="f.key === 'flashMark'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('flashMark') }}</span>
