@@ -215,7 +215,12 @@ function typesFor(priority: Priority | ''): CreateFormTicketType[] {
   if (!priority) return [...CREATE_TICKET_TYPES];
   return HIGH_PRIORITIES.includes(priority) ? ['投诉'] : [...CREATE_TICKET_TYPES];
 }
-const ticketTypeOptions = computed(() => (fixedComplaint ? ['投诉'] : item.context.action === 'transfer' ? ['咨询', '建议', '商机'] : typesFor(form.priority)).map((v) => ({ value: v, label: v })));
+const ticketTypeOptions = computed(() => {
+  const types = fixedComplaint ? ['投诉'] : item.context.action === 'transfer' ? ['咨询', '建议', '商机'] : typesFor(form.priority);
+  // 刷机、退费分类仍约束为咨询，仅保留切换到投诉的入口。
+  return types.filter((v) => !(isFlashType.value || isRefundType.value) || v === form.ticketType || v === '投诉')
+    .map((v) => ({ value: v, label: v }));
+});
 const priorityOptions = computed(() => {
   const allowed = prioritiesFor(form.ticketType);
   return PRIORITY_OPTIONS.filter((p) => !allowed || allowed.includes(p.value))
@@ -243,7 +248,7 @@ watch(
 );
 const ticketSourceOptions = computed(() => simplifiedExternal ? [{ value: '外投渠道', label: '外投渠道' }] : ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource));
 const lockBusinessAndType = computed(() => isFlashType.value || isXiaozhiType.value || isRefundType.value);
-const lockTicketType = computed(() => lockBusinessAndType.value || fixedComplaint);
+const lockTicketType = computed(() => isXiaozhiType.value || fixedComplaint || (item.context.action === 'transfer' && lockBusinessAndType.value));
 
 // 投诉卡切走时不挂载，这两条联动放在表单这一层常驻
 watch(
@@ -304,6 +309,7 @@ async function continueAftersale() {
     const next = copy(aftersaleContext.value) as unknown as Record<string, unknown>;
     const previous = item.aftersalePrefill;
     if (item.resultNo) { item.aftersaleOpen = true; return; }
+    if (textLengthError.value) throw new Error(textLengthError.value);
     if (item.aftersaleForm && previous) {
       const changed = ['customerName', 'customerPhone', 'address', 'productCategory', 'productName', 'sn', 'fault', 'faultAttachments'].filter((key) => JSON.stringify(next[key]) !== JSON.stringify(previous[key]));
       const oldRegion = String(previous.region || '').split('/').map((v) => v.trim());
@@ -392,6 +398,15 @@ function validateExternal() {
   errors.complaintPlatform = !form.complaintPlatforms.length || form.complaintPlatforms.some((p) => !complaintPlatformsBySource('外投渠道').includes(p.platform) || p.platform === '其他' && !p.customPlatform?.trim());
   return !errors.complaintL1 && !errors.complaintL2 && !errors.description && !errors.complaintPlatform;
 }
+// 输入上限随超长旧稿的手动缩减回落，提交仍按 2000 字校验，不自动裁剪原文。
+const textLengthError = computed(() => {
+  if (isContinuation) return '';
+  const fields = [
+    form.description.length > 2000 ? '问题描述' : '',
+    !simplifiedExternal && ctx.showChannelComplaintFields.value && form.serviceReview.length > 2000 ? '服务回溯' : '',
+  ].filter(Boolean);
+  return fields.length ? `${fields.join('、')}最多 2000 字，原文已保留，请手动缩减后再创建。` : '';
+});
 function onCreate(processAfter = false) {
   if (resolvingSaleExit) return;
   if (item.surface === 'aftersale' || creationReceipt(item.id)?.kind === 'aftersale') { void continueAftersale(); return; }
@@ -408,6 +423,7 @@ function onCreate(processAfter = false) {
     }
     if (item.status === 'unknown') item.status = 'editing';
     validateWorkSource(item);
+    if (textLengthError.value) throw new Error(textLengthError.value);
     if (fixedComplaint && form.ticketType !== '投诉') throw new Error('本事项的新工单类型固定为投诉。');
     if (item.context.action === 'transfer' && !['咨询', '建议', '商机'].includes(form.ticketType)) throw new Error('转单仅支持咨询、建议、商机。');
     const validPath = problemTags.enabledRows.some((row) => row.productName === form.productName && row.tagL1 === form.problemL1 && row.tagL2 === form.problemL2 && (row.tagL3 || '') === form.problemL3);
@@ -519,7 +535,6 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
       </CreateTicketPartCard>
       <CreateTicketPartCard v-else title="工单基础">
         <template v-if="!simplifiedExternal">
-        <a-checkbox v-if="!fixedComplaint && item.context.action !== 'transfer' && !isXiaozhiType" :checked="form.ticketType === '投诉'" @change="form.ticketType = $event.target.checked ? '投诉' : '咨询'">本次诉求包含投诉</a-checkbox>
         <div class="row-3">
           <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>业务类型</label>
@@ -593,6 +608,17 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
 
         <div class="row-3">
           <div class="inline-field">
+            <label class="inline-label xl"><span class="req">*</span>工单类型</label>
+            <FormSelect
+              v-model:value="form.ticketType"
+              class="inline-control field-control"
+              :allow-clear="!lockBusinessAndType"
+              :disabled="lockTicketType"
+              :status="errors.ticketType ? 'error' : ''"
+              :options="ticketTypeOptions"
+            />
+          </div>
+          <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>优先级</label>
             <FormSelect
               v-model:value="form.priority"
@@ -600,17 +626,6 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
               allow-clear
               :status="errors.priority ? 'error' : ''"
               :options="priorityOptions"
-            />
-          </div>
-          <div class="inline-field">
-            <label class="inline-label xl"><span class="req">*</span>工单类型</label>
-            <FormSelect
-              v-model:value="form.ticketType"
-              class="inline-control field-control"
-              allow-clear
-              :disabled="lockTicketType"
-              :status="errors.ticketType ? 'error' : ''"
-              :options="ticketTypeOptions"
             />
           </div>
           <div class="inline-field">
@@ -635,13 +650,15 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
           </div>
           <div class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
-            <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
+            <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description || form.description.length > 2000 }">
               <OpTextareaAttach
                 v-model="form.description"
                 v-model:attachments="form.descriptionAttachments"
                 :min-input-height="60"
+                :maxlength="Math.max(2000, form.description.length)"
                 :placeholder="isXiaozhiType ? '请描述问题与诉求，可上传截图或文档' : '请描述客户反馈的问题与诉求'"
               />
+              <div class="uc-text-count" :class="{ 'is-over-limit': form.description.length > 2000 }">{{ form.description.length }}/2000</div>
             </div>
           </div>
         </div>
@@ -723,3 +740,8 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
 </template>
 
 <style src="./unified-create.css"></style>
+
+<style scoped>
+.uc-text-count { color: #6b7280; font-size: 12px; line-height: 20px; text-align: right; }
+.uc-text-count.is-over-limit { color: #ff4d4f; }
+</style>

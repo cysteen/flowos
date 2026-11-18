@@ -169,6 +169,9 @@ function removeComplaintPlatform(i: number) {
         placeholder="手动填写回溯说明"
         class="inline-control field-control"
         :auto-size="{ minRows: 2, maxRows: 6 }"
+        :maxlength="Math.max(2000, form.serviceReview.length)"
+        :show-count="{ formatter: () => `${form.serviceReview.length}/2000` }"
+        :status="form.serviceReview.length > 2000 ? 'error' : ''"
       />
     </div>
   </CreateTicketPartCard>
