@@ -517,7 +517,7 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
   <div ref="root" class="uc-page">
     <header class="uc-header">
       <button type="button" class="uc-back" @click="onCancel">‹ 返回</button>
-      <div class="uc-heading-line">
+      <div class="uc-heading-line" :class="{ 'has-source': !!item.context.source }">
         <a-input
           v-model:value="form.title"
           class="uc-title-input"
@@ -533,15 +533,17 @@ watch(form, () => { if (!restoring.value) item.form = copy(form) as unknown as R
           <span aria-hidden="true">|</span>
           <span class="muted">{{ CREATE_WORK_LABELS[item.context.action] }}</span>
         </div>
+        <div v-if="item.context.source" class="uc-source-summary">
+          <span class="uc-source-label">原工单</span>
+          <a class="uc-source-link" :href="ticketHref(item.context.source.no)" target="_blank" rel="noopener">{{ item.context.source.no }}</a>
+          <span class="uc-source-title" :title="item.context.source.title">{{ item.context.source.title }}</span>
+        </div>
       </div>
     </header>
     <a-alert v-if="item.status === 'complete' && item.resultNo" type="success" :message="`工单 ${item.resultNo} 已创建`">
       <template #action><a-button type="link" @click="leaveTo(`/tickets/${item.resultNo}`)">打开工单</a-button></template>
     </a-alert>
     <a-alert v-if="item.error || works.storageError" :message="item.error || works.storageError" type="error" show-icon />
-    <div v-if="item.context.source" style="padding:12px 24px;background:#fff7e6">
-      {{ CREATE_WORK_LABELS[item.context.action] }} · 原工单 <a :href="ticketHref(item.context.source.no)" target="_blank">{{ item.context.source.no }}</a> · {{ item.context.source.title }}
-    </div>
     <div v-if="item.context.action !== 'aftersale'" class="uc-body">
       <!-- ① 客户与代报人 -->
       <UnifiedCustomerPart v-if="!simplifiedExternal && !isContinuation" :ctx="ctx" />

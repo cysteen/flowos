@@ -111,7 +111,6 @@ const WORKORDER_COMMON_FIELDS: LibField[] = [
   { key: '服务回溯', label: '服务回溯', type: '枚举', group: '投诉专属' },
   { key: '投诉一类', label: '投诉一类', type: '枚举', group: '投诉专属' },
   { key: '投诉二类', label: '投诉二类', type: '枚举', group: '投诉专属' },
-  { key: '问题发生时间', label: '问题发生时间', type: '日期', group: '投诉专属' },
   { key: '客户类型', label: '客户类型', type: '枚举', group: '客户信息' },
   { key: '客户等级', label: '客户等级', type: '枚举', group: '客户信息' },
   { key: '风险等级', label: '风险等级', type: '枚举', group: '风险与金额' },

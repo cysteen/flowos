@@ -65,7 +65,6 @@ const fieldMap: Record<string, Field[]> = reactive({
   problem: [
     { key: 'problem_l1', name: '问题分类一级', type: '下拉', constraint: '', refs: 6, status: '启用' },
     { key: 'problem_l2', name: '问题分类二级', type: '下拉', constraint: '联动', refs: 6, status: '启用' },
-    { key: 'problem_time', name: '问题发生时间', type: '日期时间', constraint: '咨询专属', refs: 2, status: '启用' },
     { key: 'desc', name: '诉求描述', type: '多行文本', constraint: '必填', refs: 8, status: '启用' },
   ],
 });

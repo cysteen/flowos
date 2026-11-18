@@ -133,13 +133,6 @@ function removeComplaintPlatform(i: number) {
           :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
         />
       </div>
-      <div class="inline-field occurred-time-field">
-        <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-        <div class="occurred-time-control">
-          <a-date-picker v-model:value="form.problemTime" class="field-control" show-time value-format="YYYY-MM-DD HH:mm" format="YYYY-MM-DD HH:mm" :status="errors.problemTime ? 'error' : ''" placeholder="请选择问题发生时间" />
-          <span v-if="errors.problemTime" class="occurred-time-error" role="alert">请选择问题发生时间</span>
-        </div>
-      </div>
       <div v-if="showServiceComplaintCategory" class="inline-field">
         <label class="inline-label xl"><span class="req">*</span>服务投诉分类</label>
         <FormSelect
@@ -176,10 +169,3 @@ function removeComplaintPlatform(i: number) {
     </div>
   </CreateTicketPartCard>
 </template>
-
-<style scoped>
-.uc-page .occurred-time-field { align-items: flex-start; }
-.occurred-time-control { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.occurred-time-control > .field-control { width: 100%; min-width: 0; max-width: 100%; }
-.occurred-time-error { color: #ef4444; font-size: 12px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
-</style>

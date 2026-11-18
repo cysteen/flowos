@@ -243,14 +243,22 @@ try {
     works.complete(item, receipt.no); assert.equal(useTicketDraftStore().get(item.draftId), null); assert.equal(ledger.localAftersaleOrders.value.length, count);
   });
   const { message } = await import('ant-design-vue'); for (const key of ['error', 'info', 'success', 'warning']) message[key] = () => {};
-  check('full complaint: occurrence time required for every source; channel content and numbering survive draft/build', () => {
+  check('four ticket types omit occurrence time; complaint channel content and numbering survive draft/build', () => {
+    for (const type of ['咨询', '建议', '投诉', '商机']) {
+      const scope = effectScope(); scope.run(() => {
+        const ctx = useCreateTicketForm(() => null); ctx.form.ticketType = type;
+        assert.equal('problemTime' in ctx.form, false);
+        ctx.validate(); assert.equal('problemTime' in ctx.errors, false);
+        assert.equal(ctx.errors.customer, true);
+        assert.equal(ctx.buildTicket().problemOccurredAt, undefined);
+      }); scope.stop();
+    }
     for (const source of ['电话', 'IM', '客户服务小程序', '内投渠道', '外投渠道']) {
       const scope = effectScope(); scope.run(() => {
         const ctx = useCreateTicketForm(() => null); ctx.form.ticketType = '投诉'; ctx.form.ticketSource = source;
-        ctx.validate(); assert.equal(ctx.errors.problemTime, true);
-        ctx.form.problemTime = '2026-11-17 10:20';
+        ctx.validate(); assert.equal('problemTime' in ctx.errors, false);
         ctx.form.complaintPlatforms = [{ platform: source === '内投渠道' ? '其他' : '市场监管12315平台', customPlatform: source === '内投渠道' ? '门店' : undefined, complaintNo: 'CP-12', complaintContent: '平台原文' }];
-        const created = ctx.buildTicket(); assert.equal(created.problemOccurredAt, '2026-11-17 10:20');
+        const created = ctx.buildTicket(); assert.equal(created.problemOccurredAt, undefined);
         if (source.endsWith('渠道')) { assert.equal(created.complaintPlatforms[0].complaintContent, '平台原文'); assert.equal(created.complaintPlatforms[0].complaintNo, 'CP-12'); }
       }); scope.stop();
     }
@@ -321,14 +329,14 @@ try {
   externalState.form.description = '补充外投说明';
   assert.equal(externalState.validateExternal(), false); assert.equal(externalState.errors.complaintL2, true);
   externalState.form.externalComplaintCategories = clone(validRows); assert.equal(externalState.validateExternal(), true);
-  assert.equal(externalState.form.problemTime, ''); externalState.onCreate(); await flush();
+  assert.equal(externalState.form.problemTime, undefined); externalState.onCreate(); await flush();
   const externalReceipt = ledger.creationReceipt(externalItem.id); assert.ok(externalReceipt); assert.equal(externalReceipt.phase, 'complete');
   ledger.hydrateCreationRows(); const externalCreated = TICKETS.find((t) => t.no === externalReceipt.no);
   assert.equal(externalCreated.title, externalState.form.title);
   assert.deepEqual(externalCreated.externalComplaintCategories, validRows); assert.equal(externalCreated.complaintPlatforms.length, 2);
   assert.equal(externalCreated.complaintPlatforms[0].complaintNo, 'ONE'); assert.equal(externalCreated.complaintPlatforms[1].customPlatform, '外部平台二'); assert.equal(externalCreated.complaintPlatforms[1].complaintNo, 'TWO');
   assert.deepEqual(inferCreateComplaintNatures(externalCreated.externalComplaintCategories), [...new Set(inferCreateComplaintNatures(validRows))]);
-  externalApp.unmount(); checks++; console.log('PASS actual D08 SFC: incomplete second category blocked; complete multiple categories/platform pairs persist successfully, without full-only required time');
+  externalApp.unmount(); checks++; console.log('PASS actual D08 SFC: incomplete second category blocked; complete multiple categories/platform pairs persist successfully');
   user.setRole('agent-l2');
   const historicalSource = origin();
   Object.assign(historicalSource.row, { problemL1: '旧一类', problemL2: '旧二类', problemL3: '旧三级' });

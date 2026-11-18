@@ -75,7 +75,6 @@ const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.f
         </template>
       </div>
     </div>
-    <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
     <!-- 刷机单的设备SN在「工单处理」Tab 的「刷机信息」区块里展示，不重复 -->
     <div v-if="!flashCard" class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
 
