@@ -11,6 +11,9 @@ import { isRefundTicket } from '@/views/tickets/types/refund';
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
 
+export const CUSTOM_TICKET_TYPES = ['小智', '刷机', '退费'] as const;
+export type CustomTicketType = typeof CUSTOM_TICKET_TYPES[number];
+
 export const MINE_TIME_PRESETS: { value: MineTimePreset; label: string }[] = [
   { value: '', label: '全部时间' },
   { value: '7d', label: '最近 7 天' },
@@ -41,6 +44,8 @@ export interface MineQueryFilter {
   assignee: string;
   businessType: string;
   ticketType: '' | TicketType;
+  /** 查询中心：仅咨询类型使用的定制工单条件；兼容未保存此字段的旧筛选器。 */
+  customTicketType?: '' | CustomTicketType;
   /** 刷机单标识（1013 A1）：是 / 否；空=不过滤 */
   flashMark: '' | '是' | '否';
   /** 小智工单标识（1130 D1）：是 / 否；空=不过滤 */
@@ -72,6 +77,7 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   assignee: '',
   businessType: '',
   ticketType: '',
+  customTicketType: '',
   flashMark: '',
   xiaozhiMark: '',
   refundMark: '',
@@ -249,6 +255,12 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   }
   if (q.businessType && t.businessType !== q.businessType) return false;
   if (q.ticketType && t.type !== q.ticketType) return false;
+  if (q.ticketType === '咨询' && q.customTicketType) {
+    const matches = q.customTicketType === '小智' ? isXiaozhiTicket(t)
+      : q.customTicketType === '刷机' ? isFlashTicket(t)
+      : q.customTicketType === '退费' && isRefundTicket(t);
+    if (!matches) return false;
+  }
   if (q.flashMark && isFlashTicket(t) !== (q.flashMark === '是')) return false;
   if (q.xiaozhiMark && isXiaozhiTicket(t) !== (q.xiaozhiMark === '是')) return false;
   if (q.refundMark && isRefundTicket(t) !== (q.refundMark === '是')) return false;

@@ -2,6 +2,7 @@ import { computed, ref, type Ref } from 'vue';
 import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
 import {
   EMPTY_MINE_QUERY,
+  CUSTOM_TICKET_TYPES,
   matchMineQuery,
   type MineQueryFilter,
 } from '@/views/tickets/types/mineQuery';
@@ -27,6 +28,11 @@ export function useQueryCenterFilterBar(
    */
   rowFilter?: Ref<((t: Ticket) => boolean) | null>,
 ) {
+  const normalizeQuery = (q: MineQueryFilter): MineQueryFilter => ({
+    ...q,
+    customTicketType: q.ticketType === '咨询' && CUSTOM_TICKET_TYPES.some((type) => type === q.customTicketType)
+      ? q.customTicketType : '',
+  });
   const passesRowFilter = (t: Ticket) => !rowFilter?.value || rowFilter.value(t);
   const savedFilters = useSavedFilters();
   const activeChip = ref<string>('all');
@@ -82,7 +88,7 @@ export function useQueryCenterFilterBar(
     if (sfId) {
       const sf = savedFilters.findByChipKey(chip);
       if (sf) {
-        query.value = { ...sf.query };
+        query.value = normalizeQuery(sf.query);
         if (sf.optionalVisible) applyOptionalVisible(sf.optionalVisible);
       }
     } else if (isSavedFilterChipKey(prevChip)) {
@@ -95,7 +101,7 @@ export function useQueryCenterFilterBar(
     if (isSavedFilterChipKey(activeChip.value)) {
       activeChip.value = 'all';
     }
-    query.value = q;
+    query.value = normalizeQuery(q);
   }
 
   function saveFilter(name: string, optionalVisible: Record<string, boolean>) {
