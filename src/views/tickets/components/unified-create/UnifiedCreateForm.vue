@@ -14,6 +14,7 @@ import {
     PRIORITY_OPTIONS,
   PRODUCT_CATEGORIES,
   complaintPlatformsBySource,
+  isRestrictedTicketSource,
   ticketSourceOptionsForRole,
 } from '@/views/tickets/types/createTicket';
 import { CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
@@ -30,6 +31,8 @@ import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpText
 import WorkAftersaleModal from './WorkAftersaleModal.vue';
 import { TICKETS } from '@/mock/tickets';
 import { useProblemTagsStore } from '@/stores/problemTags';
+import { useFlashConfigStore } from '@/stores/flashConfig';
+import { useRefundConfigStore } from '@/stores/refundConfig';
 import { useUserStore } from '@/stores/user';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
 import CreateTicketPartCard from '../create-ticket/CreateTicketPartCard.vue';
@@ -56,6 +59,8 @@ const router = useRouter();
 const tabs = useWorkspaceTabsStore();
 const userStore = useUserStore();
 const problemTags = useProblemTagsStore();
+const flashConfig = useFlashConfigStore();
+const refundConfig = useRefundConfigStore();
 
 const prefill: CreateTicketPrefill | null = item.context.prefill ?? (item.context.scene === 'xiaozhi' ? { xiaozhiScene: true } : null);
 const ctx = useCreateTicketForm(() => isContinuation ? { ...prefill, noFlashScene: true } : prefill, { twoLevelProblem: true, preserveSourceFields: !!item.context.source });
@@ -168,6 +173,16 @@ const exactL3Options = computed(() => form.problemL1 && form.problemL2
 /** 选到二级后，该路径有没有三级（无线音乐类分类只到二级） */
 const hasL3 = computed(() => exactL3Options.value.length > 0);
 
+// 只响应本次分类路径变化；类型切换和草稿恢复不重新覆盖坐席主动选择的投诉。
+watch(
+  () => [form.productName, form.problemL1, form.problemL2, form.problemL3] as const,
+  (path) => {
+    if (restoring.value || item.context.action !== 'create' || isXiaozhiType.value) return;
+    if (flashConfig.isFlashScene(...path) || refundConfig.isRefundScene(...path)) form.ticketType = '咨询';
+  },
+  { flush: 'post' },
+);
+
 /** 售后：选到末级，且本产品这条分类的专属类型为售后 */
 const isAftersaleType = computed(() => {
   if (item.context.action === 'aftersale') return true;
@@ -246,7 +261,13 @@ watch(
     }
   },
 );
-const ticketSourceOptions = computed(() => simplifiedExternal ? [{ value: '外投渠道', label: '外投渠道' }] : ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource));
+const ticketSourceOptions = computed(() => simplifiedExternal ? [{ value: '外投渠道', label: '外投渠道' }]
+  : ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource)
+    .filter((option) => form.ticketType === '投诉' || !isRestrictedTicketSource(option.value)));
+function normalizeNonComplaintSource() {
+  if (!isContinuation && form.ticketType !== '投诉' && isRestrictedTicketSource(form.ticketSource)) form.ticketSource = '电话';
+}
+watch([() => form.ticketType, () => form.ticketSource], normalizeNonComplaintSource);
 const lockBusinessAndType = computed(() => isFlashType.value || isXiaozhiType.value || isRefundType.value);
 const lockTicketType = computed(() => isXiaozhiType.value || fixedComplaint || (item.context.action === 'transfer' && lockBusinessAndType.value));
 
@@ -425,6 +446,7 @@ function onCreate(processAfter = false) {
     validateWorkSource(item);
     if (textLengthError.value) throw new Error(textLengthError.value);
     if (fixedComplaint && form.ticketType !== '投诉') throw new Error('本事项的新工单类型固定为投诉。');
+    if (!isContinuation && form.ticketType !== '投诉' && isRestrictedTicketSource(form.ticketSource)) throw new Error('内投渠道、外投渠道仅适用于投诉工单，请重新选择工单来源。');
     if (item.context.action === 'transfer' && !['咨询', '建议', '商机'].includes(form.ticketType)) throw new Error('转单仅支持咨询、建议、商机。');
     const validPath = problemTags.enabledRows.some((row) => row.productName === form.productName && row.tagL1 === form.problemL1 && row.tagL2 === form.problemL2 && (row.tagL3 || '') === form.problemL3);
     if (!simplifiedExternal && !isContinuation && !validPath) throw new Error('当前问题分类已停用或与产品不匹配，请重新选择。');
@@ -477,6 +499,7 @@ if (simplifiedExternal) {
   form.title = `外投·${TICKETS.find((row) => row.no === source?.no)?.title ?? source?.title ?? ''}`;
   form.titleManual = true;
 }
+normalizeNonComplaintSource();
 void nextTick(() => {
   item.form = copy(form) as unknown as Record<string, unknown>;
   if (item.context.action === 'transfer' && (form.priority === 'P0' || form.priority === 'P1')) form.priority = '';
