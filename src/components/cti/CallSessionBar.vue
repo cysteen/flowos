@@ -73,9 +73,13 @@ const showContact = computed(() => {
 
     <div class="acts">
       <a-popover
+        key="shared-call-keypad"
         v-model:open="dialPadOpen"
-        trigger="click"
+        trigger="hover"
         placement="bottomLeft"
+        :mouse-enter-delay="0.12"
+        :mouse-leave-delay="0.3"
+        :destroy-tooltip-on-hide="true"
         :overlay-inner-style="{ padding: '0' }"
       >
         <template #content>
@@ -93,7 +97,6 @@ const showContact = computed(() => {
           class="act dial-pad"
           :class="{ on: dialPadOpen }"
           type="button"
-          title="通话拨号盘"
           aria-label="通话拨号盘"
           aria-haspopup="dialog"
           :aria-expanded="dialPadOpen"

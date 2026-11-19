@@ -202,7 +202,6 @@ function onMenuClick({ key }: { key: string | number }) {
             class="cti-work-btn cti-work-btn--call"
             type="button"
             :class="{ 'is-disabled': !!callBlocked, 'is-active': dialPadOpen }"
-            title="拨号盘 · 外呼"
             aria-label="拨号盘 · 外呼"
             :aria-expanded="dialPadOpen"
           >

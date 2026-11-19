@@ -99,4 +99,40 @@ onBeforeUnmount(() => {
 }
 .close-button:hover { background: #f3f4f6; }
 .close-button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* 已打开的开发页可能暂留旧弹层模板，保留其样式直到弹层重新挂载。 */
+.in-call-dial-pad .digits-label,
+.in-call-dial-pad .panel-hint { display: none; }
+.in-call-dial-pad .digits-display {
+  display: block;
+  height: 26px;
+  margin: 8px 10px 5px;
+  overflow-x: auto;
+  color: #111827;
+  font-size: 16px;
+  line-height: 26px;
+  text-align: center;
+  white-space: nowrap;
+}
+.in-call-dial-pad .keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  justify-content: center;
+  gap: 7px 12px;
+  padding: 0 10px 10px;
+}
+.in-call-dial-pad .digit-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f2f4;
+  color: #1f2937;
+  font-family: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.in-call-dial-pad .digit-button:hover:not(:disabled) { background: #e8eaed; }
+.in-call-dial-pad .digit-button:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
