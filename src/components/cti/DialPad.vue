@@ -279,6 +279,15 @@ defineExpose({ fillNumber, setOutboundNumber, focus });
   font-size: 16px;
   line-height: 22px;
 }
+.dialpad.in-call.compact {
+  --dp-key-size: 30px;
+  width: 152px;
+  padding: 6px 8px;
+}
+.dialpad.in-call.compact .dp-display { height: 20px; }
+.dialpad.in-call.compact .dp-dtmf { font-size: 14px; line-height: 20px; }
+.dialpad.in-call.compact .dp-keys { gap: 5px 10px; margin-top: 0; }
+.dialpad.in-call.compact .dp-key-d { font-size: 15px; }
 .dp-cap {
   align-self: flex-start;
   font-size: 10px;
