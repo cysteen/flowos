@@ -350,7 +350,7 @@ function withdraw(r: Req) {
 <style scoped>
 .approval-ws {
   min-height: 100%;
-  padding: 16px 20px 20px;
+  padding: 0;
   background: var(--flowos-content-bg, #f9fafb);
 }
 

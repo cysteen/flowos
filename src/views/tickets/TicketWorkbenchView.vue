@@ -1255,8 +1255,8 @@ function onConfirmSaveFilter(name: string) {
 .workbench-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: var(--flowos-page-gap);
+  padding: 0;
   flex: 1;
   min-height: 0;
   min-width: 0;

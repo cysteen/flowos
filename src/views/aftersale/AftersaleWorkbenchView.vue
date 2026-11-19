@@ -271,8 +271,8 @@ function setPage(page: number, size: number) {
 .workbench-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
+  gap: var(--flowos-page-gap);
+  padding: 0;
   flex: 1;
   min-height: 0;
   background: #f9fafb;

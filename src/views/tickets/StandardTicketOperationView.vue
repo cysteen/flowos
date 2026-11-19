@@ -3276,7 +3276,7 @@ watch(
 <style scoped>
 /* 填满外壳滚动容器，头部 + 速览带常驻，主体区独立滚动 → 关注信息一屏 */
 .op-page {
-  --op-block-gap: 12px;
+  --op-block-gap: var(--flowos-page-gap);
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
@@ -3296,7 +3296,7 @@ watch(
 .flash-edit-btn:disabled { color: #9ca3af; border-color: #d1d5db; background: #f9fafb; cursor: not-allowed; }
 .op-overview-wrap {
   flex: none;
-  padding: 10px 20px 0;
+  padding: 0;
   position: relative;
   z-index: 1;
 }
@@ -3344,11 +3344,11 @@ watch(
   border-radius: 999px;
 }
 .op-overview-wrap.elevated { z-index: 50; }
-.op-delegate-wrap { flex: none; padding: 10px 20px 0; }
+.op-delegate-wrap { flex: none; padding: 0; }
 .op-body {
   display: flex;
   gap: var(--op-block-gap);
-  padding: 10px 20px 12px;
+  padding: 0;
   flex: 1;
   min-height: 0;
   align-items: stretch;

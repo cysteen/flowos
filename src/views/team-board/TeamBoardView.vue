@@ -1393,8 +1393,8 @@ watch(teamId, () => {
 .tb {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: var(--flowos-page-gap);
+  padding: 0;
   min-height: 100%;
   width: 100%;
   min-width: 0;

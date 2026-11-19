@@ -1635,7 +1635,7 @@ defineExpose({ reset: () => loadValues() });
 }
 .registration-overview-cards {
   display: flex;
-  gap: 12px;
+  gap: var(--flowos-page-gap);
   align-items: stretch;
   width: 100%;
   min-width: 0;
@@ -1692,12 +1692,12 @@ defineExpose({ reset: () => loadValues() });
 }
 /* 新建页：上双卡 + 工单处理区整体上移 */
 .registration-editor.is-new .registration-top.registration-top--overview {
-  gap: 10px;
-  padding: 6px 8px 0;
+  gap: var(--flowos-page-gap);
+  padding: 0;
 }
 .registration-editor.is-new .registration-bottom {
-  padding: 4px 8px 12px;
-  gap: 10px;
+  padding: 0;
+  gap: var(--flowos-page-gap);
   align-items: stretch;
 }
 .registration-editor.is-new .process-canvas {
@@ -1717,8 +1717,8 @@ defineExpose({ reset: () => loadValues() });
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 20px 16px;
+  gap: var(--flowos-page-gap);
+  padding: 0;
   align-items: stretch;
 }
 /* 与 OpProcessTabs `.process-tabs` / `.tab-bar` / `.tab-content` 同字号与同节奏 */

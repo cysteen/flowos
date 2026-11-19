@@ -1435,8 +1435,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .ops-monitor {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 24px;
+  gap: var(--flowos-page-gap);
+  padding: 0;
   min-height: 100%;
   width: 100%;
   min-width: 0;
