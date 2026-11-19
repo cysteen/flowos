@@ -44,8 +44,9 @@ function onDial(phone: string, outboundNumber: string, contactLabel?: string) {
     :title="callBlocked"
     :placement="placement ?? 'bottomRight'"
     :mouse-enter-delay="0.12"
-    color="#fff"
-    :overlay-inner-style="{ color: '#c2410c', fontSize: '12px', fontWeight: 600 }"
+    color="#fffbeb"
+    :overlay-style="{ maxWidth: '340px' }"
+    :overlay-inner-style="{ maxWidth: '340px', color: '#713f12', fontSize: '12px', lineHeight: '1.6', padding: '10px 12px' }"
   >
     <span class="dial-popover-trigger dial-popover-trigger--blocked">
       <slot />
