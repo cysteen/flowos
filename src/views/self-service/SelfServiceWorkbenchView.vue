@@ -664,8 +664,8 @@ function exportRows() {
 .workbench-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: 8px;
+  padding: 2px 4px 8px;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -927,7 +927,7 @@ function exportRows() {
 }
 @media (max-width: 760px) {
   .workbench-body {
-    padding: 12px;
+    padding: 2px 4px 8px;
   }
   .query-filters {
     flex-direction: column;
