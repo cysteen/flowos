@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
-  CoffeeOutlined, CustomerServiceOutlined, DownOutlined, PhoneFilled,
+  AppstoreOutlined, CoffeeOutlined, CustomerServiceOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
 import CallSessionBar from '@/components/cti/CallSessionBar.vue';
 import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
@@ -203,9 +203,10 @@ function onMenuClick({ key }: { key: string | number }) {
             type="button"
             :class="{ 'is-disabled': !!callBlocked, 'is-active': dialPadOpen }"
             title="拨号盘 · 外呼"
+            aria-label="拨号盘 · 外呼"
+            :aria-expanded="dialPadOpen"
           >
-            <span class="cti-work-btn__icon"><PhoneFilled /></span>
-            <span class="cti-work-btn__label">呼叫</span>
+            <span class="cti-work-btn__icon"><AppstoreOutlined /></span>
           </button>
         </DialPadPopover>
 
@@ -320,7 +321,7 @@ function onMenuClick({ key }: { key: string | number }) {
 .cti-work-btn--out:not(:disabled):not(.is-disabled):hover { background: #e2e8f0; }
 
 /* 呼叫（拨号盘）：实心绿动作按钮，区别于浅底状态钮 */
-.cti-work-btn--call { background: #16a34a; color: #fff; box-shadow: 0 1px 2px rgba(22, 163, 74, 0.3); }
+.cti-work-btn--call { width: 36px; padding: 0; background: #16a34a; color: #fff; box-shadow: 0 1px 2px rgba(22, 163, 74, 0.3); }
 .cti-work-btn--call:not(:disabled):not(.is-disabled):hover { background: #15803d; filter: none; }
 .cti-work-btn--call.is-active { background: #15803d; }
 .cti-work-btn--call .cti-work-btn__icon :deep(.anticon) { font-size: 15px; }

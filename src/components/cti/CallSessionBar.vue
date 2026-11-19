@@ -98,7 +98,7 @@ const showContact = computed(() => {
           aria-haspopup="dialog"
           :aria-expanded="dialPadOpen"
         >
-          <AppstoreOutlined /><span>拨号盘</span>
+          <AppstoreOutlined />
         </button>
       </a-popover>
 
@@ -310,6 +310,8 @@ const showContact = computed(() => {
 }
 .act :deep(.anticon) { font-size: 13px; }
 .act.dial-pad {
+  width: 28px;
+  padding: 0;
   background: #fff;
   border-color: #a7f3d0;
   color: #047857;
