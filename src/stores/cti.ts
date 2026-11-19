@@ -33,6 +33,8 @@ export interface CallSession {
   holdSince: number | null;
   /** 累计保持时长（毫秒），挂断后可写入联系记录 */
   holdAccumMs: number;
+  /** 当前会话的二次按键记录；纯模拟 CTI，不代表已向电话线路发送 DTMF */
+  dtmfDigits: string;
 }
 
 export const BREAK_LABELS: Record<BreakReason, string> = {
@@ -273,9 +275,18 @@ export const useCtiStore = defineStore('cti', {
         held: false,
         holdSince: null,
         holdAccumMs: 0,
+        dtmfDigits: '',
       };
       this.logFlow();
       this.schedulePhaseTransitions();
+      return true;
+    },
+    /** 模拟当前通话的单个 DTMF 按键，不发起外呼，不改变号码、计时或工作状态。 */
+    sendDtmf(digit: string): boolean {
+      const s = this.callSession;
+      if (!s || s.status !== 'connected' || s.held
+        || typeof digit !== 'string' || digit.length !== 1 || !/^[0-9*#]$/.test(digit)) return false;
+      s.dtmfDigits = (s.dtmfDigits ?? '') + digit;
       return true;
     },
     cancelCall() {

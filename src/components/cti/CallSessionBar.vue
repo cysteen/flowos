@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import {
-  AudioMutedOutlined, AudioOutlined, CloseOutlined, PauseCircleOutlined,
+  AppstoreOutlined, AudioMutedOutlined, AudioOutlined, CloseOutlined, PauseCircleOutlined,
   PhoneOutlined, PlayCircleOutlined,
 } from '@ant-design/icons-vue';
 import { useCtiStore, formatCallDuration, maskPhone } from '@/stores/cti';
+import InCallDialPad from '@/components/cti/InCallDialPad.vue';
 
 const props = withDefaults(defineProps<{ variant?: 'anchor' | 'main' | 'overlay' }>(), { variant: 'main' });
 
 const cti = useCtiStore();
 const session = computed(() => cti.callSession);
+const dialPadOpen = ref(false);
+const dialPadTrigger = ref<HTMLButtonElement | null>(null);
+
+// 静音、保持会替换会话对象；只在结束通话或新会话开始时关闭面板。
+watch(() => session.value?.startedAt, () => { dialPadOpen.value = false; }, { flush: 'sync' });
+
+function closeDialPad() {
+  dialPadOpen.value = false;
+  nextTick(() => dialPadTrigger.value?.focus());
+}
 
 const statusText = computed(() => {
   const s = session.value;
@@ -61,6 +72,36 @@ const showContact = computed(() => {
     >外显 {{ outboundDisplay }}</span>
 
     <div class="acts">
+      <a-popover
+        v-model:open="dialPadOpen"
+        trigger="click"
+        placement="bottomLeft"
+        :overlay-inner-style="{ padding: '0' }"
+      >
+        <template #content>
+          <InCallDialPad
+            v-if="dialPadOpen"
+            :digits="session.dtmfDigits ?? ''"
+            :status="session.status"
+            :held="session.held"
+            @digit="cti.sendDtmf($event)"
+            @close="closeDialPad"
+          />
+        </template>
+        <button
+          ref="dialPadTrigger"
+          class="act dial-pad"
+          :class="{ on: dialPadOpen }"
+          type="button"
+          title="通话拨号盘"
+          aria-label="通话拨号盘"
+          aria-haspopup="dialog"
+          :aria-expanded="dialPadOpen"
+        >
+          <AppstoreOutlined /><span>拨号盘</span>
+        </button>
+      </a-popover>
+
       <button
         v-if="canControl"
         class="act hold"
@@ -150,7 +191,7 @@ const showContact = computed(() => {
   flex-shrink: 0;
 }
 .call-bar.overlay .contact {
-  max-width: none;
+  max-width: 88px;
   min-width: 0;
   flex-shrink: 1;
 }
@@ -268,6 +309,21 @@ const showContact = computed(() => {
   font-size: 12px;
 }
 .act :deep(.anticon) { font-size: 13px; }
+.act.dial-pad {
+  background: #fff;
+  border-color: #a7f3d0;
+  color: #047857;
+  white-space: nowrap;
+}
+.act.dial-pad:hover,
+.act.dial-pad.on {
+  background: #d1fae5;
+  border-color: #34d399;
+}
+.act:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
 .act.mute {
   background: #fff;
   border-color: #d1d5db;
