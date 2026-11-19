@@ -9,6 +9,8 @@ import {
   type OutboundNumberOption,
 } from '@/mock/outboundNumbers';
 
+withDefaults(defineProps<{ active?: boolean }>(), { active: true });
+
 const emit = defineEmits<{
   call: [phone: string, outboundNumber: string, contactLabel?: string];
 }>();
@@ -55,7 +57,7 @@ function onDial(phone: string, outboundNumber: string) {
       @select="onOutboundSelect"
     />
     <div class="dial-panel-divider" />
-    <DialPad ref="dialPadRef" @call="onDial" />
+    <DialPad ref="dialPadRef" :active="active" compact @call="onDial" />
   </div>
 </template>
 

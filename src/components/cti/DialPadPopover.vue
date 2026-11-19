@@ -33,7 +33,7 @@ function onDial(phone: string, outboundNumber: string, contactLabel?: string) {
     :overlay-inner-style="{ padding: '0' }"
   >
     <template #content>
-      <DialPadPanel @call="onDial" />
+      <DialPadPanel :active="open" @call="onDial" />
     </template>
     <span class="dial-popover-trigger">
       <slot />
