@@ -33,7 +33,7 @@ export function registrationEditorSections(template: RegistrationTemplate): Regi
     const definition = template.fields.find((item) => item.key === key);
     return {
       key, label: definition?.label ?? key, ...definition, control: controls[key] ?? 'text',
-      full: key === 'description' || key === 'processResult' || key === 'orderTime',
+      full: key === 'description' || key === 'processResult' || key === 'requestType',
       placeholder:
         key === 'productName' ? '请选择'
         : key === 'processResult' ? '核实情况与处理结果'
@@ -42,9 +42,9 @@ export function registrationEditorSections(template: RegistrationTemplate): Regi
   };
   return [
     { id: 'source', title: '来源与时限', columns: 3,
-      fields: ['feedback', 'specificSource', 'channelDetail', 'upstreamNo', 'timeLimit', 'requestType', 'accessTime', 'replyTime'].map((key) => field(key as RegistrationFieldKey)) },
+      fields: ['feedback', 'specificSource', 'upstreamNo', 'timeLimit', 'accessTime', 'replyTime', 'requestType'].map((key) => field(key as RegistrationFieldKey)) },
     { id: 'product', title: '产品与业务', columns: 3,
-      fields: ['businessLine', 'productCategory', 'productName', 'businessPhone', 'operator', 'province', 'orderTime'].map((key) => field(key as RegistrationFieldKey)) },
+      fields: ['businessLine', 'productCategory', 'productName', 'businessPhone', 'operator', 'province', 'channelDetail', 'orderTime'].map((key) => field(key as RegistrationFieldKey)) },
     { id: 'process', title: '问题与处理', columns: 3,
       fields: ['complaintType', 'problemL1', 'problemL2', 'refundPhone', 'refundAmount', 'closedLoop', 'description', 'processResult'].map((key) => field(key as RegistrationFieldKey)) },
   ];
@@ -80,6 +80,6 @@ export function registrationFieldDisabled(field: RegistrationFieldKey, values: R
 
 export function registrationFieldPlaceholder(field: RegistrationEditorField, values: RegistrationValues): string {
   const parent = registrationFieldParent(field.key);
-  const parentLabels: Partial<Record<RegistrationFieldKey, string>> = { businessLine: '业务线', productCategory: '产品线', feedback: '反馈平台', problemL1: '问题分类一' };
+  const parentLabels: Partial<Record<RegistrationFieldKey, string>> = { businessLine: '业务线', productCategory: '产品分类', feedback: '反馈平台', problemL1: '问题分类一' };
   return parent && !values[parent] ? `请先选择${parentLabels[parent] ?? '上级'}` : field.placeholder || '请选择';
 }

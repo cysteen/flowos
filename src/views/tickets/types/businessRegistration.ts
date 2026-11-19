@@ -89,13 +89,13 @@ export const REGISTRATION_FIELD_DEFINITIONS: readonly RegistrationFieldDefinitio
     '咪咕系统', '通信助理工单系统', '来电名片系统', 'PRM工单', '邮件反馈', 'I讯飞群', '中移移动APP', '400客服系统', 'QQ反馈', '微信反馈',
   ] },
   { key: 'specificSource', label: '具体来源' },
-  { key: 'channelDetail', label: '渠道明细', closeRequired: true },
+  { key: 'channelDetail', label: '订购渠道', closeRequired: true },
   { key: 'accessTime', label: '派单时间', closeRequired: true },
   { key: 'timeLimit', label: '工单时效', closeRequired: true, options: ['半小时', '1小时', '2小时', '24小时'] },
   { key: 'requestType', label: '服务请求', placeholder: '填写服务请求类别' },
   { key: 'upstreamNo', label: '工单流水号' },
   { key: 'businessLine', label: '业务线', closeRequired: true, options: ['5G新通话业务部', '数字娱乐业务部'] },
-  { key: 'productCategory', label: '产品线', closeRequired: true },
+  { key: 'productCategory', label: '产品分类', closeRequired: true },
   { key: 'productName', label: '产品名称', closeRequired: true },
   { key: 'operator', label: '运营商', closeRequired: true, options: ['移动', '联通', '电信', '其他'] },
   { key: 'province', label: '省份', closeRequired: true, options: ['北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省', '黑龙江省', '上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省', '山东省', '河南省', '湖北省', '湖南省', '广东省', '广西壮族自治区', '海南省', '重庆市', '四川省', '贵州省', '云南省', '西藏自治区', '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区', '香港特别行政区', '澳门特别行政区', '台湾省'] },
@@ -235,11 +235,11 @@ export function validateRegistrationValues(values: RegistrationValues, stage: 'c
     const product = template.products.find((item) => item.name === values.productName);
     const unchangedProduct = !!previous && previous.productName === values.productName && previous.productCategory === values.productCategory && previous.businessLine === values.businessLine;
     const productCategories = template.productCategoryOptions?.[values.businessLine] ?? template.products.filter((item) => item.businessLine === values.businessLine).map((item) => item.category);
-    if (values.productCategory && !productCategories.includes(values.productCategory) && !unchangedProduct) errors.productCategory = '请选择与业务线对应的启用中产品线';
-    if (values.productName && (!values.businessLine || !values.productCategory) && !unchangedProduct) errors.productName = '请先选择业务线和产品线';
+    if (values.productCategory && !productCategories.includes(values.productCategory) && !unchangedProduct) errors.productCategory = '请选择与业务线对应的启用中产品分类';
+    if (values.productName && (!values.businessLine || !values.productCategory) && !unchangedProduct) errors.productName = '请先选择业务线和产品分类';
     if (values.productName && !product && !unchangedProduct) errors.productName = '请选择启用中的产品名称';
     if (product && !unchangedProduct) {
-      if (values.productCategory && values.productCategory !== product.category) errors.productCategory = '产品线与所选产品不一致';
+      if (values.productCategory && values.productCategory !== product.category) errors.productCategory = '产品分类与所选产品不一致';
       if (product.businessLine && values.businessLine && values.businessLine !== product.businessLine) errors.businessLine = '业务线与所选产品归属不一致';
     }
   }

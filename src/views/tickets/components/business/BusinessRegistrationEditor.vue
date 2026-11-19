@@ -1661,13 +1661,42 @@ defineExpose({ reset: () => loadValues() });
   width: 100%;
   max-width: none;
 }
+/* 来源字段按业务语义固定成对，避免“具体来源”条件显示时打乱后续行。 */
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='feedback']) {
+  grid-column: 1;
+  grid-row: 2;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='specificSource']) {
+  grid-column: 2;
+  grid-row: 2;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='upstreamNo']) {
+  grid-column: 1;
+  grid-row: 3;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='timeLimit']) {
+  grid-column: 2;
+  grid-row: 3;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='accessTime']) {
+  grid-column: 1;
+  grid-row: 4;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='replyTime']) {
+  grid-column: 2;
+  grid-row: 4;
+}
+.registration-top--overview .ob-cell :deep([data-region='source'] [data-field='requestType']) {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
 /* 新建页：上双卡 + 工单处理区整体上移 */
 .registration-editor.is-new .registration-top.registration-top--overview {
   gap: 10px;
-  padding: 6px 20px 0;
+  padding: 6px 8px 0;
 }
 .registration-editor.is-new .registration-bottom {
-  padding: 4px 20px 12px;
+  padding: 4px 8px 12px;
   gap: 10px;
   align-items: stretch;
 }
