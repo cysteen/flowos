@@ -97,11 +97,6 @@ const allowedToView = computed(() => isNew.value || (!!record.value && store.can
 const canAttach = computed(() => isNew.value ? allowedToEdit.value : !!record.value && store.canUpload(record.value));
 const canTransfer = computed(() => !!record.value && store.canTransfer(record.value));
 const canContact = computed(() => !!record.value && record.value.status === '处理中' && store.canEdit(record.value));
-/** 同组「非当前处理人」才展示 permission-note；处理人本人不提示这条旁白 */
-const isCurrentHandler = computed(() => {
-  const h = record.value?.handler?.trim() ?? '';
-  return !!h && h === user.name;
-});
 const textareaSnapshot = computed(() => JSON.stringify({
   descriptionAttachments: descriptionAttachments.value,
   processResultAttachments: processResultAttachments.value,
@@ -691,7 +686,6 @@ defineExpose({ reset: () => loadValues() });
       <button type="button" @click="loadValues()">放弃本页修改并载入最新</button>
     </div>
     <div v-if="isNew && !allowedToEdit" class="permission-note">当前账号不在此表单的处理组内，可切换至具备业务登记权限的账号。</div>
-    <div v-else-if="record && !allowedToEdit && !isCurrentHandler && !(isClosed && allowedToRevise)" class="permission-note">当前由 {{ record.handler }} 处理。{{ canAttach ? '您可补充附件；' : '' }}{{ isClosed ? '业务内容仅结案时的处理人可修订。' : '业务字段仅可查看。' }}</div>
     <div v-else-if="isClosed && !allowedToRevise" class="permission-note">工单已结案。{{ canAttach ? '同组可补充附件；' : '' }}业务内容仅结案时的处理人可修订。</div>
 
     <form class="registration-scroll" @submit.prevent="submit(false)">
