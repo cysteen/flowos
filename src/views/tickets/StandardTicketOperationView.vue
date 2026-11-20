@@ -166,13 +166,15 @@ const refundToManager = computed<{ tip?: string } | null>(() => {
   if (s === '未认领' || s === '调研中' || isTicketTerminated(s)) return null;
   return inflightRefundRun(d.value.refund) ? { tip: REFUND_TIP.inProgress } : {};
 });
-/**
- * 候选：全部校园经理、城市经理，显示「姓名（所属学校）」——负责多所学校用顿号连接，
- * 无学校（城市经理）括号里写「城市经理」；value 为域账号（可按姓名、域账号、学校名搜索）
- */
-const refundManagerOptions = ALL_REFUND_MANAGERS.map((m) => {
-  const schools = schoolsOfManager(m.account);
-  return { value: m.account, label: `${m.name}（${schools.length ? schools.join('、') : m.kind}）` };
+/** 候选按「姓名-域账号」展示，所属学校或经理类型用于悬停提示及搜索。 */
+const refundManagerOptions = ALL_REFUND_MANAGERS.map((manager) => {
+  const schools = schoolsOfManager(manager.account);
+  const scope = schools.length ? schools.join('、') : manager.kind;
+  return {
+    value: manager.account,
+    label: `${manager.name}-${manager.account}`,
+    title: `${manager.name}（${scope}）`,
+  };
 });
 /** 默认处理人：最近一次在 H5 保存 / 下送 / 提交退费的校园经理、城市经理；没有按学校带出；都无为空 */
 const refundManagerDefault = computed(() => {

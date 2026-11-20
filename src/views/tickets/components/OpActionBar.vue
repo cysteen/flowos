@@ -174,7 +174,7 @@ const props = defineProps<{
    */
   refundToManager?: { tip?: string } | null;
   /** 「转校园经理」弹窗：候选处理人（全部校园经理、城市经理）与默认处理人（域账号） */
-  refundManagerOptions?: { value: string; label: string }[];
+  refundManagerOptions?: { value: string; label: string; title?: string }[];
   refundManagerDefault?: string;
 }>();
 

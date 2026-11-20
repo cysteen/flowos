@@ -68,8 +68,8 @@ const props = defineProps<{
   extraTransferTargets?: string[];
   /** 打开调剂弹窗时预选的处理人（个册退费单：本校校园经理）；不传时取候选首项 */
   defaultTransferTarget?: string;
-  /** 「转校园经理」候选（value＝域账号，label＝姓名（所属学校））与默认处理人（域账号） */
-  refundManagerOptions?: { value: string; label: string }[];
+  /** 「转校园经理」候选与默认处理人，提交值为域账号。 */
+  refundManagerOptions?: { value: string; label: string; title?: string }[];
   refundManagerDefault?: string;
 }>();
 
@@ -201,10 +201,10 @@ const returnForm = reactive({ reason: '', note: '' });
 /** 个册退费单「转校园经理」：处理人（域账号）＋ 转交原因 */
 const toManager = reactive({ account: undefined as string | undefined, reason: '' });
 
-/** 「转校园经理」处理人可按姓名、学校名（label）与域账号（value）搜索 */
-function filterManagerOption(input: string, option?: { label?: string; value?: string }) {
-  const q = input.trim().toLowerCase();
-  return `${option?.label ?? ''} ${option?.value ?? ''}`.toLowerCase().includes(q);
+/** 支持按姓名、域账号或学校搜索。 */
+function filterManagerOption(input: string, option?: { label?: string; title?: string }) {
+  const query = input.trim().toLowerCase();
+  return `${option?.label ?? ''} ${option?.title ?? ''}`.toLowerCase().includes(query);
 }
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
@@ -1076,7 +1076,7 @@ function onOk() {
           show-search
           allow-clear
           :filter-option="filterManagerOption"
-          placeholder="请选择处理人"
+          placeholder="搜索姓名、域账号或学校"
           style="width:100%"
           :options="refundManagerOptions ?? []"
         />
