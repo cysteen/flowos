@@ -1,0 +1,1 @@
+import{Ct as e,J as t}from"./AntdIcon-CrASq15R.js";var n=()=>{let n=e(new Map);return t(()=>{n.value=new Map}),[e=>t=>{n.value.set(e,t)},n]};export{n as t};

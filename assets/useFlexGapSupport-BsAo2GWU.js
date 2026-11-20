@@ -1,0 +1,1 @@
+import{Tt as e,X as t}from"./AntdIcon-CrASq15R.js";import{n}from"./styleChecker-C3SnkYfc.js";var r=(()=>{let r=e(!1);return t(()=>{r.value=n()}),r});export{r as t};
