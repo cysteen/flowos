@@ -7,6 +7,62 @@ export interface TenantMembership {
   defaultRole?: RoleKey;
 }
 
+/** 工作状态模块的租户级授权真源。班组 ID 必须按账号+租户配置，禁止复用全局 user.groups。 */
+export interface WorkstateTenantAuthorization {
+  /** 可查询、导出及在角色允许时执行重试/补偿的班组。 */
+  managedGroupIds: string[];
+  /** 坐席可在话务条选择的当前工作组织。 */
+  workGroupIds: string[];
+}
+
+const ALL_WORKSTATE_GROUP_IDS = ['line1', 'line2', 'hardware', 'edu-flash', 'xiaozhi', 'edu', 'general', 'tech'];
+
+export const WORKSTATE_TENANT_AUTHORIZATIONS: Record<string, Record<string, WorkstateTenantAuthorization>> = {
+  '13500001111': { t1: { managedGroupIds: [], workGroupIds: ['line1'] } },
+  '13500002222': { t1: { managedGroupIds: [], workGroupIds: ['xiaozhi'] } },
+  '13911112222': { t1: { managedGroupIds: [], workGroupIds: ['tech'] } },
+  '13822223333': { t1: { managedGroupIds: [], workGroupIds: ['edu', 'general'] } },
+  '13733334444': { t1: { managedGroupIds: ['line1', 'line2', 'hardware'], workGroupIds: [] } },
+  '13744445555': { t1: { managedGroupIds: [], workGroupIds: [] } },
+  '13857985858': {
+    t1: { managedGroupIds: ['line2', 'general'], workGroupIds: ['line2', 'general', 'edu-flash', 'edu'] },
+    t2: { managedGroupIds: [], workGroupIds: ['line2'] },
+    t4: { managedGroupIds: ['edu', 'edu-flash'], workGroupIds: ['edu', 'edu-flash'] },
+    t6: { managedGroupIds: [], workGroupIds: ['line2'] },
+    t7: { managedGroupIds: [], workGroupIds: ['line2'] },
+  },
+  '13600001111': {
+    t1: { managedGroupIds: [], workGroupIds: ['hardware'] },
+    t5: { managedGroupIds: [], workGroupIds: ['hardware'] },
+    t7: { managedGroupIds: [], workGroupIds: ['hardware'] },
+  },
+  '18500003333': {
+    t1: { managedGroupIds: ['line2', 'general', 'hardware', 'edu'], workGroupIds: [] },
+    t2: { managedGroupIds: ['line2'], workGroupIds: [] },
+    t4: { managedGroupIds: ['edu', 'edu-flash'], workGroupIds: [] },
+  },
+  '18066668888': { t1: { managedGroupIds: [...ALL_WORKSTATE_GROUP_IDS], workGroupIds: [] } },
+  '18756826666': {
+    t1: { managedGroupIds: [...ALL_WORKSTATE_GROUP_IDS], workGroupIds: [] },
+    t4: { managedGroupIds: ['edu', 'edu-flash'], workGroupIds: [] },
+    t5: { managedGroupIds: ['hardware'], workGroupIds: [] },
+    t6: { managedGroupIds: ['line1', 'line2', 'general'], workGroupIds: [] },
+    t7: { managedGroupIds: ['line1', 'line2', 'general'], workGroupIds: [] },
+  },
+  '13965087676': {
+    t1: { managedGroupIds: [...ALL_WORKSTATE_GROUP_IDS], workGroupIds: [] },
+    t6: { managedGroupIds: ['line1', 'line2', 'general'], workGroupIds: [] },
+    t7: { managedGroupIds: ['line1', 'line2', 'general'], workGroupIds: [] },
+  },
+};
+
+export function getWorkstateTenantAuthorization(account: string, tenantId: string): WorkstateTenantAuthorization {
+  const configured = WORKSTATE_TENANT_AUTHORIZATIONS[account.trim()]?.[tenantId];
+  return configured
+    ? { managedGroupIds: [...configured.managedGroupIds], workGroupIds: [...configured.workGroupIds] }
+    : { managedGroupIds: [], workGroupIds: [] };
+}
+
 /** 租户运营档案（管理后台展示用，按租户隔离） */
 export interface TenantProfile {
   name: string;
@@ -94,6 +150,25 @@ export const TENANT_PROFILES: Record<string, TenantProfile> = {
 
 /** 演示账号 → 可访问租户列表（含停用租户，前端置灰不可选） */
 export const ACCOUNT_TENANT_MEMBERSHIPS: Record<string, TenantMembership[]> = {
+  // 其余业务演示账号均为主租户有效成员，保证用户目录可按稳定账号解析。
+  '13500001111': [
+    { tenantId: 't1', roles: ['agent-l1'], defaultRole: 'agent-l1' },
+  ],
+  '13500002222': [
+    { tenantId: 't1', roles: ['xiaozhi-agent'], defaultRole: 'xiaozhi-agent' },
+  ],
+  '13911112222': [
+    { tenantId: 't1', roles: ['tech-support'], defaultRole: 'tech-support' },
+  ],
+  '13822223333': [
+    { tenantId: 't1', roles: ['complaint-handler'], defaultRole: 'complaint-handler' },
+  ],
+  '13733334444': [
+    { tenantId: 't1', roles: ['complaint-supervisor'], defaultRole: 'complaint-supervisor' },
+  ],
+  '13744445555': [
+    { tenantId: 't1', roles: ['qa'], defaultRole: 'qa' },
+  ],
   // 张三：多租户坐席/组长（含停用 t3 演示置灰）
   '13857985858': [
     { tenantId: 't1', roles: ['agent-l2', 'team-leader'], defaultRole: 'agent-l2' },

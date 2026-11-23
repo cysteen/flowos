@@ -14,7 +14,9 @@ const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustome
 const OpFeishuTab = defineAsyncComponent(() => import('./tabs/OpFeishuTab.vue'));
 const OpAppointmentTab = defineAsyncComponent(() => import('./tabs/OpAppointmentTab.vue'));
 import { useUserStore } from '@/stores/user';
+import { scopeRecordsForRecordingAccess } from '@/stores/outboundInterop';
 import {
+  attachmentHistoryTabLabel,
   isRegulatorComplaintPlatform,
   visibleProcessTabs,
   tabWritableFor,
@@ -111,6 +113,10 @@ const emit = defineEmits<{
 }>();
 
 const user = useUserStore();
+const contactRecordsForView = computed(() => scopeRecordsForRecordingAccess(
+  props.tabData.contactRecords,
+  !['ops-monitor', 'qa'].includes(user.roleKey),
+));
 const activeTab = ref<ProcessTabKey>('process');
 /** synced / feedback / closed / failed 时展示「产研反馈」Tab */
 const feishuActive = computed(() => {
@@ -211,7 +217,7 @@ defineExpose({ switchTab });
         :class="[{ active: activeTab === t.key }, tabDots?.[t.key] ? `dot-${tabDots[t.key]}` : '']"
         @click="switchTab(t.key)"
       >
-        {{ t.label }}
+        {{ t.key === 'attachments' ? attachmentHistoryTabLabel(tabData) : t.label }}
         <!-- 状态圆点：判据在页面侧，此处只画。未激活态另加文字色，让它在一排灰 Tab 里能被一眼找到 -->
         <span v-if="tabDots?.[t.key]" class="tab-dot" aria-hidden="true"></span>
       </button>
@@ -333,7 +339,7 @@ defineExpose({ switchTab });
 
       <OpContactRecordsTab
         v-else-if="activeTab === 'contact'"
-        :records="tabData.contactRecords"
+        :records="contactRecordsForView"
       />
 
       <OpNotifyRecordsTab
@@ -350,6 +356,7 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'attachments'"
         :records="tabData.attachmentHistory"
         :links="tabData.attachmentLinks"
+        :load-scope="tabData.attachmentLoadScope"
         :readonly="!attachmentUploadEnabled"
         @upload="emit('attachment-upload', $event)"
       />

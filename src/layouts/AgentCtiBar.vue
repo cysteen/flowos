@@ -11,8 +11,12 @@ import DialPadPopover from '@/components/cti/DialPadPopover.vue';
 import SignInModal from '@/components/cti/SignInModal.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, type BreakReason } from '@/stores/cti';
-import { useCtiFlowStore } from '@/stores/ctiFlow';
+import {
+  currentWorkOrganization, setCurrentWorkOrganization, useCtiFlowStore,
+  workstateGroupOf, workstateOrganizationOptions,
+} from '@/stores/ctiFlow';
 import { useDispatchStore } from '@/stores/dispatch';
+import { useTenantStore } from '@/stores/tenant';
 import { useUserStore } from '@/stores/user';
 import { syncSignInFromCti } from '@/views/tickets/composables/dispatchUi';
 import { DEFAULT_WORK_TYPE, workTypeOf, workTypesOfGroup } from '@/mock/ctiWorkTypes';
@@ -26,12 +30,36 @@ const BREAK_MENU: { key: BreakReason; label: string }[] = [
 
 const cti = useCtiStore();
 const user = useUserStore();
+const tenant = useTenantStore();
 const dispatch = useDispatchStore();
 const flow = useCtiFlowStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
 
-/** 就绪子态菜单：取本人所在班组的工作类型字典（首个处理组），未配置的组取缺省清单 */
-const READY_MENU = computed(() => workTypesOfGroup(dispatch.agentOf(user.name)?.groupIds[0]));
+const workOrganizationOptions = computed(() => workstateOrganizationOptions());
+const selectedWorkOrganization = ref<string | undefined>();
+const workOrganizationRequired = computed(() => (
+  workOrganizationOptions.value.length > 1 && !selectedWorkOrganization.value
+));
+
+watch(
+  () => [tenant.currentTenantId, user.account, user.name, workOrganizationOptions.value.map((item) => item.value).join('|')],
+  () => { selectedWorkOrganization.value = currentWorkOrganization() ?? undefined; },
+  { immediate: true },
+);
+
+function onWorkOrganizationChange(value: unknown) {
+  const groupId = typeof value === 'string' ? value : '';
+  if (!groupId) return;
+  if (!setCurrentWorkOrganization(groupId)) {
+    message.error('当前租户无权使用该工作组织');
+    return;
+  }
+  selectedWorkOrganization.value = groupId;
+  captureFlow();
+}
+
+/** 就绪子态菜单：取当前明确工作组织的类型字典，未配置的组取缺省清单。 */
+const READY_MENU = computed(() => workTypesOfGroup(workstateGroupOf(user.name)));
 
 const route = useRoute();
 /**
@@ -43,7 +71,33 @@ const activeTicketNo = computed(() =>
 );
 /** 进行中的流水段定时落盘，刷新后以此收尾 */
 const heartbeat = window.setInterval(() => { if (cti.isSignedIn) flow.heartbeat(); }, 30_000);
-onBeforeUnmount(() => window.clearInterval(heartbeat));
+/** 仅补浏览器边界留痕；CTI本身的状态机与外呼接线仍由cti.ts维护。 */
+function captureFlow() {
+  const status = cti.workStatus;
+  const sub = status === 'ready' ? cti.readyMode : status === 'break' ? cti.breakReason : status === 'busy' ? 'outbound' : null;
+  const ticketNo = status === 'ready' ? cti.readyTicketNo : status === 'busy' ? cti.callSession?.ticketId ?? null : null;
+  flow.transition(status, sub, ticketNo);
+}
+const onOffline = () => flow.interrupt('connection_lost');
+const onPageHide = () => flow.interrupt('page_exit');
+window.addEventListener('offline', onOffline);
+window.addEventListener('online', captureFlow);
+window.addEventListener('pagehide', onPageHide);
+window.addEventListener('pageshow', captureFlow);
+watch(
+  () => [user.name, user.roleKey, tenant.currentTenantId, selectedWorkOrganization.value,
+    workstateGroupOf(user.name), dispatch.agentOf(user.name)?.staffNo],
+  captureFlow,
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  window.clearInterval(heartbeat);
+  window.removeEventListener('offline', onOffline);
+  window.removeEventListener('online', captureFlow);
+  window.removeEventListener('pagehide', onPageHide);
+  window.removeEventListener('pageshow', captureFlow);
+  flow.interrupt('page_exit');
+});
 
 /**
  * 【1215】话务条状态联动派单坐席状态（11.5）：签入后未点就绪＝未就绪，不被派单、不可领取；点就绪后才派单（就绪即在班）。
@@ -58,7 +112,7 @@ watch(
 
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
-const disabled = computed(() => cti.workButtonsDisabled);
+const disabled = computed(() => cti.workButtonsDisabled || workOrganizationRequired.value);
 
 // 签入弹窗 · 拨号盘
 const signInOpen = ref(false);
@@ -131,6 +185,18 @@ function onMenuClick({ key }: { key: string | number }) {
 
     <template v-else>
       <div class="actions" :class="{ 'is-covered': cti.inCall }">
+        <a-select
+          v-if="workOrganizationOptions.length > 1"
+          class="work-organization-select"
+          size="small"
+          :value="selectedWorkOrganization"
+          :options="workOrganizationOptions"
+          placeholder="工作组织"
+          :disabled="cti.workButtonsDisabled"
+          title="当前工作组织"
+          @change="onWorkOrganizationChange"
+        />
+
         <button
           class="cti-work-btn cti-work-btn--ready"
           type="button"
@@ -189,8 +255,8 @@ function onMenuClick({ key }: { key: string | number }) {
         <button
           class="cti-work-btn cti-work-btn--out"
           type="button"
-          :class="{ 'is-disabled': disabled }"
-          :disabled="disabled"
+          :class="{ 'is-disabled': cti.workButtonsDisabled }"
+          :disabled="cti.workButtonsDisabled"
           @click="signOut"
         >
           <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-out" :size="16" /></span>
@@ -237,6 +303,20 @@ function onMenuClick({ key }: { key: string | number }) {
   align-items: center;
   gap: 8px;
   flex: none;
+}
+.work-organization-select {
+  width: 112px;
+  flex: none;
+}
+.work-organization-select :deep(.ant-select-selector) {
+  height: 30px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+}
+.work-organization-select :deep(.ant-select-selection-item),
+.work-organization-select :deep(.ant-select-selection-placeholder) {
+  line-height: 28px !important;
+  font-size: 12px;
 }
 /* 通话中取消定位，让浮层以整条 .cti-bar 为宽度基准，内容不被按钮区宽度截断 */
 .actions.is-covered { visibility: hidden; pointer-events: none; position: static; }

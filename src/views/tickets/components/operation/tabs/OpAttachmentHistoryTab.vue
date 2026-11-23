@@ -4,17 +4,21 @@ import { message } from 'ant-design-vue';
 import OpAttachmentViewModal from '@/views/tickets/components/operation/OpAttachmentViewModal.vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { dataUrlToPreviewBlob } from '@/views/tickets/utils/attachmentPreview';
+import { countAttachmentFiles, attachmentCountLabel } from '@/views/tickets/types/operationTabs';
 import type {
   AttachmentHistoryRecord,
   AttachmentLinkFile,
   AttachmentLinkRecord,
   AttachmentLinkSource,
+  AttachmentLoadScope,
 } from '@/views/tickets/types/operationTabs';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   records: AttachmentHistoryRecord[];
   /** 下发给客户的附件上传短链接 */
   links: AttachmentLinkRecord[];
+  /** 明确完整、部分加载或未知范围；不传时只显示未知数。 */
+  loadScope?: Partial<AttachmentLoadScope>;
   /**
    * 本 Tab 对当前角色只读。矩阵 #50「附件历史」**九格全「只读」**，原话是
    * 「查看/下载保留」；「上传附件」栏在 #50 Tab 只读时仍可出（见 tabAttachmentUploadEnabled），
@@ -25,7 +29,7 @@ const props = defineProps<{
   allowDelete?: (record: AttachmentHistoryRecord) => boolean;
   /** 隐藏「客户上传」子页签（无线音乐等业务仅坐席上传） */
   showCustomerUpload?: boolean;
-}>();
+}>(), { showCustomerUpload: true });
 
 const emit = defineEmits<{
   upload: [files: { name: string; size: number; file: File }[]];
@@ -44,6 +48,7 @@ const visibleSubTabs = computed(() => (
     ? SUB_TABS.filter((tab) => tab.key === 'files')
     : SUB_TABS
 ));
+const fileCounts = computed(() => countAttachmentFiles(props.records, props.links, props.loadScope));
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -110,7 +115,7 @@ function onDelete(record: AttachmentHistoryRecord) {
   emit('delete', record.id);
 }
 
-/* ---- 子页签二：客户上传（按关联 ID 向容联云拉取上传短链接与文件清单） ---- */
+/* ---- 子页签二：客户上传。当前接收原型清单；生产需按关联 ID 对接容联文件 list。 ---- */
 
 /** 链接的发出渠道，每个渠道一套配色 */
 function linkSourceClass(s: AttachmentLinkSource): string {
@@ -148,7 +153,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
           :aria-selected="subTab === t.key"
           @click="subTab = t.key"
         >
-          {{ t.label }}
+          {{ t.label }}（{{ attachmentCountLabel(t.key === 'files' ? fileCounts.agent : fileCounts.customer) }}）
         </button>
       </div>
       <div v-if="subTab === 'files' && !readonly" class="upload-bar">

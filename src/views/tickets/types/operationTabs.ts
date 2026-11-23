@@ -162,11 +162,17 @@ export interface ContactRecord {
   im?: { sessionDuration: string; messageCount: number };
   /**
    * 通话时刻。外呼用开始 / 接通 / 挂机；客户呼入热线只用开始（呼入）和挂机。
-   * 未接通时 `connectedAt` 为空。
+   * 未接通时 `connectedAt` 为空；历史记录、未结束会话允许缺项，不使用记录时间补事件时间。
+   * ringingAt 仅接收实际振铃时刻；缺省时按既有口径使用 startedAt。
    */
-  callSpan?: { startedAt: string; connectedAt?: string; endedAt: string };
+  callSpan?: {
+    startedAt?: string | null;
+    ringingAt?: string | null;
+    connectedAt?: string | null;
+    endedAt?: string | null;
+  };
   /** 客户呼入 IM：接入时间、离线时间 */
-  imSpan?: { joinedAt: string; offlineAt: string };
+  imSpan?: { joinedAt?: string | null; offlineAt?: string | null };
 }
 
 export type NotifyKind =
@@ -217,6 +223,8 @@ export interface AttachmentHistoryRecord {
   uploadedBy: string;
   /** 有 url 时「查看/下载」走真实链接，否则为原型占位提示 */
   url?: string;
+  /** 已删除的历史占位记录；物理移除的记录自然不参与计数。 */
+  deleted?: boolean;
 }
 
 /** 上传链接的发出渠道（这条短链接是从哪个渠道发给客户的） */
@@ -258,6 +266,63 @@ export interface AttachmentLinkRecord {
   updatedAt: string;
   /** 该链接下客户上传的文件 */
   files: AttachmentLinkFile[];
+  /** 本链接下文件清单是否完整；未提供时沿用工单客户附件的加载范围。 */
+  filesLoadState?: AttachmentLoadState;
+}
+
+/** 仅 complete 可作为全量数；调用方必须明确数据范围。 */
+export type AttachmentLoadState = 'complete' | 'partial' | 'unknown' | 'loading' | 'error';
+
+export interface AttachmentLoadScope {
+  agent: AttachmentLoadState;
+  customer: AttachmentLoadState;
+}
+
+export interface AttachmentFileCount {
+  loaded: number;
+  complete: boolean;
+  /** 可确认至少已加载部分数据；未知、首次加载和失败不能当成 0。 */
+  known: boolean;
+}
+
+/** 同一来源按稳定文件 ID 去重，冲突记录的删除/撤回标记优先；不同来源不合并。 */
+export function countAttachmentFiles(
+  records: readonly AttachmentHistoryRecord[],
+  links: readonly AttachmentLinkRecord[],
+  scope?: Partial<AttachmentLoadScope>,
+): { agent: AttachmentFileCount; customer: AttachmentFileCount; total: AttachmentFileCount } {
+  const agentFiles = new Map<string, boolean>();
+  for (const file of records) {
+    agentFiles.set(file.id, !!file.deleted || !!agentFiles.get(file.id));
+  }
+  const customerFiles = new Map<string, boolean>();
+  for (const link of links) {
+    for (const file of link.files) {
+      customerFiles.set(file.id, file.revoked || !!customerFiles.get(file.id));
+    }
+  }
+  const makeCount = (files: Map<string, boolean>, state?: AttachmentLoadState): AttachmentFileCount => ({
+    loaded: [...files.values()].filter((removed) => !removed).length,
+    complete: state === 'complete',
+    known: state === 'complete' || state === 'partial',
+  });
+  const agent = makeCount(agentFiles, scope?.agent);
+  // 链接分页与链接下文件分页任一不完整，客户文件数都只能展示已加载范围。
+  const nestedIncomplete = links.some((link) => link.filesLoadState && link.filesLoadState !== 'complete');
+  const customer = makeCount(customerFiles, nestedIncomplete && scope?.customer === 'complete' ? 'partial' : scope?.customer);
+  return {
+    agent,
+    customer,
+    total: {
+      loaded: (agent.known ? agent.loaded : 0) + (customer.known ? customer.loaded : 0),
+      complete: agent.complete && customer.complete,
+      known: agent.known || customer.known,
+    },
+  };
+}
+
+export function attachmentCountLabel(count: AttachmentFileCount): string {
+  return count.complete ? String(count.loaded) : count.known ? `已加载 ${count.loaded}` : '—';
 }
 
 export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed';
@@ -301,5 +366,7 @@ export interface OperationTabData {
   surveyRecords: SurveyRecord[];
   attachmentHistory: AttachmentHistoryRecord[];
   attachmentLinks: AttachmentLinkRecord[];
+  /** 当前附件清单范围；未提供时数量未知，禁止把空数组解释为全量 0。 */
+  attachmentLoadScope?: Partial<AttachmentLoadScope>;
   customerHistory: CustomerHistoryData;
 }

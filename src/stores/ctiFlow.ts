@@ -3,25 +3,49 @@ import { ref } from 'vue';
 import type { WorkStatus } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import { useDispatchStore } from '@/stores/dispatch';
+import { useTenantStore } from '@/stores/tenant';
+import { getWorkstateTenantAuthorization } from '@/mock/tenantMembership';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import {
-  BREAK_ITEM, DEFAULT_WORK_TYPE, OUTBOUND_SUB, workTypeOf, workTypesOfGroup, type WorkTypeDef,
+  BREAK_ITEM, DEFAULT_WORK_TYPE, OUTBOUND_SUB, workStatKey, workTypeOf, workTypesOfGroup, type WorkTypeDef,
 } from '@/mock/ctiWorkTypes';
+import {
+  WORKSTATE_EVENT_SCHEMA_VERSION,
+  endpointNotConfiguredError,
+  createWorkstateAuditRecord,
+  hasCompleteWorkstateIdentity,
+  identityInvalidError,
+  isRetryDue,
+  nextRetryDelayMs,
+  workstateOrganizationStorageKey,
+  workstateIdentityExclusionReason,
+  workstateRoleAllowsAction,
+  type WorkstateAction,
+  type WorkstateAuditRecord,
+  type WorkstateDeliveryReceipt,
+  type WorkstateEventEnvelope,
+} from '@/stores/workstateEventContract';
 
 /**
  * 话务条状态流水：每次工作状态 / 子状态切换记一段（人、班组、状态、子状态、起止时刻、关联工单），
  * 外呼忙碌段同样记一段（子状态记 outbound）。
  *
  * - 实时段落 localStorage（键带版本号），刷新后未结束的段以最后一次保存时刻收尾；
- * - 近 62 天种子按工作日 9:00–18:00 按人按日确定性生成，不入缓存（刷新、跨日都与当日对齐）；
- *   某人某日一旦有实时段，当日种子在其首段开始后截断，两份不重叠。
+ * - 实际切换、演示种子、旧版本无来源流水分开；默认统计与对账只取 prototype_live。
+ * - 本地事件未接入观星台；导出不代表已上报。人员/班组/工单按时段开始时快照。
  * - 只给组级统计用，不出个人排名。
  */
 
 export const CTI_FLOW_LS_KEY = 'flowos-cti-status-flow';
-/** v3：去掉工单操作记录（ops） */
-export const CTI_FLOW_VERSION = 3;
+/** v5：正式事件契约与本地 Outbox；v3/v4 保留为 legacy_local，不伪造成新埋点。 */
+export const CTI_FLOW_VERSION = 5;
+export const WORKSTATE_TIME_ZONE = 'Asia/Shanghai';
+export const WORKSTATE_HEARTBEAT_GAP_MS = 90_000;
+export const WORKSTATE_AUDIT_LS_KEY = 'flowos-workstate-audit-v1';
+export type FlowDataSource = 'live' | 'demo';
+export type FlowEndReason = 'state_change' | 'sign_out' | 'group_change' | 'identity_change'
+  | 'connection_lost' | 'page_exit' | 'refresh_recovery' | 'heartbeat_gap';
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -41,12 +65,25 @@ export interface FlowSegment {
   /** 进行中为 null */
   end: number | null;
   ticketNo: string | null;
+  source: 'prototype_live' | 'demo_seed' | 'legacy_local';
+  sessionId?: string;
+  /** 原型名册工号；生产统一人员ID尚待对接方确认，不用姓名冒充ID。 */
+  staffNo?: string | null;
+  roleKey?: string;
+  eligibleForGroupStats?: boolean;
+  lastSeenAt?: number;
+  endReason?: FlowEndReason;
+  tenantId?: string | null;
+  actorId?: string | null;
 }
+
+export type WorkstateEvent = WorkstateEventEnvelope<FlowSegment>;
 
 interface Persisted {
   version: number;
   savedAt: number;
   segments: FlowSegment[];
+  events?: WorkstateEvent[];
 }
 
 export interface DistItem {
@@ -66,6 +103,18 @@ export interface GroupDistribution {
   byMember: Record<string, MemberDist>;
   /** 小休按原因拆分（meeting / training / tea / meal） */
   breakReasons: Record<string, number>;
+  access: WorkstateAccessDecision;
+}
+
+export interface WorkstateAccessDecision {
+  allowed: boolean;
+  action: WorkstateAction;
+  tenantId: string | null;
+  actorId: string | null;
+  actorRoleKey: string;
+  managedGroupIds: string[];
+  requestedGroupId: string;
+  reason: 'allowed' | 'tenant_missing' | 'actor_missing' | 'menu_denied' | 'action_denied' | 'group_out_of_scope';
 }
 
 export interface MemberDist {
@@ -124,23 +173,106 @@ const WORK_TIME_EXTRA_GROUPS: (WorkTimeGroup & { members: string[] })[] = [
   { id: 'complaint-risk', label: '投诉风险组', leaders: ['王组长'], members: ['罗坐席', '邓坐席', '姚坐席'] },
 ];
 
-/** 班组成员：智能派单坐席名册里的二线专员（所属班组取其首个处理组）+ 上表各组成员 */
+function tenantWorkstateScope() {
+  const tenant = useTenantStore();
+  if (!tenant.currentTenantId || !tenant.account) return { managedGroupIds: [], workGroupIds: [] };
+  return getWorkstateTenantAuthorization(tenant.account, tenant.currentTenantId);
+}
+
+function availableWorkGroupsOf(_name: string): string[] {
+  return tenantWorkstateScope().workGroupIds;
+}
+
+function currentActorRef(): string | null {
+  const user = useUserStore();
+  const agent = useDispatchStore().agentOf(user.name);
+  const ref = user.domainAccount || user.account || agent?.staffNo || '';
+  return ref ? `prototype:${ref}` : null;
+}
+
+function currentTenantRef(): string | null {
+  const tenantId = useTenantStore().currentTenantId;
+  return tenantId ? `prototype:${tenantId}` : null;
+}
+
+function readWorkOrganization(tenantId: string, actorId: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(workstateOrganizationStorageKey(tenantId, actorId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { tenantId?: string; actorId?: string; groupId?: string };
+    return parsed.tenantId === tenantId && parsed.actorId === actorId && parsed.groupId ? parsed.groupId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 明确设置当前人员的工作组织；多组人员不得通过数组首项隐式归组。 */
+export function setCurrentWorkOrganization(groupId: string | null): boolean {
+  const user = useUserStore();
+  const tenantId = currentTenantRef();
+  const actorId = currentActorRef();
+  if (!tenantId || !actorId) return false;
+  if (groupId && !availableWorkGroupsOf(user.name).includes(groupId)) return false;
+  const key = workstateOrganizationStorageKey(tenantId, actorId);
+  if (!groupId) sessionStorage.removeItem(key);
+  else sessionStorage.setItem(key, JSON.stringify({ tenantId, actorId, groupId, selectedAt: Date.now() }));
+  return true;
+}
+
+export function currentWorkOrganization(): string | null {
+  const tenantId = currentTenantRef();
+  const actorId = currentActorRef();
+  if (!tenantId || !actorId) return null;
+  const selected = readWorkOrganization(tenantId, actorId);
+  return selected && tenantWorkstateScope().workGroupIds.includes(selected) ? selected : null;
+}
+
+export function workstateOrganizationOptions(): { value: string; label: string }[] {
+  const labels = new Map(workTimeGroups().map((group) => [group.id, group.label]));
+  return tenantWorkstateScope().workGroupIds.map((groupId) => ({ value: groupId, label: labels.get(groupId) ?? groupId }));
+}
+
+/**
+ * 当前工作组织优先取显式上下文；处理具体工单时可由该工单的组织快照建立上下文。
+ * 仅单组人员允许无选择自动落到唯一组织，多组人员绝不固定取 groupIds[0]。
+ */
+export function workstateGroupOf(name: string, ticketNo?: string | null): string | null {
+  const groups = availableWorkGroupsOf(name);
+  const actorId = currentActorRef();
+  const tenantId = currentTenantRef();
+  const ticketGroup = ticketNo ? TICKETS.find((ticket) => ticket.no === ticketNo)?.groupId ?? null : null;
+  if (actorId && ticketGroup && groups.includes(ticketGroup)) {
+    setCurrentWorkOrganization(ticketGroup);
+    return ticketGroup;
+  }
+  const selected = actorId && tenantId ? readWorkOrganization(tenantId, actorId) : null;
+  if (selected && groups.includes(selected)) return selected;
+  return groups.length === 1 ? groups[0] : null;
+}
+
+const WORKTIME_AGENT_ROLES = new Set(['二线专员', '小智工单处理人', '二线刷机处理人', '技术支持', '客诉专员']);
+const WORKTIME_ROLE_KEYS = new Set(['agent-l1', 'xiaozhi-agent', 'agent-l2', 'tech-support', 'complaint-handler']);
+
+/** 班组成员：所有会产生坐席工作状态流水的岗位，管理角色操作不计入。 */
 export function flowMembers(): FlowMember[] {
   return [
     ...useDispatchStore().agents
-      .filter((a) => a.roles.includes('二线专员'))
-      .map((a) => ({ name: a.name, groupId: a.groupIds[0] ?? null })),
+      .filter((a) => !a.disabled && a.roles.some((role) => WORKTIME_AGENT_ROLES.has(role)))
+      .flatMap((a) => a.groupIds.map((groupId) => ({ name: a.name, groupId }))),
     ...WORK_TIME_EXTRA_GROUPS.flatMap((g) => g.members.map((name) => ({ name, groupId: g.id }))),
   ];
 }
 
-/** 班组看板可选的班组：班组长看本人任班组长的组，其余可进看板的角色看全部 */
+/** 班组看板可选班组：仅返回当前租户身份被授予的班组，不因拥有菜单而默认放开全部。 */
 export function teamBoardGroups(roleKey: string, name: string): WorkTimeGroup[] {
   const all = workTimeGroups();
-  return roleKey === 'team-leader' ? all.filter((g) => g.leaders.includes(name)) : all;
+  void roleKey;
+  void name;
+  const authorizedIds = new Set(tenantWorkstateScope().managedGroupIds);
+  return all.filter((group) => authorizedIds.has(group.id));
 }
 
-/** 组员（二线专员，每人只算第一个所属组） */
+/** 当前名册仅用于补零和权限展示；历史统计始终以事件发生时的组织快照为准。 */
 export function groupMembersOf(groupId: string): FlowMember[] {
   return flowMembers().filter((m) => m.groupId === groupId);
 }
@@ -182,7 +314,7 @@ function seedDay(m: FlowMember, day0: number, out: FlowSegment[]) {
   let n = 0;
   const push = (status: WorkStatus, sub: string | null, start: number, end: number, ticketNo: string | null = null) => {
     if (end <= start) return;
-    out.push({ id: `seed-${m.name}-${day0}-${n++}`, who: m.name, groupId: m.groupId, status, sub, start, end, ticketNo });
+    out.push({ id: `seed-${m.name}-${day0}-${n++}`, who: m.name, groupId: m.groupId, status, sub, start, end, ticketNo, source: 'demo_seed' });
   };
   const pickTicket = () => (tickets.length && rand() < 0.65 ? tickets[ri(0, tickets.length - 1)] : null);
 
@@ -243,7 +375,24 @@ function seedDay(m: FlowMember, day0: number, out: FlowSegment[]) {
 /** 整日种子按「当日 + 成员名单」缓存：同一天内只生成一次，每次调用只按此刻截断 */
 let seedCache: { key: string; segs: FlowSegment[] } | null = null;
 
-/** 近 62 天（含今日）工作日种子；今日只取到此刻 */
+function seedCurrentMoment(m: FlowMember, today: number, now: number, out: FlowSegment[]) {
+  const start = Math.max(today, now - 3 * 60 * MIN);
+  if (now <= start) return;
+  const signedInEnd = Math.min(now, start + Math.max(1, Math.floor((now - start) * 0.08)));
+  const breakStart = start + Math.floor((now - start) * 0.58);
+  const breakEnd = Math.min(now, breakStart + Math.max(1, Math.floor((now - start) * 0.12)));
+  const base = `seed-current-${m.name}-${today}`;
+  out.push({ id: `${base}-0`, who: m.name, groupId: m.groupId, status: 'logged_in', sub: null,
+    start, end: signedInEnd, ticketNo: null, source: 'demo_seed' });
+  if (signedInEnd < breakStart) out.push({ id: `${base}-1`, who: m.name, groupId: m.groupId, status: 'ready',
+    sub: DEFAULT_WORK_TYPE, start: signedInEnd, end: breakStart, ticketNo: null, source: 'demo_seed' });
+  if (breakStart < breakEnd) out.push({ id: `${base}-2`, who: m.name, groupId: m.groupId, status: 'break',
+    sub: 'tea', start: breakStart, end: breakEnd, ticketNo: null, source: 'demo_seed' });
+  if (breakEnd < now) out.push({ id: `${base}-3`, who: m.name, groupId: m.groupId, status: 'ready',
+    sub: DEFAULT_WORK_TYPE, start: breakEnd, end: now, ticketNo: null, source: 'demo_seed' });
+}
+
+/** 近 62 天（含今日）种子；任意日期与周末的“今天”均有稳定可走查数据。 */
 function buildSeed(now: number): FlowSegment[] {
   const today = dayStart(now);
   const members = flowMembers();
@@ -252,9 +401,11 @@ function buildSeed(now: number): FlowSegment[] {
     const out: FlowSegment[] = [];
     for (let i = SEED_DAYS - 1; i >= 0; i--) {
       const d0 = dayStart(today - i * DAY + 12 * 60 * MIN);
+      const isToday = d0 === today;
       const wd = new Date(d0).getDay();
-      if (wd === 0 || wd === 6) continue;
-      members.forEach((m) => seedDay(m, d0, out));
+      if (!isToday && (wd === 0 || wd === 6)) continue;
+      if (isToday) members.forEach((m) => seedCurrentMoment(m, d0, now, out));
+      else members.forEach((m) => seedDay(m, d0, out));
     }
     seedCache = { key, segs: out };
   }
@@ -267,14 +418,81 @@ function buildSeed(now: number): FlowSegment[] {
 /* store                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 时段只计到已观测心跳；断线空窗不因打开看板或导出而补算。 */
+function observedEnd(s: FlowSegment, now: number): number {
+  return Math.min(s.end ?? s.lastSeenAt ?? s.start, now);
+}
+
+/** 上海业务日切片，半开区间；切片不制造状态切换事件，也不改原时段ID。 */
+export function workstateDaySlices(s: FlowSegment, from: number, to: number, now: number) {
+  const rows: { segmentId: string; businessDate: string; start: number; end: number; durationMs: number }[] = [];
+  const offset = 8 * 60 * MIN;
+  const end = Math.min(observedEnd(s, now), to);
+  for (let start = Math.max(s.start, from); start < end;) {
+    const nextDay = Math.floor((start + offset) / DAY) * DAY + DAY - offset;
+    const until = Math.min(end, nextDay);
+    rows.push({ segmentId: s.id, businessDate: new Date(start + offset).toISOString().slice(0, 10), start, end: until, durationMs: until - start });
+    start = until;
+  }
+  return rows;
+}
+
+/** 按事件组织快照对账；当前名册只标注、不参与历史排除，所有排除项逐条给出原因。 */
+export function reconcileWorkstateSegments(
+  segs: FlowSegment[], groupId: string, currentTenantId: string, members: string[], from: number, to: number, now: number,
+) {
+  const rows = segs.filter((s) => s.groupId === groupId && s.start < Math.min(to, now) && observedEnd(s, now) > from).flatMap((s) => {
+    const statKey = workStatKey(s.status, s.sub);
+    const identityExclusion = workstateIdentityExclusionReason({
+      tenantId: s.tenantId, actorId: s.actorId, organizationId: s.groupId,
+    });
+    const exclusionReason = s.source !== 'prototype_live' ? `source_${s.source}`
+      : identityExclusion
+        ? identityExclusion
+        : s.tenantId !== currentTenantId ? 'tenant_mismatch'
+        : !s.eligibleForGroupStats ? 'not_eligible_agent_role' : !statKey ? 'not_on_duty' : null;
+    return workstateDaySlices(s, from, to, now).map((slice) => ({
+      ...slice, who: s.who, staffNo: s.staffNo ?? null, groupId: s.groupId, roleKey: s.roleKey ?? null,
+      status: s.status, sub: s.sub, ticketNo: s.ticketNo, sessionId: s.sessionId ?? null,
+      tenantId: s.tenantId ?? null, actorId: s.actorId ?? null, source: s.source, statKey,
+      currentRosterMember: members.includes(s.who), includedInBoard: exclusionReason === null, exclusionReason,
+    }));
+  });
+  const byTypeMs: Record<string, number> = {};
+  const byBusinessDateMs: Record<string, number> = {};
+  for (const row of rows) {
+    if (!row.includedInBoard || !row.statKey) continue;
+    byTypeMs[row.statKey] = (byTypeMs[row.statKey] ?? 0) + row.durationMs;
+    byBusinessDateMs[row.businessDate] = (byBusinessDateMs[row.businessDate] ?? 0) + row.durationMs;
+  }
+  return {
+    rows,
+    includedRows: rows.filter((row) => row.includedInBoard),
+    excludedRows: rows.filter((row) => !row.includedInBoard),
+    totalMs: Object.values(byTypeMs).reduce((a, b) => a + b, 0),
+    byTypeMs,
+    byBusinessDateMs,
+  };
+}
+
 function readCache(): Persisted | null {
   try {
     const raw = localStorage.getItem(CTI_FLOW_LS_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Persisted;
-    return v && v.version === CTI_FLOW_VERSION && Array.isArray(v.segments) ? v : null;
+    return v && [3, 4, CTI_FLOW_VERSION].includes(v.version) && Array.isArray(v.segments) ? v : null;
   } catch {
     return null;
+  }
+}
+
+function readAuditCache(): WorkstateAuditRecord[] {
+  try {
+    const raw = localStorage.getItem(WORKSTATE_AUDIT_LS_KEY);
+    const parsed = raw ? JSON.parse(raw) as WorkstateAuditRecord[] : [];
+    return Array.isArray(parsed) ? parsed.slice(-500) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -284,94 +502,342 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
   /** 上次会话未结束的段：以最后一次保存时刻收尾（页面关闭 / 刷新即视为结束） */
   const segments = ref<FlowSegment[]>(
     (cached?.segments ?? [])
-      .filter((s) => s.start >= keepFrom)
-      .map((s) => (s.end == null ? { ...s, end: Math.max(s.start, cached!.savedAt) } : s)),
+      .filter((s) => Number.isFinite(s.start) && s.start >= keepFrom && s.start <= Date.now())
+      .map((s) => cached?.version === 3
+        ? { ...s, source: 'legacy_local' as const, end: s.end ?? Math.max(s.start, Math.min(Date.now(), cached.savedAt)) }
+        : { ...s }),
   );
+  const keptIds = new Set(segments.value.map((s) => s.id));
+  const legacyEvents = cached && cached.version >= 4 && Array.isArray(cached.events) ? cached.events as unknown[] : [];
+  const events = ref<WorkstateEvent[]>(legacyEvents.map((raw, index): WorkstateEvent => {
+    const old = raw as Record<string, any>;
+    const payload = (old.payload ?? old.segment) as FlowSegment;
+    const legacyDelivery = old.delivery as Partial<WorkstateDeliveryReceipt> | undefined;
+    const delivery: WorkstateDeliveryReceipt = {
+      state: legacyDelivery?.state ?? 'queued', attempts: legacyDelivery?.attempts ?? 0,
+      lastAttemptAt: legacyDelivery?.lastAttemptAt ?? null, nextRetryAt: legacyDelivery?.nextRetryAt ?? null,
+      acknowledgedAt: legacyDelivery?.acknowledgedAt ?? null, serverReceiptId: legacyDelivery?.serverReceiptId ?? null,
+      lastErrorCode: legacyDelivery?.lastErrorCode ?? null, lastErrorMessage: legacyDelivery?.lastErrorMessage ?? null,
+      failureDisposition: legacyDelivery?.failureDisposition
+        ?? (legacyDelivery?.state === 'failed' ? 'retryable' : null),
+    };
+    return {
+      eventId: old.eventId, idempotencyKey: old.idempotencyKey ?? old.eventId,
+      eventName: old.eventName, schemaVersion: WORKSTATE_EVENT_SCHEMA_VERSION,
+      sequence: old.sequence ?? index + 1, previousEventId: old.previousEventId ?? null,
+      occurredAt: old.occurredAt, recordedAt: old.recordedAt, timeZone: WORKSTATE_TIME_ZONE,
+      environment: 'prototype', timeSource: 'client_clock',
+      identity: old.identity ?? {
+        tenantId: payload.tenantId ?? null, actorId: payload.actorId ?? null,
+        actorName: payload.who, actorRoleKey: payload.roleKey ?? '', staffNo: payload.staffNo ?? null,
+        organizationId: payload.groupId,
+      },
+      delivery, payload,
+    };
+  }).filter((event) => keptIds.has(event.payload.id)));
+  const storageStatus = ref<'saved' | 'memory_only'>('saved');
+  const deliveryBusy = ref(false);
+  const auditRecords = ref<WorkstateAuditRecord[]>(readAuditCache());
+  const sessionId = globalThis.crypto?.randomUUID?.() ?? `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let seq = segments.value.length;
+
+  function actionAccess(groupId: string, action: WorkstateAction): WorkstateAccessDecision {
+    const user = useUserStore();
+    const tenant = useTenantStore();
+    const tenantId = tenant.currentTenantId ? `prototype:${tenant.currentTenantId}` : null;
+    const actorId = currentActorRef();
+    const managedGroupIds = teamBoardGroups(user.roleKey, user.name).map((group) => group.id);
+    let reason: WorkstateAccessDecision['reason'] = 'allowed';
+    if (!tenantId) reason = 'tenant_missing';
+    else if (!actorId) reason = 'actor_missing';
+    else if (!user.canAccess('team-board')) reason = 'menu_denied';
+    else if (!workstateRoleAllowsAction(user.roleKey, action)) reason = 'action_denied';
+    else if (!managedGroupIds.includes(groupId)) reason = 'group_out_of_scope';
+    return {
+      allowed: reason === 'allowed', action, tenantId, actorId, actorRoleKey: user.roleKey,
+      managedGroupIds, requestedGroupId: groupId, reason,
+    };
+  }
+
+  function recordAudit(decision: WorkstateAccessDecision, resultCode: string) {
+    auditRecords.value.push(createWorkstateAuditRecord({
+      action: decision.action,
+      actorId: decision.actorId,
+      actorRoleKey: decision.actorRoleKey,
+      tenantId: decision.tenantId,
+      managedGroupIds: decision.managedGroupIds,
+      requestedGroupId: decision.requestedGroupId,
+      resultCode,
+      occurredAt: Date.now(),
+    }));
+    auditRecords.value = auditRecords.value.slice(-500);
+    try {
+      localStorage.setItem(WORKSTATE_AUDIT_LS_KEY, JSON.stringify(auditRecords.value));
+    } catch {
+      storageStatus.value = 'memory_only';
+    }
+  }
+
+  function assertActionAccess(groupId: string, action: WorkstateAction): WorkstateAccessDecision {
+    const decision = actionAccess(groupId, action);
+    if (!decision.allowed) {
+      recordAudit(decision, `DENIED_${decision.reason.toUpperCase()}`);
+      throw new Error(`WORKSTATE_ACCESS_DENIED:${decision.reason}`);
+    }
+    return decision;
+  }
 
   function save() {
     try {
       const v: Persisted = {
         version: CTI_FLOW_VERSION, savedAt: Date.now(),
         segments: segments.value,
+        events: events.value,
       };
       localStorage.setItem(CTI_FLOW_LS_KEY, JSON.stringify(v));
+      storageStatus.value = 'saved';
     } catch {
-      /* 存不下不影响话务条 */
+      storageStatus.value = 'memory_only';
     }
   }
 
-  function me(): { who: string; groupId: string | null } {
-    const who = useUserStore().name;
-    return { who, groupId: useDispatchStore().agentOf(who)?.groupIds[0] ?? null };
+  function me(ticketNo?: string | null) {
+    const user = useUserStore();
+    const tenant = useTenantStore();
+    const agent = useDispatchStore().agentOf(user.name);
+    const groupId = workstateGroupOf(user.name, ticketNo);
+    const tenantId = tenant.currentTenantId ? `prototype:${tenant.currentTenantId}` : null;
+    const actorRef = user.domainAccount || user.account || agent?.staffNo || '';
+    return { who: user.name, groupId, staffNo: agent?.staffNo ?? null, roleKey: user.roleKey,
+      tenantId, actorId: actorRef ? `prototype:${actorRef}` : null,
+      eligibleForGroupStats: WORKTIME_ROLE_KEYS.has(user.roleKey) && !!tenantId && !!actorRef && groupId !== null };
   }
 
   function openOf(who: string): FlowSegment | undefined {
     for (let i = segments.value.length - 1; i >= 0; i--) {
       const s = segments.value[i];
-      if (s.who === who) return s.end == null ? s : undefined;
+      if (s.source === 'prototype_live' && s.who === who) return s.end == null ? s : undefined;
     }
     return undefined;
   }
 
-  /** 状态 / 子状态切换：结束本人进行中的段，签出以外开新段 */
-  function transition(status: WorkStatus, sub: string | null, ticketNo: string | null) {
-    const { who, groupId } = me();
-    if (!who) return;
+  function event(s: FlowSegment, closed: boolean) {
+    const eventId = `${s.id}:${closed ? 'closed' : 'started'}`;
+    if (events.value.some((e) => e.eventId === eventId)) return;
+    const previous = [...events.value].reverse().find((candidate) => (
+      candidate.identity.tenantId === (s.tenantId ?? null)
+      && candidate.identity.actorId === (s.actorId ?? null)
+      && candidate.payload.sessionId === s.sessionId
+    )) ?? null;
+    events.value.push({
+      eventId, idempotencyKey: eventId,
+      eventName: closed ? 'workstate.segment_closed' : 'workstate.segment_started',
+      schemaVersion: WORKSTATE_EVENT_SCHEMA_VERSION, sequence: (previous?.sequence ?? 0) + 1,
+      previousEventId: previous?.eventId ?? null,
+      occurredAt: closed ? s.end! : s.start, recordedAt: Date.now(), timeZone: WORKSTATE_TIME_ZONE,
+      environment: 'prototype', timeSource: 'client_clock',
+      identity: {
+        tenantId: s.tenantId ?? null, actorId: s.actorId ?? null, actorName: s.who,
+        actorRoleKey: s.roleKey ?? '', staffNo: s.staffNo ?? null, organizationId: s.groupId,
+      },
+      delivery: {
+        state: 'queued', attempts: 0, lastAttemptAt: null, nextRetryAt: null,
+        acknowledgedAt: null, serverReceiptId: null, lastErrorCode: null, lastErrorMessage: null,
+        failureDisposition: null,
+      },
+      payload: { ...s },
+    });
+  }
+
+  function close(s: FlowSegment, at: number, reason: FlowEndReason) {
+    if (s.end != null) return;
+    s.end = Math.max(s.start, at);
+    s.endReason = reason;
+    event(s, true);
+  }
+
+  function openSegment(identity: ReturnType<typeof me>, status: WorkStatus, sub: string | null, ticketNo: string | null, now: number) {
+    const s: FlowSegment = { id: `${sessionId}-${seq++}`, ...identity, status, sub, start: now, end: null,
+      ticketNo, source: 'prototype_live', sessionId, lastSeenAt: now };
+    segments.value.push(s);
+    event(s, false);
+  }
+
+  /** 浏览器断线不是CTI服务端断线凭证；仅收口本机观测，不补未观测时间。 */
+  function interrupt(reason: 'connection_lost' | 'page_exit' | 'identity_change') {
     const now = Date.now();
-    const open = openOf(who);
-    if (open && open.status === status && open.sub === sub && open.ticketNo === ticketNo) return;
-    if (open) open.end = now;
-    if (status !== 'offline') {
-      segments.value.push({ id: `live-${now}-${seq++}`, who, groupId, status, sub, start: now, end: null, ticketNo });
+    for (const s of segments.value) {
+      if (s.source !== 'prototype_live' || s.end != null) continue;
+      const last = s.lastSeenAt ?? s.start;
+      close(s, reason === 'page_exit' && now - last <= WORKSTATE_HEARTBEAT_GAP_MS ? now : last, reason);
     }
     save();
   }
 
-  /** 进行中段的定时落盘，刷新后以此收尾 */
-  function heartbeat() {
+  /** 状态/子态/工单/人员归组变化开新段；同值不重复埋点，签出只收口。 */
+  function transition(status: WorkStatus, sub: string | null, ticketNo: string | null): boolean {
+    const identity = me(ticketNo);
+    const { who } = identity;
+    if (!who) return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) { interrupt('connection_lost'); return false; }
+    const now = Date.now();
+    for (const s of segments.value) {
+      if (s.source === 'prototype_live' && s.end == null && s.who !== who) close(s, s.lastSeenAt ?? s.start, 'identity_change');
+    }
+    const open = openOf(who);
+    const identityComplete = hasCompleteWorkstateIdentity({
+      tenantId: identity.tenantId, actorId: identity.actorId, organizationId: identity.groupId,
+    });
+    if (status !== 'offline' && !identityComplete) {
+      if (open) close(open, now, 'identity_change');
+      save();
+      return false;
+    }
+    const gap = open && now - (open.lastSeenAt ?? open.start) > WORKSTATE_HEARTBEAT_GAP_MS;
+    const sameGroup = open?.groupId === identity.groupId && open?.roleKey === identity.roleKey && open?.staffNo === identity.staffNo;
+    if (open && !gap && sameGroup && open.status === status && open.sub === sub && open.ticketNo === ticketNo) {
+      open.lastSeenAt = now; save(); return true;
+    }
+    if (open) close(open, gap ? open.lastSeenAt ?? open.start : now,
+      gap ? 'heartbeat_gap' : status === 'offline' ? 'sign_out' : !sameGroup ? 'group_change' : 'state_change');
+    if (status !== 'offline') {
+      openSegment(identity, status, sub, ticketNo, now);
+    }
     save();
+    return true;
   }
 
-  /** 种子 + 实时段合并：某人某日有实时段时，当日种子在实时首段之前截断 */
-  function allSegments(now: number): FlowSegment[] {
-    const seed = buildSeed(now);
-    const liveFirst = new Map<string, number>();
-    segments.value.forEach((s) => {
-      const k = `${s.who}|${dayStart(s.start)}`;
-      if (!liveFirst.has(k) || s.start < liveFirst.get(k)!) liveFirst.set(k, s.start);
+  /** 进行中段的定时落盘，刷新后以此收尾 */
+  function heartbeat() {
+    const s = openOf(me().who);
+    if (s) transition(s.status, s.sub, s.ticketNo);
+    else save();
+  }
+
+  function allSegments(now: number, source: FlowDataSource): FlowSegment[] {
+    return source === 'demo' ? buildSeed(now) : segments.value.filter((s) => s.source === 'prototype_live');
+  }
+
+  function integrationStatusFor(groupId: string) {
+    const access = actionAccess(groupId, 'summary');
+    const scopedEvents = access.allowed ? events.value.filter((item) => (
+      item.identity.tenantId === access.tenantId && item.identity.organizationId === groupId
+      && hasCompleteWorkstateIdentity(item.identity)
+    )) : [];
+    const counts = { queued: 0, sending: 0, failed: 0, acknowledged: 0 };
+    scopedEvents.forEach((item) => { counts[item.delivery.state] += 1; });
+    let lastError: string | null = null;
+    for (let index = scopedEvents.length - 1; index >= 0; index -= 1) {
+      if (scopedEvents[index].delivery.lastErrorCode) {
+        lastError = scopedEvents[index].delivery.lastErrorMessage;
+        break;
+      }
+    }
+    const now = Date.now();
+    recordAudit(access, access.allowed ? 'OK_SUMMARY' : `DENIED_${access.reason.toUpperCase()}`);
+    return {
+      contractVersion: WORKSTATE_EVENT_SCHEMA_VERSION,
+      endpointConfigured: false,
+      mode: 'prototype_outbox' as const,
+      counts,
+      total: scopedEvents.length,
+      dueRetryCount: scopedEvents.filter((item) => isRetryDue(item.delivery, now)).length,
+      permanentFailureCount: scopedEvents.filter((item) => item.delivery.failureDisposition === 'permanent').length,
+      lastError,
+      access,
+    };
+  }
+
+  async function retryOutboxDelivery(groupId: string) {
+    const access = assertActionAccess(groupId, 'retry');
+    if (deliveryBusy.value) {
+      recordAudit(access, 'RETRY_BUSY');
+      return { attempted: 0, permanent: 0, waiting: 0, busy: true };
+    }
+    const now = Date.now();
+    const scoped = events.value.filter((item) => (
+      item.identity.organizationId === groupId
+      && (item.identity.tenantId === access.tenantId || item.identity.tenantId == null)
+    ));
+    let permanent = 0;
+    scoped.forEach((item) => {
+      if (item.identity.tenantId && item.identity.actorId && item.identity.organizationId) return;
+      if (item.delivery.state === 'acknowledged') return;
+      item.delivery.state = 'failed';
+      item.delivery.failureDisposition = 'permanent';
+      item.delivery.nextRetryAt = null;
+      item.delivery.lastErrorCode = identityInvalidError.code;
+      item.delivery.lastErrorMessage = identityInvalidError.message;
+      permanent += 1;
     });
-    const segs: FlowSegment[] = [];
-    seed.forEach((s) => {
-      const lf = liveFirst.get(`${s.who}|${dayStart(s.start)}`);
-      if (lf == null) { segs.push(s); return; }
-      if (s.start >= lf) return;
-      segs.push(s.end! > lf ? { ...s, end: lf } : s);
+    const candidates = scoped.filter((item) => isRetryDue(item.delivery, now));
+    const waiting = scoped.filter((item) => (
+      item.delivery.failureDisposition !== 'permanent'
+      && item.delivery.state !== 'acknowledged'
+      && item.delivery.state !== 'sending'
+      && item.delivery.nextRetryAt != null
+      && item.delivery.nextRetryAt > now
+    )).length;
+    if (!candidates.length) {
+      if (permanent) save();
+      recordAudit(access, permanent ? 'RETRY_IDENTITY_PERMANENT_FAILURE' : waiting ? 'RETRY_NOT_DUE' : 'RETRY_NOTHING_DUE');
+      return { attempted: 0, permanent, waiting, busy: false };
+    }
+    deliveryBusy.value = true;
+    const attemptedAt = now;
+    candidates.forEach((item) => { item.delivery.state = 'sending'; item.delivery.lastAttemptAt = attemptedAt; });
+    save();
+    await new Promise((resolve) => window.setTimeout(resolve, 450));
+    const failedAt = Date.now();
+    candidates.forEach((item) => {
+      item.delivery.attempts += 1;
+      item.delivery.state = 'failed';
+      item.delivery.failureDisposition = 'retryable';
+      item.delivery.nextRetryAt = failedAt + nextRetryDelayMs(item.delivery.attempts);
+      if (!item.delivery.lastErrorCode || item.delivery.lastErrorCode === endpointNotConfiguredError.code) {
+        item.delivery.lastErrorCode = endpointNotConfiguredError.code;
+        item.delivery.lastErrorMessage = endpointNotConfiguredError.message;
+      }
     });
-    return [...segs, ...segments.value];
+    deliveryBusy.value = false;
+    save();
+    recordAudit(access, 'RETRY_ENDPOINT_NOT_CONFIGURED');
+    return { attempted: candidates.length, permanent, waiting, busy: false };
+  }
+
+  function requestWorkstateCompensation(groupId: string) {
+    const access = assertActionAccess(groupId, 'compensate');
+    const resultCode = 'COMPENSATION_ENDPOINT_NOT_CONNECTED';
+    recordAudit(access, resultCode);
+    return { accepted: false, resultCode };
   }
 
   /** 组级时长分布：本组各工作类型、小休的时长与占比（合计＝在岗时长；外呼通话计入工单处理） */
-  function distribution(groupId: string, from: number, to: number, now: number = Date.now()): GroupDistribution {
-    const segs = allSegments(now);
+  function distribution(groupId: string, from: number, to: number, now: number = Date.now(), source: FlowDataSource = 'live'): GroupDistribution {
+    const access = actionAccess(groupId, 'query');
+    const segs = allSegments(now, source);
     const types = workTypesOfGroup(groupId);
     const ms: Record<string, number> = {};
-    const members = new Set<string>();
+    const members = new Set<string>(access.allowed ? groupMembersOf(groupId).map((member) => member.name) : []);
     const byMember: Record<string, { ms: Record<string, number>; breakReasons: Record<string, number> }> = {};
     const breakReasons: Record<string, number> = {};
-    // 只取本组统计人数口径内的人（二线专员、按第一个所属组归）；班组长等其他角色签入话务条的流水不计入
-    const inScope = new Set(groupMembersOf(groupId).map((m) => m.name));
+    if (!access.allowed) {
+      recordAudit(access, `DENIED_${access.reason.toUpperCase()}`);
+      const defs = [...types.map((t) => ({ key: t.key, label: t.label, color: t.color })),
+        { key: BREAK_ITEM.key, label: BREAK_ITEM.label, color: BREAK_ITEM.color }];
+      return { items: defs.map((def) => ({ ...def, ms: 0, pct: 0 })), totalMs: 0, memberCount: 0,
+        byMember: {}, breakReasons: {}, access };
+    }
     segs.forEach((s) => {
-      if (s.groupId !== groupId || !inScope.has(s.who)) return;
+      if (s.groupId !== groupId || (source === 'live' && (
+        s.tenantId !== access.tenantId
+        || !s.eligibleForGroupStats
+        || !hasCompleteWorkstateIdentity({ tenantId: s.tenantId, actorId: s.actorId, organizationId: s.groupId })
+      ))) return;
       const a = Math.max(s.start, from);
-      const b = Math.min(s.end ?? now, to, now);
+      const b = Math.min(source === 'demo' ? s.end ?? now : observedEnd(s, now), to, now);
       if (b <= a) return;
-      let key: string | null = null;
-      // 外呼通话不论从哪个工作类型发起，这段都算工单处理
-      if (s.status === 'busy') key = DEFAULT_WORK_TYPE;
-      else if (s.status === 'ready') key = s.sub ?? DEFAULT_WORK_TYPE;
-      else if (s.status === 'break') key = BREAK_ITEM.key;
-      // 签出、未就绪不计入
+      const key = workStatKey(s.status, s.sub);
       if (!key) return;
       members.add(s.who);
       ms[key] = (ms[key] ?? 0) + (b - a);
@@ -405,11 +871,53 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
         ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), breakReasons: v.breakReasons,
       };
     });
-    return { items, totalMs: total, memberCount: members.size, byMember: memberRows, breakReasons };
+    recordAudit(access, source === 'live' ? 'OK_QUERY' : 'OK_QUERY_DEMO');
+    return { items, totalMs: total, memberCount: members.size, byMember: memberRows, breakReasons, access };
   }
 
+  function exportReconciliation(groupId: string, from: number, to: number, now = Date.now()) {
+    const access = assertActionAccess(groupId, 'export');
+    const members = groupMembersOf(groupId).map((m) => m.name);
+    const reconciliation = reconcileWorkstateSegments(segments.value, groupId, access.tenantId!, members, from, to, now);
+    const ids = new Set(reconciliation.rows.map((row) => row.segmentId));
+    const board = distribution(groupId, from, to, now, 'live');
+    const integration = integrationStatusFor(groupId);
+    const bundle = {
+      schemaVersion: 2, exportedAt: now, timeZone: WORKSTATE_TIME_ZONE,
+      authorization: { action: 'export', tenantId: access.tenantId, actorId: access.actorId,
+        actorRoleKey: access.actorRoleKey, managedGroupIds: access.managedGroupIds, requestedGroupId: groupId },
+      integration: {
+        mode: 'prototype_outbox', contractVersion: WORKSTATE_EVENT_SCHEMA_VERSION,
+        endpointConfigured: false, receivedByObservatory: false,
+        storageStatus: storageStatus.value, deliveryCounts: { ...integration.counts },
+      },
+      scope: { groupId, from, to, memberNames: members, memberCount: members.length,
+        statistics: 'group_work_distribution', personalPerformance: 'excluded',
+        externalAssessmentScope: 'excluded',
+        tenantId: access.tenantId,
+        identityMapping: 'prototype_namespace_only' },
+      segments: segments.value.filter((s) => ids.has(s.id)).map((s) => ({ ...s })),
+      events: events.value.filter((e) => ids.has(e.payload.id)).map((e) => ({ ...e, payload: { ...e.payload } })),
+      reconciliation: { ...reconciliation, boardTotalMs: board.totalMs, differenceMs: reconciliation.totalMs - board.totalMs },
+      exclusionRecords: reconciliation.excludedRows,
+      limitations: ['single_browser_local_evidence', 'client_clock', 'not_server_received', 'prototype_identity_namespace'],
+    };
+    recordAudit(access, 'OK_EXPORT');
+    return bundle;
+  }
+
+  let recovered = false;
+  for (const s of segments.value) {
+    if (s.source === 'prototype_live' && s.end == null) {
+      close(s, Math.min(Date.now(), s.lastSeenAt ?? cached?.savedAt ?? s.start), 'refresh_recovery');
+      recovered = true;
+    }
+  }
+  if (recovered) save();
+
   return {
-    segments,
-    transition, heartbeat, distribution,
+    segments, events, storageStatus, deliveryBusy, auditRecords,
+    transition, heartbeat, interrupt, distribution, exportReconciliation, retryOutboxDelivery,
+    requestWorkstateCompensation, actionAccess, integrationStatusFor,
   };
 });

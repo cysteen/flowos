@@ -3068,7 +3068,7 @@ watch(
           ref="processTabsRef"
           :detail="d"
           :ticket-no="ticketNo"
-          :tab-data="tabData"
+          :tab-data="{ ...tabData, attachmentLoadScope: tabData.attachmentLoadScope ?? { agent: 'complete', customer: 'complete' } }"
           :form="form"
           :risk-verification="riskMonitorVerify"
           :risk-report-entry-visible="riskBarForm === 'report' && showRiskReport"

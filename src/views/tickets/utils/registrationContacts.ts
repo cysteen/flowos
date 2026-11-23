@@ -34,11 +34,7 @@ export function registrationContactsToContactRecords(
       operator: item.actor,
       when: item.at,
       summary,
-      callSpan: item.callSpan ?? {
-        startedAt: item.at,
-        ...(connected ? { connectedAt: item.at } : {}),
-        endedAt: item.at,
-      },
+      callSpan: item.callSpan,
       source: '自建单',
     };
     if (item.recording) {

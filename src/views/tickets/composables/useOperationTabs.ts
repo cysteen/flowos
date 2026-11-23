@@ -3,6 +3,7 @@ import { OPERATION_TAB_DATA } from '@/mock/ticketOperationTabs';
 import { TICKET_DEMO_TAB_OVERRIDES } from '@/mock/ticketDemoTabOverrides';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
+import { isStableEmptyContactTicket } from '@/stores/outboundInterop';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { Ticket } from '../types/ticket';
 import { isAftersaleChainTicket } from './aftersaleEvents';
@@ -32,6 +33,17 @@ function buildTabData(type: string, ticketNo?: string): OperationTabData {
   const base = JSON.parse(JSON.stringify(OPERATION_TAB_DATA)) as OperationTabData;
   const override = TYPE_SAMPLES[type]?.tabData;
   const merged = override ? { ...base, ...JSON.parse(JSON.stringify(override)) } : base;
+  if (isStableEmptyContactTicket(ticketNo)) {
+    const row = TICKETS.find((x) => x.no === ticketNo);
+    return {
+      ...ownTabData(merged, row),
+      contactRecords: [],
+      notifyRecords: [],
+      surveyRecords: [],
+      attachmentHistory: [],
+      attachmentLinks: [],
+    };
+  }
   const byNo = ticketNo ? TICKET_DEMO_TAB_OVERRIDES[ticketNo] : undefined;
   if (byNo) return { ...merged, ...JSON.parse(JSON.stringify(byNo)) };
   const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;

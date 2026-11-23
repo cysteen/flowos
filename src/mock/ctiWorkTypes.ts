@@ -73,3 +73,11 @@ export function workTypesOfGroup(groupId: string | null | undefined): WorkTypeDe
   const keys = GROUP_WORK_TYPES.find((g) => g.groupId === groupId)?.types ?? DEFAULT_WORK_TYPE_KEYS;
   return keys.map((k) => BY_KEY.get(k)).filter((t): t is WorkTypeDef => !!t);
 }
+
+/** 看板与观星台本地对账共用；未就绪、签出不计，二线无呼入类型。 */
+export function workStatKey(status: string, sub: string | null): string | null {
+  if (status === 'busy' && sub === OUTBOUND_SUB) return DEFAULT_WORK_TYPE;
+  if (status === 'ready') return workTypeOf(sub ?? DEFAULT_WORK_TYPE)?.key ?? null;
+  if (status === 'break') return BREAK_ITEM.key;
+  return null;
+}

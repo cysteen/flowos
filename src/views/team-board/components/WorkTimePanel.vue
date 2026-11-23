@@ -8,63 +8,44 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
+import { message } from 'ant-design-vue';
 import { HOME_PERF_RANGE_OPTS, type HomePerfRangeKey } from '@/mock/homeOverview';
 import { useCloseOnDeactivate } from '@/composables/useCloseOnDeactivate';
-import { groupMembersOf, useCtiFlowStore } from '@/stores/ctiFlow';
+import { groupMembersOf, useCtiFlowStore, type FlowDataSource } from '@/stores/ctiFlow';
 import { BREAK_ITEM, BREAK_REASONS } from '@/mock/ctiWorkTypes';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 
-const props = defineProps<{ groupId: string; memberOrder?: string[] }>();
+const props = defineProps<{
+  groupId: string;
+  memberOrder?: string[];
+}>();
 const flow = useCtiFlowStore();
+/** 本机切换记录与演示种子互斥，默认只看本机切换；不混算。 */
+const dataSource = ref<FlowDataSource>('live');
+const sourceOptions = [{ label: '本机切换记录', value: 'live' }, { label: '演示数据', value: 'demo' }];
 
-const nowMs = ref(Date.now());
-const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
-onBeforeUnmount(() => window.clearInterval(timer));
-
-/** 统计人数：本组组员（二线专员、每人只算第一个所属组） */
-const memberCount = computed(() => (props.groupId ? groupMembersOf(props.groupId).length : 0));
-
-/*
- * 时间筛选：与个人门户「我的效能」同一组件与选项（HOME_PERF_RANGE_OPTS：今天 / 本周 / 本月 / 自定义），
- * 自定义的默认值（近 7 天）、打开方式（选中即弹出）与可选范围（不晚于今天、最长 31 天）照个人门户实现。
- * 口径：今天＝当日；本周＝周一至今天；本月＝1 号至今天；自定义＝所选起止日期；均含当天。
- */
 const rangeKey = ref<HomePerfRangeKey>('today');
-/** 空值用 undefined 而非 null：a-range-picker 的 value 只接受 [Dayjs, Dayjs] | undefined */
-const customRange = ref<[Dayjs, Dayjs] | undefined>(undefined);
+const customRange = ref<[Dayjs, Dayjs] | undefined>();
 const pickerOpen = ref(false);
 useCloseOnDeactivate(pickerOpen);
 
 watch(rangeKey, (key) => {
   if (key === 'custom') {
-    if (!customRange.value) {
-      customRange.value = [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')];
-    }
+    if (!customRange.value) customRange.value = [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')];
     pickerOpen.value = true;
-  } else {
-    pickerOpen.value = false;
-  }
+  } else pickerOpen.value = false;
 });
 
-/**
- * 浮层打开期间选择器显示这组正在选的日期：每次打开从空开始，点外面放弃时不会把只改了一端的区间提交出去。
- * 两端都选完才写入 customRange。
- */
 type PickingDates = [Dayjs | null, Dayjs | null] | [];
 const pickingDates = ref<PickingDates>([]);
 const pickerValue = computed(() => (pickerOpen.value ? pickingDates.value : customRange.value) as [Dayjs, Dayjs] | undefined);
 watch(pickerOpen, () => { pickingDates.value = []; });
-function onCalendarChange(dates: unknown) {
-  pickingDates.value = (dates ?? []) as PickingDates;
-}
+function onCalendarChange(dates: unknown) { pickingDates.value = (dates ?? []) as PickingDates; }
 function onRangeChange(dates: unknown) {
   if (!dates) return;
   customRange.value = dates as [Dayjs, Dayjs];
-  // 选中「自定义」时浮层由代码打开，选择器选完终点后会转回起点继续选：两端选完即关闭。放到下一轮，排在它转回起点之后
   setTimeout(() => { pickerOpen.value = false; }, 0);
 }
-
-/** 自定义区间最长 31 天：以已选的一端为准，前后各 30 天内可选；不晚于今天 */
 function disabledRangeDate(current: Dayjs) {
   if (!current) return false;
   if (current.isAfter(dayjs().endOf('day'))) return true;
@@ -74,18 +55,26 @@ function disabledRangeDate(current: Dayjs) {
   return false;
 }
 
+const nowMs = ref(Date.now());
+const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
+onBeforeUnmount(() => window.clearInterval(timer));
+
+/** 统计人数：当前名册与区间内事件快照人员的并集，确保调出/停用人员历史不丢失。 */
+const integration = computed(() => flow.integrationStatusFor(props.groupId));
+const exportAccess = computed(() => flow.actionAccess(props.groupId, 'export'));
+const retryAccess = computed(() => flow.actionAccess(props.groupId, 'retry'));
+
 const span = computed<[number, number]>(() => {
   const now = nowMs.value;
   const today = dayjs(now).startOf('day');
   if (rangeKey.value === 'week') {
-    // dayjs 的 day()：周日为 0；本周从周一算
     const back = (today.day() + 6) % 7;
     return [today.subtract(back, 'day').valueOf(), now];
   }
   if (rangeKey.value === 'month') return [today.startOf('month').valueOf(), now];
   if (rangeKey.value === 'custom' && customRange.value) {
-    const [a, b] = customRange.value;
-    return [a.startOf('day').valueOf(), Math.min(b.endOf('day').valueOf(), now)];
+    const [start, end] = customRange.value;
+    return [start.startOf('day').valueOf(), Math.min(end.endOf('day').valueOf(), now)];
   }
   return [today.valueOf(), now];
 });
@@ -93,9 +82,40 @@ const span = computed<[number, number]>(() => {
 const dist = computed(() => {
   if (!props.groupId) return null;
   void flow.segments.length;
-  const [from, to] = span.value;
-  return flow.distribution(props.groupId, from, to, nowMs.value);
+  return flow.distribution(props.groupId, span.value[0], span.value[1], nowMs.value, dataSource.value);
 });
+const memberCount = computed(() => dist.value?.memberCount ?? 0);
+
+function exportLocalEvidence() {
+  if (dataSource.value !== 'live' || !props.groupId) return;
+  // 导出取点击时刻的范围，避免30秒显示刷新间隔漏掉刚发生的开始事件。
+  nowMs.value = Date.now();
+  try {
+    const bundle = flow.exportReconciliation(props.groupId, span.value[0], span.value[1], nowMs.value);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `workstate-${props.groupId}-${dayjs(nowMs.value).format('YYYYMMDD-HHmmss')}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message.info('已导出本机对账数据，尚未上报观星台');
+  } catch {
+    message.error('无权导出该班组，或当前租户/操作者身份不完整');
+  }
+}
+
+async function retryDelivery() {
+  try {
+    const result = await flow.retryOutboxDelivery(props.groupId);
+    if (result.busy) message.info('已有上报任务执行中');
+    else if (result.attempted > 0) message.warning(`正式端点未配置，${result.attempted} 条事件重试失败；已保留原错误与下次重试时间`);
+    else if (result.permanent > 0) message.error(`${result.permanent} 条事件身份不完整，已转永久失败，需先修复身份映射`);
+    else if (result.waiting > 0) message.info(`${result.waiting} 条事件尚未到下次重试时间`);
+    else message.info('当前授权范围内没有可重试事件');
+  } catch {
+    message.error('无权重试该班组事件，或当前租户/操作者身份不完整');
+  }
+}
 
 const H = 3_600_000;
 
@@ -163,7 +183,9 @@ const barItems = computed(() => (perCapita.value?.items ?? []).filter((i) => i.m
 
 /** 成员顺序：与组员明细默认顺序一致（由看板传入），缺省取组员名单顺序 */
 const memberNames = computed(() => {
-  const names = props.groupId ? groupMembersOf(props.groupId).map((m) => m.name) : [];
+  const currentNames = props.groupId ? groupMembersOf(props.groupId).map((m) => m.name) : [];
+  const historyNames = Object.keys(dist.value?.byMember ?? {});
+  const names = [...new Set([...currentNames, ...historyNames])];
   if (!props.memberOrder?.length) return names;
   const ordered = props.memberOrder.filter((x) => names.includes(x));
   return [...ordered, ...names.filter((x) => !ordered.includes(x))];
@@ -198,8 +220,8 @@ const memberRows = computed(() => {
 const gridCols = computed(() => `minmax(112px, 1.3fr) minmax(60px, 0.9fr) repeat(${dist.value?.items.length ?? 0}, minmax(60px, 1fr))`);
 
 /** 指标行的问号提示 */
-const TOTAL_TIP = { define: '所选时间内，本组二线专员的在岗时长之和。在岗时长包含各工作类型与小休，外呼计入工单处理，不含未就绪、签出。' };
-const COUNT_TIP = { define: '本组名单内的二线专员人数，多组成员只计入第一个所属组；不含班组长，不区分当天是否出勤。' };
+const TOTAL_TIP = { define: '所选时间内，本组坐席岗位的在岗时长之和。在岗时长包含各工作类型与小休，外呼计入工单处理，不含未就绪、签出及管理角色操作。' };
+const COUNT_TIP = { define: '本组授权名单内会产生工作状态流水的坐席人数，多组成员按事件发生时的组织归属统计；不含班组长和管理员。' };
 const AVG_TIP = { define: '人工在岗时长 ÷ 统计人数。' };
 
 /** 块内悬停提示：与 MetricTipIcon 同一套外观；那边的配置连着问号图标、不能单独取用，这里保持同值 */
@@ -229,11 +251,7 @@ function hoverOff() {
       <div class="section-filters">
         <div class="filter-item">
           <span class="filter-label">时间</span>
-          <a-segmented
-            v-model:value="rangeKey"
-            size="small"
-            :options="HOME_PERF_RANGE_OPTS"
-          />
+          <a-segmented v-model:value="rangeKey" size="small" :options="HOME_PERF_RANGE_OPTS" />
           <a-range-picker
             v-if="rangeKey === 'custom'"
             :value="pickerValue"
@@ -247,10 +265,41 @@ function hoverOff() {
             class="range-picker"
           />
         </div>
+        <div class="filter-item">
+          <span class="filter-label">数据</span>
+          <a-segmented v-model:value="dataSource" size="small" :options="sourceOptions" />
+        </div>
+        <a-button size="small" :disabled="dataSource !== 'live' || !exportAccess.allowed" @click="exportLocalEvidence">导出对账数据</a-button>
       </div>
     </div>
 
     <div v-if="perCapita" class="wtp-body">
+      <p v-if="!dist.access.allowed" class="wtp-source integration-error" role="alert">
+        当前身份无权查看该班组，或租户/操作者身份不完整。未返回数量、成员、事件和导出内容。
+      </p>
+      <p v-else class="wtp-source" role="status">
+        {{ dataSource === 'demo' ? '演示数据，仅供查看统计样式；不计入本机切换记录。' : '仅本机切换记录，尚未接入观星台；不用于个人绩效。' }}
+        <span v-if="dataSource === 'live' && flow.storageStatus === 'memory_only'">本机保存失败，请及时导出留存。</span>
+      </p>
+      <div v-if="dataSource === 'live' && integration.access.allowed" class="integration-state" role="status" aria-label="观星台接入状态">
+        <div>
+          <strong>观星台接入</strong>
+          <span class="integration-badge">契约 v{{ integration.contractVersion }}</span>
+          <span>正式端点未配置</span>
+          <span>待上报 {{ integration.counts.queued }}</span>
+          <span v-if="integration.counts.sending">上报中 {{ integration.counts.sending }}</span>
+          <span v-if="integration.counts.failed" class="integration-error">失败 {{ integration.counts.failed }}</span>
+        </div>
+        <a-button
+          v-if="retryAccess.allowed"
+          size="small"
+          :loading="flow.deliveryBusy"
+          :disabled="integration.dueRetryCount === 0"
+          @click="retryDelivery"
+        >
+          {{ integration.counts.failed ? '重试到期事件' : '尝试上报' }}
+        </a-button>
+      </div>
       <div class="wtp-sum">
         <div class="wtp-stat">
           <span class="wtp-stat-l">人工在岗时长</span>
@@ -285,9 +334,9 @@ function hoverOff() {
           />
         </a-tooltip>
       </div>
-      <div v-else class="wtp-empty">暂无数据</div>
+      <div v-else class="wtp-empty">{{ dataSource === 'live' ? '所选班组和时间内暂无本机切换记录' : '暂无演示数据' }}</div>
 
-      <div class="wtp-legend" role="table" aria-label="各工作类型人均时长">
+      <div v-if="dist.totalMs > 0" class="wtp-legend" role="table" aria-label="各工作类型人均时长">
         <a-tooltip v-for="i in perCapita.items" :key="i.key" v-bind="TIP_PROPS" placement="topRight">
           <template v-if="i.key === BREAK_ITEM.key" #title><p class="kt-define">{{ i.tip }}</p></template>
           <div
@@ -305,7 +354,7 @@ function hoverOff() {
         </a-tooltip>
       </div>
 
-      <div class="wtp-tbl" role="table" aria-label="成员工作时长明细（小时）">
+      <div v-if="dist.totalMs > 0" class="wtp-tbl" role="table" aria-label="成员工作时长明细（小时）">
         <div class="wtp-thead" role="row" :style="{ gridTemplateColumns: gridCols }">
           <div class="wtp-th" role="columnheader">成员</div>
           <div class="wtp-th num" role="columnheader">合计</div>
@@ -378,6 +427,17 @@ function hoverOff() {
 .range-picker :deep(.ant-picker-input > input) { font-size: 12px; color: #374151; font-weight: 500; }
 
 .wtp-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 14px; }
+.wtp-source { margin: 0; color: #64748b; font-size: 12px; line-height: 1.6; }
+.wtp-source span { color: #b45309; margin-left: 8px; }
+.integration-state {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 6px;
+  color: #475569; font-size: 12px;
+}
+.integration-state > div { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
+.integration-state strong { color: #0f172a; }
+.integration-badge { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; padding: 1px 5px; border-radius: 4px; }
+.integration-error { color: #b91c1c; }
 .wtp-sum { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; }
 .wtp-stat { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
 .wtp-stat-l { font-size: 12px; color: #64748b; margin-right: 2px; }
@@ -393,8 +453,8 @@ function hoverOff() {
 .wtp-empty { font-size: 12px; color: #9ca3af; padding: 4px 0; }
 .kt-define { margin: 0; font-size: 12px; color: #713f12; line-height: 1.5; }
 
-/* 图例一行：各项按内容宽度排开，余量均分到项间 */
-.wtp-legend { display: flex; justify-content: space-between; gap: 6px; min-width: 0; }
+/* 图例允许换行，避免窄屏下被卡片裁切。 */
+.wtp-legend { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 6px 16px; min-width: 0; }
 .wtp-li {
   display: flex; align-items: center; gap: 3px; flex: none; padding: 2px; border-radius: 4px;
   font-size: 12px; white-space: nowrap; cursor: default; transition: opacity 0.15s, background 0.15s;

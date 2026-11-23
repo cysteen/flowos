@@ -4,6 +4,13 @@ import dayjs from 'dayjs';
 import type { RoleKey } from '@/config/roles';
 import { RISK_LEVELS, RISK_LEVEL_SELECT_OPTIONS, type RiskLevel } from '@/config/risk';
 import type { ProcessComplaintCategoryRow } from './complaintCategoryTree';
+import { attachmentCountLabel, countAttachmentFiles, type OperationTabData } from './operationTabs';
+
+/** 附件主 Tab 与两处子页签共用文件计数口径。 */
+export function attachmentHistoryTabLabel(data: Pick<OperationTabData, 'attachmentHistory' | 'attachmentLinks' | 'attachmentLoadScope'>): string {
+  const counts = countAttachmentFiles(data.attachmentHistory, data.attachmentLinks, data.attachmentLoadScope);
+  return `附件历史（${attachmentCountLabel(counts.total)}）`;
+}
 
 export interface ContactItem {
   type: 'phone' | 'email';
