@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%231A6FFF'/%3E%3Ctext x='12' y='17' font-size='13' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='700'%3EF%3C/text%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iFLY FlowOS · 工单系统</title>
+    <!-- GitHub Pages SPA 路由恢复：把 404.html 改写的 /?/tickets 还原为 /flowos/tickets -->
+    <script type="text/javascript">
+      (function (l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search
+            .slice(1)
+            .split('&')
+            .map(function (s) {
+              return s.replace(/~and~/g, '&');
+            })
+            .join('?');
+          window.history.replaceState(null, '', l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      })(window.location);
+    </script>
+    <script type="module" crossorigin src="/flowos/assets/index-B15AZ37v.js"></script>
+    <link rel="modulepreload" crossorigin href="/flowos/assets/_plugin-vue_export-helper-BDNMzG2s.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/chunk-aKtaBQYM.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/preload-helper-B2ZFXvCg.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/icons-vue-BPEmmVEW.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/navigation-rv12T3I4.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/risk-DoytA4Kz.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/platformAdmin-CuA1Plum.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/pinia-ClVa9eeT.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/tenant-5SzlCRgS.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/user-DiwNN7fJ.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/models-Dai6oJQl.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/notifyRules-CdGrfKhq.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/refund-muSdL70q.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/productTree-C2yhatJD.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/rdModules-De_AdE9e.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/xiaozhi-6L9POkAv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/ticket-fXdMee7R.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/problemTags-RliTHhwH.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/notifyLog-UungHgip.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/createTicket-BwCf7_xE.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/opTime-BlOhWNh3.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/dayjs.min-C4hTNXA3.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/dispatch-9gPxMf0W.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/customerInsight-CBZi8Lc3.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/creationLedger-DA9spT8A.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/CloseCircleFilled-u2VwKuU_.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/ExclamationCircleFilled-BqkeqaCv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/CloseOutlined-BqkeqaCv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/Portal-D6CV5I1Q.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/config-provider-Df-x1v46.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/button-DpWuS9VH.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/KeyCode-mWLXVQ4p.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/vnode-DHWhKxu-.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/pickAttrs-8nwizCMi.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/styleChecker-AVgFVHRl.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/motion-DncxTyfm.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/zoom-CGeETpTr.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/modal-CkGNTXGU.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/OpActionModal-Derc33T7.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/operationTabs-Bg6YpDxW.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/ticketFlowNodes-Wn1PvJjd.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/DownOutlined-C1DpFoUP.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/SearchOutlined-BqkeqaCv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/style-p3BMFmt3.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/vc-trigger-DP8GNpMy.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/FormItemContext-BB4T2O8k.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/slide-CV4J2u6g.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/vc-overflow-DuSjElcS.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/select-J8aQ8HTE.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/LeftOutlined-BqkeqaCv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/RightOutlined-BqkeqaCv.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/colors-BiRklC2g.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/tooltip-GAW1BZ64.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/responsiveObserve-Cw6U74wI.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/pagination-Cp725uL5.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/collapseMotion-GEOhye1e.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/shallowequal-Dq0F8BG0.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/dropdown-_DH6jN9A.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/TextArea-7BK4sByu.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/input-OtVHs0zu.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/useMaxLevel-CjGHGBT_.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/Checkbox-Bq-ZNyas.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/Group-TD1w-eUH.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/checkbox-P7NikFru.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/RadioButton-Du1-HIpS.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/radio-Cj_8awKP.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/spin-BaDoim6L.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/debounce-D8WQiuyg.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/table-NR2zQNRQ.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/useFlexGapSupport-BBBHAgup.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/hasIn-BjU88RP2.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/form-Dk_geLpK.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/alert-BnZoEcZB.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/tag-BI3CMPPU.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/generatePicker-DE3V5-9E.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/dayjs-yOYC7HWI.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/switch-BIXNzoeI.js">
+    <link rel="modulepreload" crossorigin href="/flowos/assets/vue-router-JrbAbP5k.js">
+    <link rel="stylesheet" crossorigin href="/flowos/assets/OpActionModal-COWKp7xf.css">
+    <link rel="stylesheet" crossorigin href="/flowos/assets/index-C3Ws6eQr.css">
+  </head>
+  <body>
+    <div id="app">
+      <!-- Vue 挂载前占位；若 JS 加载失败则保留此提示，避免整页白屏 -->
+      <div
+        id="app-boot"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+          color: #6b7280;
+          background: #f9fafb;
+        "
+      >
+        加载中…
+      </div>
+    </div>
+    <script>
+      (function () {
+        // Vue 3 挂载后会给 #app 加 data-v-app=""（值为空字符串），不能用 if (dataset.vApp) 判真
+        function isAppMounted() {
+          return document.getElementById('app')?.hasAttribute('data-v-app') === true;
+        }
+        function showBootError(msg) {
+          if (isAppMounted()) return;
+          var el = document.getElementById('app');
+          if (!el) return;
+          el.innerHTML =
+            '<div style="padding:48px 24px;font-family:sans-serif;color:#374151;background:#f9fafb;min-height:100vh">' +
+            '<h2 style="margin:0 0 12px;font-size:18px">页面未能正常加载</h2>' +
+            '<p style="margin:0 0 16px;color:#6b7280">' + msg + '</p>' +
+            '<p style="margin:0;color:#6b7280">请尝试 <strong>Ctrl+Shift+R</strong> 强制刷新；若仍失败，在项目目录执行 <code>npm run dev</code> 后重试。</p>' +
+            '</div>';
+        }
+        window.addEventListener('error', function (e) {
+          showBootError((e && e.message) || '页面脚本加载失败');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var reason = e && e.reason;
+          showBootError((reason && reason.message) || String(reason || '模块加载失败'));
+        });
+      })();
+    </script>
+  </body>
+</html>
