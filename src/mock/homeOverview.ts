@@ -77,8 +77,14 @@ export const HOME_NOTICE = {
  * · 不写计入/排除边界、不写易混提醒、不写更新频率与下钻去向
  */
 export interface KpiTip {
-  /** 这个数是什么。口语、一句话、不超过 20 字 */
+  /** 这个数是什么 */
   define: string;
+  /** 统计的时间或组织范围；复杂指标按需提供 */
+  scope?: string;
+  /** 可核对的计算方式；复杂指标按需提供 */
+  formula?: string;
+  /** 去重、排除或易混边界；复杂指标按需提供 */
+  rule?: string;
 }
 
 export interface HomeKpi {

@@ -1,6 +1,6 @@
 /**
  * 运营监控大盘 · 指标口径提示
- * 内容对齐《【915】运营监控大盘 PRD》各口径表的「提示文案」列。
+ * 内容对齐《【1215】工单监控一期 PRD》指标口径。
  */
 import type { KpiTip } from '@/mock/homeOverview';
 
@@ -9,37 +9,100 @@ export type { KpiTip };
 /**
  * key = 指标 key / 列 key
  *
- * 写作约定（2026-08-05 业务定，与个人门户、班组看板一致）：
- * · **只有一句话**，口语、不超过 20 字、不用术语
- * · 纯文本渲染，**不要写 Markdown**，星号会原样显示
- * · 不写计入/排除边界、不写易混提醒、不写更新频率与下钻去向
- *   —— 写得越细越容易被质疑，边界一旦挂在界面上就成了对外承诺
- * · 完整口径以 PRD 为准，此处不承担完备性
+ * 工单监控用于运营核数，提示只说明统计时间、怎么算和哪些不算。
+ * 纯文本渲染，不写 Markdown。
  */
 export const OPS_METRIC_TIPS: Record<string, KpiTip> = {
   /* ── 工单流量（§4） ── */
-  inbound: { define: '今天新进入本范围的单' },
-  forward: { define: '今天处置掉的单' },
-  backlog: { define: '已经超解决时效、还没处理完的单' },
-  io: { define: '今天进得比出得多还是少' },
-  longestWait: { define: '超时最久的那单等了多久' },
-  workingStock: { define: '此刻手上还没走完的全部单' },
+  inbound: {
+    define: '今日新增工单',
+    scope: '今日 00:00 至当前',
+    formula: '创建 + 转入，同一工单只算 1 单',
+    rule: '全中心不重复计算班组之间的转入',
+  },
+  forward: {
+    define: '今日下送工单',
+    scope: '今日 00:00 至当前',
+    formula: '下送 + 关闭工单 + 强结',
+    rule: '同一工单当天只算 1 单',
+  },
+  closed: {
+    define: '今日结案工单',
+    scope: '今日 00:00 至当前',
+    formula: '今天结案的工单，同一工单当天只算 1 单',
+    rule: '转组、转出不算结案',
+  },
+  backlog: {
+    define: '当前超时工单',
+    scope: '截至页面显示的更新时间',
+    formula: '已超过 SLA、仍在办理的工单',
+    rule: '同一工单只算 1 单，临期和超时不重复',
+  },
+  io: {
+    define: '今日新增与下送的比值',
+    scope: '今日 00:00 至当前',
+    formula: '今日新增 ÷ 今日下送',
+    rule: '只看流量，不用于计算当前在办',
+  },
+  longestWait: {
+    define: '当前超时最久的工单',
+    scope: '截至页面显示的更新时间',
+    formula: '取当前超时工单中超时时长最大的一单',
+    rule: '停表期间不增加超时时长',
+  },
+  workingStock: {
+    define: '当前在办工单',
+    scope: '截至页面显示的更新时间',
+    formula: '当前仍在办理的工单，同一工单只算 1 单',
+    rule: '下送后仍在办理的，继续计入当前在办',
+  },
 
   /* ── 时效分层（§5） ── */
-  soon: { define: '还没超时、但快到点的单' },
-  overdueLe24: { define: '刚超时不久的单' },
-  overdueLe72: { define: '超时一到三天的单' },
-  overdueGt72: { define: '超时超过三天的单' },
+  soon: {
+    define: '当前临期工单',
+    scope: '截至页面显示的更新时间',
+    formula: '还未超时、距 SLA 超时不足 2 小时的在办工单',
+    rule: '临期和超时不重复',
+  },
+  overdueLe24: {
+    define: '当前超时不足 24 小时的在办工单',
+    formula: '超时时长大于 0、不超过 24 小时',
+    rule: '同一工单只算 1 单',
+  },
+  overdueLe72: {
+    define: '当前超时 24 至 72 小时的在办工单',
+    formula: '超时时长大于 24 小时、不超过 72 小时',
+    rule: '同一工单只算 1 单',
+  },
+  overdueGt72: {
+    define: '当前超时超过 72 小时的在办工单',
+    formula: '超时时长超过 72 小时',
+    rule: '同一工单只算 1 单',
+  },
 
   /* ── 风险词命中（§6） ── */
-  riskHits: { define: '客户说了敏感话、被词表命中的条数' },
-  riskUntagged: { define: '高危命中里还没人核实的条数' },
+  riskHits: {
+    define: '风险词命中记录',
+    formula: '每命中一次记 1 条',
+    rule: '同一工单多次命中，可计多条',
+  },
+  riskUntagged: {
+    define: '还未核实的高危命中记录',
+    formula: '高危且没有核实结论的记录数',
+    rule: '完成核实后不再计入',
+  },
 
   /* ── 流量走势（§7） ── */
-  trendInbound: { define: '每个时间点进来多少单' },
-  trendForward: { define: '每个时间点推走多少单' },
-  trendStock: { define: '每个时间点手上还有多少单' },
-  trendPeak: { define: '哪个时段进得最多、最少' },
+  trendFlow: {
+    define: '今日新增、下送、结案走势',
+    scope: '今日 00:00 至当前，按小时',
+    formula: '按创建、下送、结案的完成时间计入对应小时',
+    rule: '三条线分别与上方三个今日指标使用相同规则',
+  },
+  trendInbound: { define: '按成功时间统计每小时新增工单数' },
+  trendForward: { define: '按成功时间统计每小时下送工单数' },
+  trendStock: { define: '按快照时间统计各时点在办工单数' },
+  trendPeak: { define: '取今日逐小时新增量的最大值和最小值' },
 };
 
 export function opsTip(key: string): KpiTip | undefined {

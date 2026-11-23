@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 指标口径「?」——个人门户 / 班组看板 / 运营监控共用。
- * **只展示一句话**（这个数是什么），完整口径以 PRD 为准。
+ * 简单指标可只展示一句话；复杂指标补充统计时间、怎么算和哪些不算。
  */
 import { QuestionCircleOutlined } from '@ant-design/icons-vue';
 import type { KpiTip } from '@/mock/homeOverview';
@@ -31,8 +31,12 @@ const overlayStyle = {
     :overlay-inner-style="overlayStyle"
   >
     <template #title>
-      <!-- 一句话：这个数是什么 -->
       <p class="kt-define">{{ tip.define }}</p>
+      <ul v-if="tip.scope || tip.formula || tip.rule" class="kt-rules">
+        <li v-if="tip.scope">{{ tip.scope }}</li>
+        <li v-if="tip.formula">{{ tip.formula }}</li>
+        <li v-if="tip.rule">{{ tip.rule }}</li>
+      </ul>
     </template>
     <span class="kpi-tip-wrap" @click.stop>
       <QuestionCircleOutlined class="kpi-tip-ic" />
@@ -47,6 +51,17 @@ const overlayStyle = {
   color: #713f12;
   line-height: 1.5;
 }
+.kt-rules {
+  margin: 7px 0 0;
+  padding: 7px 0 0 16px;
+  border-top: 1px solid #fde7ad;
+  color: #713f12;
+}
+.kt-rules li {
+  margin: 0 0 3px;
+  line-height: 1.55;
+}
+.kt-rules li:last-child { margin-bottom: 0; }
 .kpi-tip-wrap {
   display: inline-flex;
   flex: none;

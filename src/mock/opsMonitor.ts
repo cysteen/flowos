@@ -1,14 +1,16 @@
 // 运营监控大盘（租户级）· 实时大盘数据源。
 //
 // 口径与守恒式（与班组看板同一套，范围从「本组」提到「全中心」）：
-//   期初积压 + 今日新增 − 今日下送 = 当前积压
-// 二线中心的出口是「下送」（交给下一环节），所以下送即离开二线池子。
+//   班组当前在办 = 期初 + 创建 + 转入 - 转出 - 结案
+//   全中心当前在办 = 期初 + 创建 - 结案（内部转组在中心口径中抵消）
+// 「下送」是过程动作，只用于流量观察，不参与在办存量推导。
 //
 // 【自洽保证】班组是唯一的原子维度：每个班组给一份原子数，全中心＝各组求和，
 // 任何筛选下卡面数字都由明细现算得出，物理上不可能与下钻对不上。
 // 渠道 / 产线 / 工单类型三个下钻维度按组内权重分配，并做尾差修正保证合计相等。
 
 import { TICKETS } from './tickets';
+import { BUSINESS_TYPES } from '@/views/tickets/types/createTicket';
 import { isTicketClosed, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
 
 /** 大盘基准时刻（与工单 Mock 时间轴对齐） */
@@ -26,18 +28,18 @@ export interface OpsGroupRaw {
   line: OpsGroupLine;
   /** 期初积压（昨日结存） */
   opening: number;
-  /** 昨日同一时刻的积压——判断"此刻这个数正不正常"的基线，孤立数字没有意义 */
-  yesterdayBacklog: number;
-  /** 今日新增 */
+  /** 今日新增（班组口径 = 创建 + 转入；保留给既有页面使用） */
   inbound: number;
-  /** 今日下送 */
+  /** 今日创建；全中心新增只汇总此字段，避免内部转组重复 */
+  created: number;
+  /** 今日转入 */
+  transferIn: number;
+  /** 今日转出 */
+  transferOut: number;
+  /** 今日结案 */
+  closed: number;
+  /** 今日下送：过程动作，不参与存量推导 */
   forward: number;
-  /** 本月至今累计新增 */
-  monthInbound: number;
-  /** 本月至今累计下送 */
-  monthForward: number;
-  /** 月初积压（累计口径下的期初） */
-  monthOpening: number;
   /** 在岗人数 */
   headcount: number;
   /** 可承接工单总容量（人 × 单人容量） */
@@ -60,7 +62,7 @@ export interface OpsGroupRaw {
 const CORE_OPS_GROUPS: OpsGroupRaw[] = [
   {
     id: 'cs-1', name: '受理一组', line: '受理线',
-    opening: 52, yesterdayBacklog: 68, inbound: 402, forward: 376, monthInbound: 10480, monthForward: 10450, monthOpening: 48,
+    opening: 52, inbound: 402, created: 354, transferIn: 48, transferOut: 48, closed: 328, forward: 376,
     headcount: 12, capacity: 96, atCapacity: 3, available: 3,
     soon: { '1h': 5, '2h': 13, '4h': 25, '8h': 42, '24h': 79 },
     overdue: { le24: 6, le72: 3, gt72: 1 },
@@ -70,7 +72,7 @@ const CORE_OPS_GROUPS: OpsGroupRaw[] = [
   },
   {
     id: 'cs-2', name: '受理二组', line: '受理线',
-    opening: 48, yesterdayBacklog: 62, inbound: 341, forward: 318, monthInbound: 8890, monthForward: 8862, monthOpening: 43,
+    opening: 48, inbound: 341, created: 300, transferIn: 41, transferOut: 41, closed: 277, forward: 318,
     headcount: 10, capacity: 80, atCapacity: 3, available: 2,
     soon: { '1h': 4, '2h': 11, '4h': 21, '8h': 35, '24h': 68 },
     overdue: { le24: 5, le72: 2, gt72: 1 },
@@ -80,7 +82,7 @@ const CORE_OPS_GROUPS: OpsGroupRaw[] = [
   },
   {
     id: 'tech', name: '技术支持组', line: '技术支持',
-    opening: 44, yesterdayBacklog: 55, inbound: 296, forward: 274, monthInbound: 7720, monthForward: 7692, monthOpening: 38,
+    opening: 44, inbound: 296, created: 260, transferIn: 36, transferOut: 36, closed: 238, forward: 274,
     headcount: 9, capacity: 72, atCapacity: 3, available: 2,
     soon: { '1h': 4, '2h': 9, '4h': 18, '8h': 31, '24h': 61 },
     overdue: { le24: 5, le72: 3, gt72: 1 },
@@ -90,7 +92,7 @@ const CORE_OPS_GROUPS: OpsGroupRaw[] = [
   },
   {
     id: 'hardware', name: '硬件缺陷组', line: '专项支持',
-    opening: 41, yesterdayBacklog: 47, inbound: 254, forward: 241, monthInbound: 6640, monthForward: 6622, monthOpening: 36,
+    opening: 41, inbound: 254, created: 223, transferIn: 31, transferOut: 31, closed: 210, forward: 241,
     headcount: 7, capacity: 56, atCapacity: 1, available: 1,
     soon: { '1h': 3, '2h': 8, '4h': 15, '8h': 26, '24h': 48 },
     overdue: { le24: 4, le72: 2, gt72: 1 },
@@ -100,7 +102,7 @@ const CORE_OPS_GROUPS: OpsGroupRaw[] = [
   },
   {
     id: 'edu', name: '教育支持组', line: '教育服务',
-    opening: 32, yesterdayBacklog: 32, inbound: 189, forward: 182, monthInbound: 4474, monthForward: 4463, monthOpening: 28,
+    opening: 32, inbound: 189, created: 166, transferIn: 23, transferOut: 23, closed: 159, forward: 182,
     headcount: 4, capacity: 32, atCapacity: 1, available: 1,
     soon: { '1h': 2, '2h': 5, '4h': 10, '8h': 18, '24h': 31 },
     overdue: { le24: 3, le72: 1, gt72: 0 },
@@ -134,30 +136,23 @@ function scaleGroup(
   const opening = r(tpl.opening);
   const inbound = r(tpl.inbound);
   const forward = r(tpl.forward);
-  const monthInbound = r(tpl.monthInbound);
-  const monthForward = r(tpl.monthForward);
-  /**
-   * ⚠️ monthOpening **必须反解**，不能跟着 factor 独立取整。
-   * 页面上并排放着两个守恒式：
-   *   今日：opening + inbound − forward = 积压
-   *   本月：monthOpening + monthInbound − monthForward = 积压
-   * 两式右边是同一个时点值。四个月度量各自 Math.round 之后，
-   * 左边会算出另一个数（45 组时差 6 单），等式当场变成假的。
-   */
-  const backlog = opening + inbound - forward;
-  const monthOpening = backlog - monthInbound + monthForward;
+  const transferIn = Math.min(inbound, r(tpl.transferIn));
+  const created = Math.max(0, inbound - transferIn);
+  const transferOut = Math.min(forward, r(tpl.transferOut));
+  const closed = Math.max(0, forward - transferOut);
+  const backlog = opening + created + transferIn - transferOut - closed;
 
   return {
     id,
     name,
     line,
     opening,
-    yesterdayBacklog: r(tpl.yesterdayBacklog),
     inbound,
+    created,
+    transferIn,
+    transferOut,
+    closed,
     forward,
-    monthInbound,
-    monthForward,
-    monthOpening,
     headcount,
     capacity,
     atCapacity,
@@ -177,16 +172,16 @@ function buildAllOpsGroups(): OpsGroupRaw[] {
   const hwTpl = CORE_OPS_GROUPS[3]!;
   const eduTpl = CORE_OPS_GROUPS[4]!;
 
-  for (let i = 3; i <= 18; i++) {
+  for (let i = 3; i <= 22; i++) {
     groups.push(scaleGroup(csTpl, `受理${i}组`, `cs-${i}`, '受理线', 0.12 + ((i - 3) % 6) * 0.04));
   }
-  for (let i = 2; i <= 10; i++) {
+  for (let i = 2; i <= 13; i++) {
     groups.push(scaleGroup(techTpl, `技术支持${i}组`, `tech-${i}`, '技术支持', 0.1 + ((i - 2) % 5) * 0.035));
   }
-  for (let i = 2; i <= 8; i++) {
+  for (let i = 2; i <= 11; i++) {
     groups.push(scaleGroup(hwTpl, `硬件缺陷${i}组`, `hw-${i}`, '专项支持', 0.08 + ((i - 2) % 4) * 0.03));
   }
-  for (let i = 2; i <= 9; i++) {
+  for (let i = 2; i <= 12; i++) {
     groups.push(scaleGroup(eduTpl, `教育支持${i}组`, `edu-${i}`, '教育服务', 0.09 + ((i - 2) % 5) * 0.035));
   }
   return groups;
@@ -292,7 +287,7 @@ export interface DrillRow {
 /**
  * ⚠️ 术语（2026-08-05 业务定，两页统一）：
  * · **在办存量** `backlog` ＝ 未结、SLA 未停表的全部工单（不论超没超时）。
- *   守恒式 `期初 + 新增 − 下送 = 在办存量` 算的就是它。
+ *   班组按 `期初 + 创建 + 转入 - 转出 - 结案` 计算；下送不参与存量计算。
  * · **积压** `overdueTotal` ＝ **已超解决时效、仍未处理完**的工单（三个超时桶合计）。
  *   与《【915】班组长看板》的「班组积压」**同口径同名**，告警盯的是它。
  * 两者不可互校，也不可互相替代 —— 曾经本页把 backlog 叫「存量积压」，
@@ -303,22 +298,13 @@ export interface OpsSnapshot {
   opening: number;
   inbound: number;
   forward: number;
+  /** 今日结案；全中心按真实终态去重汇总 */
+  closed: number;
+  /** 今日转入/转出；全中心口径中仅用于说明，不计入新增 */
+  transferIn: number;
+  transferOut: number;
   /** 在办存量：未结且 SLA 未停表的全部工单。**不是「积压」** */
   backlog: number;
-  monthInbound: number;
-  /** 本月至今累计下送 */
-  monthForward: number;
-  /** 月初在办存量；累计守恒式：月初 + 累计新增 − 累计下送 = 在办存量 */
-  monthOpening: number;
-  /** 在办存量较昨日结存的增减（今日净增） */
-  backlogDelta: number;
-  /** 在办存量较月初的增减 */
-  monthBacklogDelta: number;
-  /** 昨日同刻在办存量 —— 判断"此刻这个数正不正常"的基线 */
-  yesterdayBacklog: number;
-  /** 较昨日同刻的增减与涨幅 */
-  vsYesterday: number;
-  vsYesterdayPct: number;
   /**
    * 进出比 = 新增 / 下送。>1 积压在涨，<1 在消化。
    * 比"新增 1482、下送 1391"两个孤立数字更有解释力。
@@ -327,7 +313,7 @@ export interface OpsSnapshot {
   /** 最久等待（已超时最长的单） */
   longestWaitText: string;
   /** 近 15 小时走势（积压 / 进线 / 下送），末点即当前 */
-  trend: { t: string; inbound: number; forward: number; backlog: number }[];
+  trend: { t: string; inbound: number; forward: number; closed: number; backlog: number }[];
   soon: Record<SoonWindow, number>;
   overdue: Record<OverdueBucket, number>;
   overdueTotal: number;
@@ -344,6 +330,7 @@ export interface OpsSnapshot {
   alerting: boolean;
   inboundByChannel: DrillRow[];
   inboundByProduct: DrillRow[];
+  inboundByBusiness: DrillRow[];
   inboundByType: DrillRow[];
   forwardByGroup: DrillRow[];
   backlogByGroup: DrillRow[];
@@ -390,11 +377,11 @@ function verdictOf(u: number, overdueSevere: number, overdue: number, backlog: n
 }
 
 function backlogOf(g: OpsGroupRaw): number {
-  return g.opening + g.inbound - g.forward;
+  return g.opening + g.created + g.transferIn - g.transferOut - g.closed;
 }
 
 /**
- * 今日逐小时进出量（00:00–14:00）—— 只提供**形状**（早高峰 10:00、午间回落）。
+ * 今日逐小时进出量模板（00:00–14:00）—— 只提供**形状**（早高峰 10:00、午间回落）。
  *
  * ⚠️ 这里的绝对值不是真值，也不必是：曲线的总量一律按目标总量重标定
  * （见 scaleSeries）。班组从 5 组扩到 45 组时，本表没跟着改，导致
@@ -417,7 +404,20 @@ const HOURLY_ALL: { t: string; inbound: number; forward: number }[] = [
   { t: '12:00', inbound: 132, forward: 118 },
   { t: '13:00', inbound: 198, forward: 208 },
   { t: '14:00', inbound: 187, forward: 195 },
+  { t: '15:00', inbound: 176, forward: 188 },
+  { t: '16:00', inbound: 168, forward: 181 },
+  { t: '17:00', inbound: 156, forward: 172 },
+  { t: '18:00', inbound: 141, forward: 158 },
+  { t: '19:00', inbound: 112, forward: 132 },
+  { t: '20:00', inbound: 86, forward: 104 },
+  { t: '21:00', inbound: 61, forward: 78 },
+  { t: '22:00', inbound: 39, forward: 52 },
+  { t: '23:00', inbound: 22, forward: 31 },
 ];
+
+function hourlyShapeToNow(): typeof HOURLY_ALL {
+  return HOURLY_ALL.slice(0, Math.min(HOURLY_ALL.length, new Date().getHours() + 1));
+}
 
 /**
  * 把一列原始值按**目标总量**重标定，并把取整尾差补到最大的一点上，
@@ -443,21 +443,29 @@ function scaleSeries(values: number[], target: number): number[] {
  * 曲线与卡片必须是同一份数，不能各算各的。
  */
 function trendFor(groups: OpsGroupRaw[]): OpsSnapshot['trend'] {
-  const inbound = groups.reduce((s, g) => s + g.inbound, 0);
+  const centerScope = groups.length === OPS_GROUPS.length;
+  const inbound = groups.reduce((s, g) => s + (centerScope ? g.created : g.created + g.transferIn), 0);
   const forward = groups.reduce((s, g) => s + g.forward, 0);
+  const closed = groups.reduce((s, g) => s + g.closed, 0);
   const opening = groups.reduce((s, g) => s + g.opening, 0);
+  const stockIn = groups.reduce((s, g) => s + g.created + (centerScope ? 0 : g.transferIn), 0);
+  const stockOut = groups.reduce((s, g) => s + g.closed + (centerScope ? 0 : g.transferOut), 0);
 
-  const inSeries = scaleSeries(HOURLY_ALL.map((h) => h.inbound), inbound);
-  const outSeries = scaleSeries(HOURLY_ALL.map((h) => h.forward), forward);
+  const shape = hourlyShapeToNow();
+  const inSeries = scaleSeries(shape.map((h) => h.inbound), inbound);
+  const outSeries = scaleSeries(shape.map((h) => h.forward), forward);
+  const closedSeries = scaleSeries(shape.map((h) => Math.max(1, Math.round(h.forward * 0.87))), closed);
+  const stockInSeries = scaleSeries(shape.map((h) => h.inbound), stockIn);
+  const stockOutSeries = scaleSeries(shape.map((h) => h.forward), stockOut);
 
   let acc = opening;
-  const rows = HOURLY_ALL.map((h, i) => {
-    acc = acc + inSeries[i] - outSeries[i];
-    return { t: h.t, inbound: inSeries[i], forward: outSeries[i], backlog: acc };
+  const rows = shape.map((h, i) => {
+    acc = acc + stockInSeries[i] - stockOutSeries[i];
+    return { t: h.t, inbound: inSeries[i], forward: outSeries[i], closed: closedSeries[i], backlog: acc };
   });
-  // Σ已被 scaleSeries 对齐，末点积压必然等于 opening + inbound − forward，此处只做兜底
+  // 展示线仍是新增/下送；存量线独立按创建、转组和结案事件递推。
   const last = rows[rows.length - 1];
-  if (last) last.backlog = opening + inbound - forward;
+  if (last) last.backlog = groups.reduce((sum, g) => sum + backlogOf(g), 0);
   return rows;
 }
 
@@ -506,12 +514,17 @@ function mergeMix(groups: OpsGroupRaw[], pick: (g: OpsGroupRaw) => Record<string
 export function getOpsSnapshot(scope: OpsScope): OpsSnapshot {
   const groups = resolveScopeGroups(scope);
   const scopeIds = normalizeScopeIds(scope);
+  const centerScope = isAllScope(scope);
   const sum = (pick: (g: OpsGroupRaw) => number) => groups.reduce((s, g) => s + pick(g), 0);
 
   const opening = sum((g) => g.opening);
-  const inbound = sum((g) => g.inbound);
+  // 全中心新增只统计创建事件；班组新增包含转入。
+  const inbound = sum((g) => g.created + (centerScope ? 0 : g.transferIn));
   const forward = sum((g) => g.forward);
-  const backlog = opening + inbound - forward;
+  const closed = sum((g) => g.closed);
+  const transferIn = sum((g) => g.transferIn);
+  const transferOut = sum((g) => g.transferOut);
+  const backlog = sum((g) => backlogOf(g));
   const headcount = sum((g) => g.headcount);
   const capacity = sum((g) => g.capacity);
   const overdue = {
@@ -526,17 +539,10 @@ export function getOpsSnapshot(scope: OpsScope): OpsSnapshot {
     opening,
     inbound,
     forward,
+    closed,
+    transferIn,
+    transferOut,
     backlog,
-    monthInbound: sum((g) => g.monthInbound),
-    monthForward: sum((g) => g.monthForward),
-    monthOpening: sum((g) => g.monthOpening),
-    backlogDelta: backlog - opening,
-    monthBacklogDelta: backlog - sum((g) => g.monthOpening),
-    yesterdayBacklog: sum((g) => g.yesterdayBacklog),
-    vsYesterday: backlog - sum((g) => g.yesterdayBacklog),
-    vsYesterdayPct: sum((g) => g.yesterdayBacklog)
-      ? (backlog - sum((g) => g.yesterdayBacklog)) / sum((g) => g.yesterdayBacklog)
-      : 0,
     ioRatio: forward ? Math.round((inbound / forward) * 100) / 100 : 0,
     longestWaitText: longestWait(scope),
     trend: trendFor(groups),
@@ -561,6 +567,8 @@ export function getOpsSnapshot(scope: OpsScope): OpsSnapshot {
     alerting: overdue.le24 + overdue.le72 + overdue.gt72 > threshold,
     inboundByChannel: splitByMix(inbound, mergeMix(groups, (g) => g.channelMix)),
     inboundByProduct: splitByMix(inbound, mergeMix(groups, (g) => g.productMix)),
+    // 原型分布沿用演示工单的业务类型占比，按当前指标总量缩放；选项与建单共用。
+    inboundByBusiness: splitByMix(inbound, Object.fromEntries(BUSINESS_TYPES.map((label) => [label, TICKETS.filter((ticket) => ticket.businessType === label).length / (TICKETS.filter((ticket) => BUSINESS_TYPES.some((type) => type === ticket.businessType)).length || 1)]))),
     inboundByType: splitByMix(inbound, mergeMix(groups, (g) => g.typeMix as Record<string, number>)),
     forwardByGroup: groups
       .map((g) => ({ label: g.name, value: g.forward, ratio: forward ? g.forward / forward : 0 }))
@@ -619,6 +627,123 @@ export function getGroupLoads(scope: OpsScope): GroupLoadRow[] {
       };
     })
     .sort((a, b) => VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] || b.utilization - a.utilization);
+}
+
+// ---- 全部班组总览 ----
+
+export type OpsGroupSeverity = 'critical' | 'warning' | 'normal';
+
+export interface OpsGroupPanoramaRow {
+  id: string;
+  name: string;
+  line: OpsGroupLine;
+  /** 今日新增：本组创建 + 从其他组转入 */
+  inbound: number;
+  forward: number;
+  closed: number;
+  current: number;
+  soon: number;
+  overdue: number;
+  severity: OpsGroupSeverity;
+  severityLabel: string;
+}
+
+export interface OpsGroupFlowPoint {
+  t: string;
+  inbound: number;
+  forward: number;
+  closed: number;
+}
+
+export type OpsGroupSlaBucket = 'soon' | 'le24' | 'le72' | 'gt72' | 'normal';
+
+export interface OpsGroupTicketRow {
+  groupId: string;
+  bucket: OpsGroupSlaBucket;
+  no: string;
+  title: string;
+  priority: string;
+  assignee: string;
+  sla: string;
+  status: string;
+}
+
+function groupSeverity(g: OpsGroupRaw): Pick<OpsGroupPanoramaRow, 'severity' | 'severityLabel'> {
+  const overdue = g.overdue.le24 + g.overdue.le72 + g.overdue.gt72;
+  if (g.overdue.gt72 > 0 || overdue >= BACKLOG_THRESHOLD.group) {
+    return { severity: 'critical', severityLabel: '超时告警' };
+  }
+  if (overdue >= 2 || g.soon['2h'] >= 3) {
+    return { severity: 'warning', severityLabel: '临期关注' };
+  }
+  return { severity: 'normal', severityLabel: '运行平稳' };
+}
+
+/**
+ * 一次返回全部有效班组。排序只改变扫描顺序，不过滤班组：红色异常优先，其次橙色关注，
+ * 正常班组最后；同级按超时、临期、在办量降序。
+ */
+export function getOpsGroupPanorama(): OpsGroupPanoramaRow[] {
+  const rank: Record<OpsGroupSeverity, number> = { critical: 0, warning: 1, normal: 2 };
+  return OPS_GROUPS.map((g) => {
+    const severity = groupSeverity(g);
+    return {
+      id: g.id,
+      name: g.name,
+      line: g.line,
+      inbound: g.created + g.transferIn,
+      forward: g.forward,
+      closed: g.closed,
+      current: backlogOf(g),
+      soon: g.soon['2h'],
+      overdue: g.overdue.le24 + g.overdue.le72 + g.overdue.gt72,
+      ...severity,
+    };
+  }).sort((a, b) => {
+    const severityOrder = rank[a.severity] - rank[b.severity];
+    if (severityOrder !== 0) return severityOrder;
+    if (a.severity === 'normal') return a.name.localeCompare(b.name, 'zh-CN');
+    return b.overdue - a.overdue
+      || b.soon - a.soon
+      || b.current - a.current
+      || a.name.localeCompare(b.name, 'zh-CN');
+  });
+}
+
+/** 抽屉中的三条流量趋势；三条线分别锚定本组今日新增、下送、结案总量。 */
+export function getOpsGroupFlowTrend(groupId: string): OpsGroupFlowPoint[] {
+  const g = OPS_GROUPS.find((item) => item.id === groupId);
+  if (!g) return [];
+  const shape = hourlyShapeToNow();
+  const inbound = scaleSeries(shape.map((p) => p.inbound), g.created + g.transferIn);
+  const forward = scaleSeries(shape.map((p) => p.forward), g.forward);
+  const closed = scaleSeries(shape.map((p) => Math.max(1, Math.round((p.forward * 9) / 10))), g.closed);
+  return shape.map((p, i) => ({ t: p.t, inbound: inbound[i], forward: forward[i], closed: closed[i] }));
+}
+
+/** 班组 SLA 演示明细：按本组快照生成，分层数量与统计一致；编号不映射真实工单。 */
+export function getOpsGroupTickets(groupId: string): OpsGroupTicketRow[] {
+  const group = OPS_GROUPS.find((g) => g.id === groupId);
+  if (!group) return [];
+  const buckets: { key: OpsGroupSlaBucket; count: number }[] = [
+    { key: 'soon', count: group.soon['2h'] },
+    { key: 'le24', count: group.overdue.le24 },
+    { key: 'le72', count: group.overdue.le72 },
+    { key: 'gt72', count: group.overdue.gt72 },
+  ];
+  buckets.push({ key: 'normal', count: Math.max(0, backlogOf(group) - buckets.reduce((sum, b) => sum + b.count, 0)) });
+  return buckets.flatMap(({ key, count }) => Array.from({ length: count }, (_, index) => {
+    const minutes = key === 'soon' ? 1 + index % 119 : key === 'le24' ? 1 + index % 23 : key === 'le72' ? 24 + index % 48 : 73 + index;
+    return {
+      groupId, bucket: key,
+      no: `DEMO-${groupId}-${key}-${String(index + 1).padStart(3, '0')}`,
+      title: `${group.name} · ${key === 'soon' ? '临期' : key === 'normal' ? '在办' : '超时'}工单 ${index + 1}`,
+      priority: key === 'gt72' ? 'P1' : 'P2',
+      assignee: '班组处理人',
+      sla: key === 'soon' ? `剩余 ${minutes} 分钟` : key === 'normal' ? '剩余 4 小时' : `已超时 ${minutes} 小时`,
+      status: '处理中',
+    };
+  }));
 }
 
 // ---- 待处置事项：整页的驱动源 ----
@@ -946,23 +1071,21 @@ export const OPS_ALERTS: OpsAlertRecord[] = [
   },
 ];
 
-// ---- 模块 1.4 · 多粒度流量曲线（日 / 周 / 月 / 年）----
-// 每种粒度都给 进线 / 下送 / 积压 三线；积压一律由「期初 + Σ进 − Σ出」逐点递推，
-// 末点对齐当前积压，与守恒式同源，不各算各的。
+// ---- 模块 1.4 · 流量曲线（日 / 周）----
+// 工单监控一期不提供月度、同比或环比数据。
 
-export type TrendGrain = 'day' | 'week' | 'month' | 'year';
+export type TrendGrain = 'day' | 'week';
 
 export const TREND_GRAINS: { key: TrendGrain; label: string; unit: string }[] = [
   { key: 'day', label: '日', unit: '今日逐小时' },
   { key: 'week', label: '周', unit: '近 7 天' },
-  { key: 'month', label: '月', unit: '近 30 天（5 天一档）' },
-  { key: 'year', label: '年', unit: '近 12 个月' },
 ];
 
 export interface TrendPoint {
   t: string;
   inbound: number;
   forward: number;
+  closed: number;
   backlog: number;
 }
 
@@ -977,37 +1100,10 @@ const WEEK_RAW = [
   { t: '08-04', inbound: 1482, forward: 1391 },
 ];
 
-/** 月：近 30 天按 5 天一档聚合，避免 30 个点挤成一团 */
-const MONTH_RAW = [
-  { t: '07-06', inbound: 6820, forward: 6795 },
-  { t: '07-11', inbound: 7140, forward: 7108 },
-  { t: '07-16', inbound: 6950, forward: 6982 },
-  { t: '07-21', inbound: 7315, forward: 7260 },
-  { t: '07-26', inbound: 6739, forward: 6773 },
-  { t: '07-31', inbound: 7480, forward: 7422 },
-  { t: '08-04', inbound: 4432, forward: 4344 },
-];
-
-/** 年：近 12 个月，3 月与 9 月开学季双高峰 */
-const YEAR_RAW = [
-  { t: '25-09', inbound: 46820, forward: 46610 },
-  { t: '25-10', inbound: 38240, forward: 38395 },
-  { t: '25-11', inbound: 36910, forward: 36842 },
-  { t: '25-12', inbound: 39560, forward: 39318 },
-  { t: '26-01', inbound: 34120, forward: 34406 },
-  { t: '26-02', inbound: 28740, forward: 29012 },
-  { t: '26-03', inbound: 48350, forward: 47905 },
-  { t: '26-04', inbound: 41280, forward: 41436 },
-  { t: '26-05', inbound: 39870, forward: 39742 },
-  { t: '26-06', inbound: 42160, forward: 41988 },
-  { t: '26-07', inbound: 43920, forward: 43815 },
-  { t: '26-08', inbound: 6220, forward: 6134 },
-];
-
 /**
  * 历史序列重标定：**末点锚定到当前实际值**，其余点等比缩放保持形状。
  *
- * 末点就是"当前这一档"——周粒度末点＝今天、月与年粒度末点＝本月至今。
+ * 末点就是当前统计日；一期不生成月度及对比序列。
  * 用户切粒度时会拿末点跟上方卡片对，对不上就是穿帮。
  *
  * 期初存量由 `末点积压 − Σ(进−出)` **反解**，这样积压线自然落到当前积压，
@@ -1017,11 +1113,13 @@ function anchorSeries(
   raw: { t: string; inbound: number; forward: number }[],
   lastInbound: number,
   lastForward: number,
+  lastClosed: number,
   backlog: number,
 ): TrendPoint[] {
   const tail = raw[raw.length - 1];
   const fIn = tail && tail.inbound ? lastInbound / tail.inbound : 1;
   const fOut = tail && tail.forward ? lastForward / tail.forward : 1;
+  const fClosed = tail && tail.forward ? lastClosed / tail.forward : 1;
 
   const flows = raw.map((r, i) => {
     const isLast = i === raw.length - 1;
@@ -1029,27 +1127,26 @@ function anchorSeries(
       t: r.t,
       inbound: isLast ? lastInbound : Math.round(r.inbound * fIn),
       forward: isLast ? lastForward : Math.round(r.forward * fOut),
+      closed: isLast ? lastClosed : Math.round(r.forward * fClosed),
     };
   });
 
-  const net = flows.reduce((s, r) => s + r.inbound - r.forward, 0);
+  const net = flows.reduce((s, r) => s + r.inbound - r.closed, 0);
   let acc = backlog - net;
   return flows.map((r) => {
-    acc = acc + r.inbound - r.forward;
+    acc = acc + r.inbound - r.closed;
     return { ...r, backlog: acc };
   });
 }
 
 /**
  * 某范围 × 某粒度的曲线。
- * 各粒度末点的锚：日＝Σ对齐今日进出、周＝今天、月与年＝本月至今。
+ * 各粒度末点的锚：日＝今日逐小时，周＝今天。
  */
 export function getTrend(scope: OpsScope, grain: TrendGrain): TrendPoint[] {
   const snap = getOpsSnapshot(scope);
   if (grain === 'day') return snap.trend;
-  if (grain === 'week') return anchorSeries(WEEK_RAW, snap.inbound, snap.forward, snap.backlog);
-  if (grain === 'month') return anchorSeries(MONTH_RAW, snap.monthInbound, snap.monthForward, snap.backlog);
-  return anchorSeries(YEAR_RAW, snap.monthInbound, snap.monthForward, snap.backlog);
+  return anchorSeries(WEEK_RAW, snap.inbound, snap.forward, snap.closed, snap.backlog);
 }
 
 /** 高低峰：曲线上直接标出来，不让用户自己找 */

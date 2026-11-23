@@ -9,7 +9,7 @@
 //   ② 再回答"正不正常"：每个数字都配基线（较昨同刻）与走势，孤立数字无法判断好坏。
 //   ③ 最后回答"是谁的问题"：一行一个班组的完整体检结论，不把同一个组的故事拆到几张表里。
 // 监控岗只读，指的是不能改工单；「通知责任人」恰恰是这个岗位的核心动作，必须给。
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -18,8 +18,6 @@ import {
   CheckCircleFilled,
   NotificationOutlined,
   RightOutlined,
-  RiseOutlined,
-  FallOutlined,
 } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
@@ -28,15 +26,15 @@ import { useUserStore } from '@/stores/user';
 import { useRiskTagStore } from '@/stores/riskTags';
 import {
   OPS_GROUPS,
-  getOpsScopeSelectGroups,
   SOON_WINDOWS,
   OVERDUE_BUCKETS,
-  TREND_GRAINS,
   ALERT_POLICY,
   getOpsSnapshot,
+  getOpsGroupPanorama,
+  getOpsGroupFlowTrend,
+  getOpsGroupTickets,
   getGroupLoads,
   getSlaMatrix,
-  getTrend,
   trendPeaks,
   deriveIssues,
   riskTicketsBySoon,
@@ -46,9 +44,9 @@ import {
   type GroupVerdict,
   type OpsIssue,
   type OpsRiskTicket,
+  type OpsGroupPanoramaRow,
   type OverdueBucket,
   type SoonWindow,
-  type TrendGrain,
 } from '@/mock/opsMonitor';
 import {
   QUALITY_METRICS,
@@ -74,36 +72,122 @@ const riskTags = useRiskTagStore();
 
 /** 915 P0 先隐藏运营报表，P1 再开 */
 const SHOW_REPORT_TAB = false;
-/** 915 P0 隐藏「此刻状态」KPI 行（与流量卡重复） */
-const SHOW_KPI_PANEL = false;
 /** 915 P0 隐藏「分组诊断」 */
 const SHOW_DIAG_PANEL = false;
+/** 1215：SLA 大矩阵迁入班组详情，主页面改为全部班组总览。 */
+const SHOW_SLA_MATRIX = false;
 
 const scopeIds = ref<string[]>([]);
-const scope = computed<OpsScope>(() => (scopeIds.value.length ? scopeIds.value : 'all'));
+const scope = computed<OpsScope>(() => 'all');
 /** 915 P0 不含「值班状态 / 异常处置」条，P1 再开 */
 const SHOW_DUTY_PANEL = false;
-const scopeSelectGroups = getOpsScopeSelectGroups();
-const isAllScope = computed(() => scopeIds.value.length === 0);
-const scopeSelectedCount = computed(() => scopeIds.value.length);
-function filterScopeOption(input: string, option: { label?: string }) {
-  const q = input.trim().toLowerCase();
-  if (!q) return true;
-  return (option.label ?? '').toLowerCase().includes(q);
-}
-function setScopeAll() {
-  scopeIds.value = [];
-}
 function setScopeSingle(groupId: string) {
   scopeIds.value = [groupId];
 }
-function scopeTagPlaceholder(omittedValues: unknown[]) {
-  return `+${omittedValues.length} 组`;
-}
 
-const snap = computed(() => getOpsSnapshot(scope.value));
+const snapshotVersion = ref(0);
+const snap = computed(() => {
+  snapshotVersion.value;
+  return getOpsSnapshot(scope.value);
+});
 const loads = computed(() => getGroupLoads(scope.value));
 const slaMatrix = computed(() => getSlaMatrix(scope.value));
+
+// ---- 1215：全部班组总览 ----
+const panoramaRows = computed(() => getOpsGroupPanorama());
+const attentionOnly = ref(false);
+const groupSort = ref('severity');
+const visibleGroups = computed(() => {
+  const rows = panoramaRows.value.filter((g) => !attentionOnly.value || g.severity !== 'normal');
+  const rank = { critical: 2, warning: 1, normal: 0 };
+  return [...rows].sort((a, b) => {
+    const key = groupSort.value;
+    if (key === 'current' || key === 'soon' || key === 'overdue') return b[key] - a[key] || a.name.localeCompare(b.name, 'zh-CN');
+    return rank[b.severity] - rank[a.severity] || b.overdue - a.overdue || b.soon - a.soon;
+  });
+});
+const exportingGroups = ref(false);
+async function exportGroups() {
+  if (exportingGroups.value) return;
+  const rows = visibleGroups.value.map((g) => [g.name, g.severityLabel, g.inbound, g.forward, g.closed, g.current, g.soon, g.overdue]);
+  const scopeLabel = attentionOnly.value ? '需关注' : '全部';
+  const capturedAt = new Date();
+  exportingGroups.value = true;
+  try {
+    const { default: ExcelJS } = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('班组总览');
+    sheet.addRow(['班组总览', scopeLabel, '导出时间', capturedAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })]);
+    sheet.addRow(['班组', '状态', '新增（单）', '下送（单）', '结案（单）', '在办（单）', '临期（单）', '超时（单）']);
+    sheet.addRows(rows);
+    sheet.columns.forEach((column, index) => { column.width = index < 2 ? 22 : 16; });
+    sheet.getRow(2).font = { bold: true };
+    sheet.views = [{ state: 'frozen', ySplit: 2 }];
+    sheet.autoFilter = { from: 'A2', to: `H${rows.length + 2}` };
+    const buffer = await workbook.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `班组总览-${scopeLabel}-${capturedAt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}.xlsx`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    message.success(`已导出 ${rows.length} 个班组`);
+  } catch {
+    message.error('导出失败，请重试');
+  } finally {
+    exportingGroups.value = false;
+  }
+}
+const locatedGroupId = ref<string>();
+const groupOptions = computed(() => panoramaRows.value.map((g) => ({ value: g.id, label: g.name, searchText: `${g.name} ${g.id}` })));
+const filterGroupOption = (input: string, option: { searchText?: string }) =>
+  (option.searchText ?? '').toLowerCase().includes(input.trim().toLowerCase());
+const highlightedGroupId = ref('');
+let highlightTimer: number | undefined;
+
+function locateGroup() {
+  const target = panoramaRows.value.find((g) => g.id === locatedGroupId.value);
+  if (!target) {
+    highlightedGroupId.value = '';
+    if (highlightTimer) window.clearTimeout(highlightTimer);
+    return;
+  }
+  attentionOnly.value = false;
+  highlightedGroupId.value = target.id;
+  nextTick(() => document.querySelector(`[data-monitor-group-id="${target.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  if (highlightTimer) window.clearTimeout(highlightTimer);
+  highlightTimer = window.setTimeout(() => { highlightedGroupId.value = ''; }, 2600);
+}
+
+const selectedGroupId = ref<string | null>(null);
+const selectedGroup = computed(() => panoramaRows.value.find((g) => g.id === selectedGroupId.value) ?? null);
+const selectedGroupRaw = computed(() => OPS_GROUPS.find((g) => g.id === selectedGroupId.value) ?? null);
+const selectedGroupSnapshot = computed(() => selectedGroupId.value ? getOpsSnapshot(selectedGroupId.value) : null);
+const groupDrawerOpen = computed({
+  get: () => !!selectedGroupId.value,
+  set: (open: boolean) => { if (!open) selectedGroupId.value = null; },
+});
+const groupFlow = computed(() => selectedGroupId.value ? getOpsGroupFlowTrend(selectedGroupId.value) : []);
+const groupTickets = computed(() => selectedGroupId.value ? getOpsGroupTickets(selectedGroupId.value) : []);
+const groupSlaFilter = ref('all');
+const groupTicketPage = ref(1);
+const groupSlaLabels: Record<string, string> = { all: '全部在办', soon: '2 小时内临期', le24: '超时不足 1 天', le72: '超时 1–3 天', gt72: '超时超过 3 天' };
+const filteredGroupTickets = computed(() => groupTickets.value.filter((ticket) => groupSlaFilter.value === 'all' || ticket.bucket === groupSlaFilter.value));
+const groupTicketRows = computed(() => filteredGroupTickets.value.slice((groupTicketPage.value - 1) * 6, groupTicketPage.value * 6));
+function selectGroupSla(bucket: string) {
+  groupSlaFilter.value = bucket;
+  groupTicketPage.value = 1;
+}
+const groupFlowBounds = computed(() => {
+  const values = groupFlow.value.flatMap((p) => [p.inbound, p.forward, p.closed]);
+  return { min: 0, max: Math.max(...values, 1) };
+});
+const anomalyGroupCount = computed(() => panoramaRows.value.filter((g) => g.severity !== 'normal').length);
+
+function openGroupDetail(group: OpsGroupPanoramaRow) {
+  selectGroupSla('all');
+  selectedGroupId.value = group.id;
+}
 
 const reportGrain = ref<ReportGrain>('week');
 const reportTrend = computed(() => reportQualityTrend(reportGrain.value));
@@ -155,14 +239,18 @@ const pieSegments = computed(() => {
   });
 });
 
-/** 60s 自动刷新；原型只更新时间戳，真实实现走接口轮询 */
-const lastRefresh = ref('14:20:06');
-let timer: number | undefined;
-function refresh() {
-  const d = new Date();
-  lastRefresh.value = [d.getHours(), d.getMinutes(), d.getSeconds()]
+function formatClock(date: Date): string {
+  return [date.getHours(), date.getMinutes(), date.getSeconds()]
     .map((n) => String(n).padStart(2, '0'))
     .join(':');
+}
+
+/** 60s 自动刷新；原型只更新时间戳，真实实现走接口轮询 */
+const lastRefresh = ref(formatClock(new Date()));
+let timer: number | undefined;
+function refresh() {
+  lastRefresh.value = formatClock(new Date());
+  snapshotVersion.value += 1;
 }
 onMounted(() => {
   timer = window.setInterval(refresh, 60000);
@@ -170,7 +258,10 @@ onMounted(() => {
     window.setTimeout(firePopup, 600);
   }
 });
-onBeforeUnmount(() => { if (timer) window.clearInterval(timer); });
+onBeforeUnmount(() => {
+  if (timer) window.clearInterval(timer);
+  if (highlightTimer) window.clearTimeout(highlightTimer);
+});
 
 /**
  * 弹窗告警（模块 2.2 / 2.3 明确要求"弹窗"）。
@@ -199,9 +290,8 @@ function popupGo(issue: OpsIssue) {
   handleIssue(issue);
 }
 
-// ---- 模块 1.4 多粒度曲线 ----
-const grain = ref<TrendGrain>('day');
-const trend = computed(() => getTrend(scope.value, grain.value));
+// ---- 当日流量曲线：一期只展示今日，不提供月度或同比环比 ----
+const trend = computed(() => snap.value.trend);
 const peaks = computed(() => trendPeaks(trend.value));
 
 // ---- 处置动作：通知责任人（走消息通知引擎，留痕） ----
@@ -243,6 +333,11 @@ function areaPath(values: number[], min: number, max: number, w = CHART_W, h = C
   return `M0,${h} L${pts.join(' L')} L${w},${h} Z`;
 }
 
+function sparkline(values: number[], w = SPARK_W, h = SPARK_H): string {
+  if (values.length < 2) return '';
+  return polyline(values, Math.min(...values), Math.max(...values), w, h);
+}
+
 function chartPoint(values: number[], idx: number, min: number, max: number, w = CHART_W, h = CHART_H) {
   const span = max - min || 1;
   const step = w / (values.length - 1);
@@ -250,11 +345,6 @@ function chartPoint(values: number[], idx: number, min: number, max: number, w =
     x: idx * step,
     y: h - ((values[idx] - min) / span) * h,
   };
-}
-
-function sparkline(values: number[], w = SPARK_W, h = SPARK_H): string {
-  if (values.length < 2) return '';
-  return polyline(values, Math.min(...values), Math.max(...values), w, h);
 }
 
 function gaugeDash(pct: number, total = GAUGE_C) {
@@ -268,18 +358,8 @@ function healthPct(value: number, healthy: number, unit: '%' | '分') {
 }
 
 const trendBounds = computed(() => {
-  const all = trend.value.flatMap((p) => [p.inbound, p.forward, p.backlog]);
+  const all = trend.value.flatMap((p) => [p.inbound, p.forward, p.closed]);
   return { min: Math.min(...all, 0), max: Math.max(...all) };
-});
-
-const backlogSpark = computed(() => {
-  const vals = snap.value.trend.map((p) => p.backlog);
-  return polyline(vals, Math.min(...vals), Math.max(...vals), SPARK_W, SPARK_H);
-});
-
-const backlogSparkArea = computed(() => {
-  const vals = snap.value.trend.map((p) => p.backlog);
-  return areaPath(vals, Math.min(...vals), Math.max(...vals), SPARK_W, SPARK_H);
 });
 
 const inboundPeak = computed(() => {
@@ -288,12 +368,6 @@ const inboundPeak = computed(() => {
   vals.forEach((v, i) => { if (v > vals[idx]) idx = i; });
   return { idx, point: chartPoint(vals, idx, trendBounds.value.min, trendBounds.value.max) };
 });
-
-const capGauge = computed(() => ({
-  pct: snap.value.utilization,
-  dash: gaugeDash(snap.value.utilization),
-  color: utilColor(snap.value.utilization),
-}));
 
 const pieTotal = computed(() => pieSegments.value.reduce((s, r) => s + r.value, 0));
 
@@ -308,13 +382,12 @@ const timelyGaugeColor = computed(() => rateTone(OVERALL_TIMELY.value).color);
 
 // ---- 流量指标内联展开（点击卡面 → 下方饼图/柱图/进出曲线）----
 type MetricKey = 'inbound' | 'forward' | 'backlog' | 'io';
-type InboundDim = 'channel' | 'product' | 'type';
-const activeMetric = ref<MetricKey>('inbound');
+type InboundDim = 'channel' | 'business';
+const activeMetric = ref<MetricKey | null>(null);
 
 const INBOUND_DIMS: { key: InboundDim; label: string }[] = [
   { key: 'channel', label: '渠道' },
-  { key: 'product', label: '产线' },
-  { key: 'type', label: '类型' },
+  { key: 'business', label: '业务类型' },
 ];
 
 const FLOW_LIST_TITLE: Record<Exclude<MetricKey, 'io'>, string> = {
@@ -342,9 +415,7 @@ function scaleRowsByTotal(rows: DrillRow[], total: number): DrillRow[] {
 
 function rowsForDim(metric: Exclude<MetricKey, 'io'>, dim: InboundDim, s = snap.value): DrillRow[] {
   const base =
-    dim === 'product' ? s.inboundByProduct
-    : dim === 'type' ? s.inboundByType
-    : s.inboundByChannel;
+    dim === 'business' ? s.inboundByBusiness : s.inboundByChannel;
   const safe = Array.isArray(base) ? base : [];
   if (metric === 'inbound') return safe;
   return scaleRowsByTotal(safe, metricTotal(metric, s));
@@ -353,7 +424,7 @@ function rowsForDim(metric: Exclude<MetricKey, 'io'>, dim: InboundDim, s = snap.
 /** 三维度并列面板数据 */
 const metricDimPanels = computed(() => {
   const m = activeMetric.value;
-  if (m === 'io') return [];
+  if (m === 'io' || m === null) return [];
   return INBOUND_DIMS.map((d) => {
     const rows = rowsForDim(m, d.key);
     const barMax = rows.length ? Math.max(...rows.map((r) => r.value)) : 1;
@@ -393,9 +464,10 @@ function vbarLabel(label: string, n: number) {
   return label.length > maxLen ? `${label.slice(0, maxLen)}…` : label;
 }
 
-const expandTotal = computed(() =>
-  activeMetric.value === 'io' ? 0 : metricTotal(activeMetric.value),
-);
+const expandTotal = computed(() => {
+  if (!activeMetric.value || activeMetric.value === 'io') return 0;
+  return metricTotal(activeMetric.value);
+});
 
 const ioTrend = computed(() => snap.value.trend);
 const ioTrendBounds = computed(() => {
@@ -407,7 +479,7 @@ const ioTrendBounds = computed(() => {
 const canGoTicketList = computed(() => user.canAccess('tickets'));
 
 function toggleMetric(key: MetricKey) {
-  activeMetric.value = key;
+  activeMetric.value = activeMetric.value === key ? null : key;
 }
 
 function focusMetric(key: MetricKey) {
@@ -565,39 +637,25 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
           <span class="head-tag">只读</span>
         </div>
         <div class="greeting-sub">
-          {{ props.board === 'ticket' ? '全中心体检表 · 只读查证 · 点指标下钻核实' : '对比口径：今日 vs 昨日同期 vs 上周同期' }}
+          {{ props.board === 'ticket' ? '全中心体检表 · 只读查证 · 点击新增或下送查看分布' : '对比口径：今日 vs 昨日同期 vs 上周同期' }}
         </div>
       </div>
       <div v-if="props.board === 'ticket' || props.board === 'report'" class="greeting-aside">
         <div class="section-filters">
           <div class="filter-item">
-            <span class="filter-label">监控范围</span>
-            <div class="monitor-scope-picker">
-              <button
-                type="button"
-                class="monitor-scope-all-btn"
-                :class="{ active: isAllScope }"
-                @click="setScopeAll"
-              >
-                全中心
-              </button>
+            <span class="filter-label">定位班组</span>
+            <div class="group-locator">
               <a-select
-                v-model:value="scopeIds"
-                mode="multiple"
+                v-model:value="locatedGroupId"
+                size="small"
                 show-search
                 allow-clear
-                size="small"
-                :options="scopeSelectGroups"
-                :filter-option="filterScopeOption"
-                class="monitor-scope-select"
-                :dropdown-match-select-width="false"
-                placeholder="筛选班组（可多选）"
-                :max-tag-count="1"
-                :max-tag-placeholder="scopeTagPlaceholder"
+                placeholder="选择或搜索班组"
+                :options="groupOptions"
+                :filter-option="filterGroupOption"
+                @change="locateGroup"
               />
-              <span class="monitor-scope-meta">
-                {{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}
-              </span>
+              <span class="monitor-scope-meta">全部 {{ panoramaRows.length }} 组</span>
             </div>
           </div>
           <template v-if="props.board === 'ticket'">
@@ -652,16 +710,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </template>
 
       <!-- ② 流量指标带 -->
-      <section class="overview-section">
+      <section class="overview-section flow-overview">
         <div class="section-head">
           <div class="section-head-main">
             <h2 class="section-title">工单流量</h2>
-            <p class="section-sub">进出流量监控 · 点卡片展开渠道 / 产线 / 类型分布</p>
-            <p class="section-sub section-formula">
-              今日 {{ snap.opening }} ＋ {{ snap.inbound }} − {{ snap.forward }} ＝ 在办存量 {{ snap.backlog.toLocaleString() }}<MetricTipIcon :tip="opsTip('workingStock')!" />
-              <span class="note-sep">|</span>
-              本月 {{ snap.monthOpening }} ＋ {{ snap.monthInbound.toLocaleString() }} − {{ snap.monthForward.toLocaleString() }} ＝ {{ snap.backlog.toLocaleString() }}
-            </p>
           </div>
         </div>
         <div class="metric-strip">
@@ -677,7 +729,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               <span class="mt-value">{{ snap.inbound.toLocaleString() }}</span>
               <span class="mt-unit">当日</span>
             </div>
-            <div class="mt-sub">本月累计 {{ snap.monthInbound.toLocaleString() }}</div>
           </div>
 
           <div
@@ -692,58 +743,55 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               <span class="mt-value">{{ snap.forward.toLocaleString() }}</span>
               <span class="mt-unit">当日</span>
             </div>
-            <div class="mt-sub">本月累计 {{ snap.monthForward.toLocaleString() }}</div>
+          </div>
+
+          <div class="metric-tile">
+            <div class="mt-label">今日结案<MetricTipIcon :tip="opsTip('closed')!" /></div>
+            <div class="mt-value-row">
+              <span class="mt-value">{{ snap.closed.toLocaleString() }}</span>
+              <span class="mt-unit">当日</span>
+            </div>
           </div>
 
           <div
-            class="metric-tile drillable"
-            :class="{ 'is-alert': snap.alerting, active: activeMetric === 'backlog' }"
-            tabindex="0"
-            @click="toggleMetric('backlog')"
-            @keydown.enter.prevent="toggleMetric('backlog')"
+            class="metric-tile"
           >
-            <!--
-              「积压」＝ 超解决时效且仍未处理完（＝下方时效分层三个超时桶合计），
-              与《【915】班组长看板》同口径同名（2026-08-05 业务定）。
-              在办存量 755 在上方守恒式里给，两者差一个数量级，不可互校。
-            -->
-            <div class="mt-label">积压<MetricTipIcon :tip="opsTip('backlog')!" /></div>
+            <div class="mt-label">当前在办<MetricTipIcon :tip="opsTip('workingStock')!" /></div>
             <div class="mt-value-row">
-              <span class="mt-value" :class="{ danger: snap.alerting }">{{ snap.overdueTotal.toLocaleString() }}</span>
+              <span class="mt-value">{{ snap.backlog.toLocaleString() }}</span>
               <span class="mt-unit">此刻</span>
             </div>
-            <div class="mt-sub">
-              超解决时效未处理完 · 其中超 3 天
-              <b :class="snap.overdue.gt72 > 0 ? 'up' : 'down'">{{ snap.overdue.gt72 }}</b>
-              · 阈值 {{ snap.threshold }}
+          </div>
+
+          <div class="metric-tile" :class="{ 'is-alert': snap.soon['2h'] > 0 }">
+            <div class="mt-label">临期工单<MetricTipIcon :tip="opsTip('soon')!" /></div>
+            <div class="mt-value-row">
+              <span class="mt-value warn">{{ snap.soon['2h'].toLocaleString() }}</span>
+              <span class="mt-unit">2h 内</span>
             </div>
           </div>
 
-          <div
-            class="metric-tile drillable"
-            :class="{ active: activeMetric === 'io' }"
-            tabindex="0"
-            @click="toggleMetric('io')"
-            @keydown.enter.prevent="toggleMetric('io')"
-          >
-            <div class="mt-label">进出比<MetricTipIcon :tip="opsTip('io')!" /></div>
+          <div class="metric-tile" :class="{ 'is-alert': snap.overdueTotal > 0 }">
+            <div class="mt-label">超时工单<MetricTipIcon :tip="opsTip('backlog')!" /></div>
             <div class="mt-value-row">
-              <span class="mt-value" :class="{ warn: snap.ioRatio > 1 }">{{ snap.ioRatio }}</span>
-              <span class="mt-unit">进÷出</span>
+              <span class="mt-value danger">{{ snap.overdueTotal.toLocaleString() }}</span>
+              <span class="mt-unit">此刻</span>
             </div>
-            <div class="mt-sub mt-sub-em">
-              {{ snap.ioRatio > 1 ? '进大于出，积压在涨' : '出大于进，正在消化' }}
-            </div>
-            <div class="mt-foot">最久等待 {{ snap.longestWaitText }}<MetricTipIcon :tip="opsTip('longestWait')!" /></div>
+
           </div>
         </div>
 
-        <div class="metric-expand">
+        <div v-if="activeMetric" class="metric-expand">
           <div v-if="activeMetric !== 'io'" class="me-body">
             <div class="me-dims-grid">
               <div v-for="panel in metricDimPanels" :key="panel.key" class="me-dim-col">
                 <h4 class="me-dim-title">{{ panel.label }}</h4>
-                <svg class="me-vchart" :viewBox="`0 0 ${VBAR_W} ${VBAR_TOTAL_H}`" preserveAspectRatio="xMidYMid meet">
+                <div v-if="panel.key === 'business'" class="business-dim-bars">
+                  <div v-for="row in panel.rows" :key="row.label" class="business-dim-row">
+                    <span>{{ row.label }}</span><div class="business-dim-track"><i :style="{ width: `${row.value / panel.barMax * 100}%` }" /></div><b>{{ row.value.toLocaleString() }}</b><small>{{ Math.round(row.ratio * 100) }}%</small>
+                  </div>
+                </div>
+                <svg v-else class="me-vchart" :viewBox="`0 0 ${VBAR_W} ${VBAR_TOTAL_H}`" preserveAspectRatio="xMidYMid meet">
                   <line :x1="0" :y1="VBAR_PLOT_H - 1" :x2="VBAR_W" :y2="VBAR_PLOT_H - 1" class="me-vbase" />
                   <g v-for="(r, i) in panel.rows" :key="r.label" class="me-vgroup">
                     <rect
@@ -787,7 +835,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               >
                 在工单工作台查看这 {{ expandTotal.toLocaleString() }} 单 →
               </button>
-              <p v-else class="me-note">监控岗为只读视图，请从「时效分层」进入工单清单查证。</p>
+              <p v-else class="me-note">当前账号仅支持只读查看分布。</p>
             </div>
           </div>
 
@@ -841,32 +889,61 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
         </div>
       </section>
 
+      <!-- 1215：全部班组一屏总览；定位只高亮，不改变全中心口径。 -->
+      <section class="overview-section panorama-section">
+        <div class="section-head">
+          <div class="section-head-main">
+            <h2 class="section-title">全部班组总览</h2>
+            <p class="section-sub">{{ panoramaRows.length }} 个班组 · {{ anomalyGroupCount }} 个班组需关注 · 点击班组查看只读详情</p>
+          </div>
+          <div class="group-table-tools">
+            <a-button size="small" :loading="exportingGroups" @click="exportGroups">导出</a-button>
+            <a-radio-group v-model:value="attentionOnly" size="small" button-style="solid">
+              <a-radio-button :value="false">全部 {{ panoramaRows.length }}</a-radio-button>
+              <a-radio-button :value="true">需关注 {{ anomalyGroupCount }}</a-radio-button>
+            </a-radio-group>
+            <a-select v-model:value="groupSort" size="small" style="width: 130px" :options="[
+              { value: 'severity', label: '异常优先' },
+              { value: 'current', label: '在办从高到低' },
+              { value: 'soon', label: '临期从高到低' },
+              { value: 'overdue', label: '超时从高到低' },
+            ]" />
+          </div>
+        </div>
+        <div class="group-table-wrap">
+          <table class="group-overview-table">
+            <colgroup><col style="width: 16%" /><col style="width: 14%" /><col v-for="n in 6" :key="n" style="width: 10%" /><col style="width: 10%" /></colgroup>
+            <thead><tr><th>班组</th><th>状态</th><th><span class="group-metric-heading">新增（单）<MetricTipIcon :tip="opsTip('inbound')!" /></span></th><th><span class="group-metric-heading">下送（单）<MetricTipIcon :tip="opsTip('forward')!" /></span></th><th><span class="group-metric-heading">结案（单）<MetricTipIcon :tip="opsTip('closed')!" /></span></th><th><span class="group-metric-heading">在办（单）<MetricTipIcon :tip="opsTip('workingStock')!" /></span></th><th><span class="group-metric-heading">临期（单）<MetricTipIcon :tip="opsTip('soon')!" /></span></th><th><span class="group-metric-heading">超时（单）<MetricTipIcon :tip="opsTip('backlog')!" /></span></th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="group in visibleGroups" :key="group.id" :data-monitor-group-id="group.id" :class="{ highlighted: highlightedGroupId === group.id }" @click="openGroupDetail(group)">
+                <td><button type="button" class="group-name-link" @click.stop="openGroupDetail(group)">{{ group.name }}</button></td>
+                <td><span class="group-status" :class="group.severity">{{ group.severityLabel }}</span></td>
+                <td>{{ group.inbound }}</td><td>{{ group.forward }}</td><td>{{ group.closed }}</td>
+                <td class="current-count">{{ group.current }}</td>
+                <td :class="{ 'count-warn': group.soon > 0 }">{{ group.soon }}</td>
+                <td :class="{ 'count-danger': group.overdue > 0 }">{{ group.overdue }}</td>
+                <td><button type="button" class="group-detail-link" @click.stop="openGroupDetail(group)">详情 <RightOutlined /></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- 流量走势（工单监控 · 进出趋势） -->
       <section class="overview-section">
         <div class="section-head">
-          <h2 class="section-title">流量走势<MetricTipIcon :tip="opsTip('trendStock')!" /></h2>
+          <h2 class="section-title">今日流量走势<MetricTipIcon :tip="opsTip('trendFlow')!" /></h2>
           <div class="grain-row">
             <span v-if="peaks.peak" class="peak-note">
               高峰 {{ peaks.peak.t }}（{{ peaks.peak.inbound.toLocaleString() }}）·
               低谷 {{ peaks.valley?.t }}（{{ peaks.valley?.inbound.toLocaleString() }}）
             </span>
-            <button
-              v-for="g in TREND_GRAINS"
-              :key="g.key"
-              type="button"
-              class="grain-chip"
-              :class="{ active: grain === g.key }"
-              :title="g.unit"
-              @click="grain = g.key"
-            >
-              {{ g.label }}
-            </button>
           </div>
         </div>
         <div class="chart-wrap chart-pro">
           <div class="legend">
-            <span class="lg lg-in">进线</span><span class="lg lg-out">下送</span><span class="lg lg-bl">积压</span>
-            <span class="legend-unit">{{ TREND_GRAINS.find((g) => g.key === grain)?.unit }}</span>
+            <span class="lg lg-in">新增</span><span class="lg lg-out">下送</span><span class="lg lg-close">结案</span>
+            <span class="legend-unit">今日逐小时</span>
           </div>
           <svg class="chart chart-lg" :viewBox="`0 0 ${CHART_W} ${CHART_H}`" preserveAspectRatio="none">
             <defs>
@@ -879,8 +956,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
                 <stop offset="100%" stop-color="#059669" stop-opacity="0" />
               </linearGradient>
               <linearGradient id="grad-bl" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#d97706" stop-opacity="0.14" />
-                <stop offset="100%" stop-color="#d97706" stop-opacity="0" />
+                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.14" />
+                <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
               </linearGradient>
             </defs>
             <line
@@ -901,7 +978,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               fill="url(#grad-out)"
             />
             <path
-              :d="areaPath(trend.map((p) => p.backlog), trendBounds.min, trendBounds.max)"
+              :d="areaPath(trend.map((p) => p.closed), trendBounds.min, trendBounds.max)"
               fill="url(#grad-bl)"
             />
             <polyline
@@ -913,8 +990,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               fill="none" stroke="#059669" stroke-width="2"
             />
             <polyline
-              :points="polyline(trend.map((p) => p.backlog), trendBounds.min, trendBounds.max)"
-              fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="5 4"
+              :points="polyline(trend.map((p) => p.closed), trendBounds.min, trendBounds.max)"
+              fill="none" stroke="#2563eb" stroke-width="2"
             />
             <g v-if="peaks.peak">
               <circle
@@ -934,67 +1011,13 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             </g>
           </svg>
           <div class="axis">
-            <span v-for="p in trend" :key="p.t" class="axis-t">{{ grain === 'day' ? p.t.slice(0, 2) : p.t }}</span>
+            <span v-for="p in trend" :key="p.t" class="axis-t">{{ p.t.slice(0, 2) }}</span>
           </div>
         </div>
       </section>
 
       <div class="dash-stack">
-        <section v-if="SHOW_KPI_PANEL" class="overview-section">
-          <div class="section-head">
-            <h2 class="section-title">此刻状态</h2>
-            <span class="section-sub">较昨日同刻 · 容量视角</span>
-          </div>
-          <div class="kpi-row">
-            <div class="kpi-cell">
-              <div class="kpi-label">当前积压</div>
-              <div class="kpi-value" :class="{ danger: snap.alerting }">{{ snap.backlog }}</div>
-              <div class="kpi-meta">
-                <span :class="snap.vsYesterday > 0 ? 'up' : 'down'">
-                  <component :is="snap.vsYesterday > 0 ? RiseOutlined : FallOutlined" />
-                  {{ snap.vsYesterday > 0 ? '+' : '' }}{{ snap.vsYesterday }}
-                  （{{ snap.vsYesterdayPct > 0 ? '+' : '' }}{{ Math.round(snap.vsYesterdayPct * 100) }}%）
-                </span>
-                昨同刻 {{ snap.yesterdayBacklog }}
-              </div>
-              <svg class="kpi-spark" viewBox="0 0 88 28" preserveAspectRatio="none">
-                <path :d="backlogSparkArea" :fill="snap.alerting ? 'rgba(239,68,68,0.12)' : 'rgba(71,85,105,0.12)'" />
-                <polyline :points="backlogSpark" fill="none" :stroke="snap.alerting ? '#ef4444' : '#475569'" stroke-width="1.5" />
-              </svg>
-            </div>
-            <div class="kpi-cell">
-              <div class="kpi-label">在岗二线</div>
-              <div class="kpi-value">{{ snap.headcount }}<span class="kpi-unit">人</span></div>
-              <div class="kpi-meta">人均在办 <b>{{ snap.perHead }}</b> · 已满 <b class="up">{{ snap.atCapacity }}</b> 人</div>
-            </div>
-            <div class="kpi-cell kpi-cell-gauge">
-              <div class="kpi-label">仍可接单</div>
-              <div class="kpi-gauge-wrap">
-                <svg class="kpi-gauge" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e8ecf1" stroke-width="8" />
-                  <circle
-                    cx="50" cy="50" r="42" fill="none"
-                    :stroke="capGauge.color" stroke-width="8" stroke-linecap="round"
-                    :stroke-dasharray="capGauge.dash"
-                    transform="rotate(-90 50 50)"
-                  />
-                </svg>
-                <div class="kpi-gauge-center">
-                  <span class="kpi-value" :class="{ danger: snap.available === 0, warn: snap.available > 0 && snap.available <= 3 }">
-                    {{ snap.available }}
-                  </span>
-                  <span class="kpi-unit">人</span>
-                </div>
-              </div>
-              <div class="kpi-meta">
-                容量利用 <b :style="{ color: utilColor(snap.utilization) }">{{ Math.round(snap.utilization * 100) }}%</b>
-                （{{ snap.backlog }}/{{ snap.capacity }}）
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="overview-section now-sla">
+        <section v-if="SHOW_SLA_MATRIX" class="overview-section now-sla">
           <div class="section-head">
             <h2 class="section-title">即将超期监控<MetricTipIcon :tip="opsTip('soon')!" /></h2>
             <span class="section-sub">时效分层 · 班组 × 分桶热力 · 点击格子查清单</span>
@@ -1375,6 +1398,96 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </div>
     </template>
 
+    <!-- 班组详情：复用工单池右侧抽屉的浏览方式，仅保留运营只读信息。 -->
+    <a-drawer
+      v-model:open="groupDrawerOpen"
+      :title="selectedGroup ? `${selectedGroup.name} · 班组详情` : '班组详情'"
+      :width="'min(680px, 100vw)'"
+      :body-style="{ padding: '8px 6px', background: '#f5f7fa' }"
+      placement="right"
+    >
+      <div v-if="selectedGroup && selectedGroupSnapshot" class="group-drawer">
+        <div class="drawer-context"><span>{{ selectedGroup.line }} · 班组运行概况</span><span class="group-status" :class="selectedGroup.severity">{{ selectedGroup.severityLabel }}</span><span class="drawer-context-time">更新于 {{ lastRefresh }} · 单位：单</span></div>
+        <div class="drawer-overview">
+          <div><span>今日新增</span><b>{{ selectedGroup.inbound }}</b></div>
+          <div><span>今日下送</span><b>{{ selectedGroup.forward }}</b></div>
+          <div><span>今日结案</span><b>{{ selectedGroup.closed }}</b></div>
+          <div><span>当前在办</span><b>{{ selectedGroup.current }}</b></div>
+          <div><span>临期</span><b class="warn">{{ selectedGroup.soon }}</b></div>
+          <div><span>超时</span><b class="danger">{{ selectedGroup.overdue }}</b></div>
+        </div>
+
+        <section class="drawer-section">
+          <div class="drawer-section-head">
+            <strong>当日流量</strong>
+            <span>今日逐小时 · 单位：单</span>
+          </div>
+          <div class="legend drawer-legend">
+            <span class="lg lg-in">新增</span>
+            <span class="lg lg-out">下送</span>
+            <span class="lg lg-close">结案</span>
+          </div>
+          <svg class="drawer-chart" :viewBox="`0 0 ${CHART_W} ${CHART_H}`" preserveAspectRatio="none">
+            <line
+              v-for="i in 4"
+              :key="'drawer-g-' + i"
+              :x1="0"
+              :y1="(CHART_H / 4) * i"
+              :x2="CHART_W"
+              :y2="(CHART_H / 4) * i"
+              class="chart-grid"
+            />
+            <polyline
+              :points="polyline(groupFlow.map((p) => p.inbound), groupFlowBounds.min, groupFlowBounds.max)"
+              fill="none" stroke="#475569" stroke-width="2.5"
+            />
+            <polyline
+              :points="polyline(groupFlow.map((p) => p.forward), groupFlowBounds.min, groupFlowBounds.max)"
+              fill="none" stroke="#059669" stroke-width="2.2"
+            />
+            <polyline
+              :points="polyline(groupFlow.map((p) => p.closed), groupFlowBounds.min, groupFlowBounds.max)"
+              fill="none" stroke="#2563eb" stroke-width="2.2"
+            />
+          </svg>
+          <div class="axis drawer-axis">
+            <span v-for="point in groupFlow" :key="point.t">{{ point.t }}</span>
+          </div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="drawer-section-head"><strong>SLA 分层</strong><span>当前快照</span></div>
+          <div class="drawer-sla-grid">
+            <button type="button" :class="{ active: groupSlaFilter === 'soon' }" :aria-pressed="groupSlaFilter === 'soon'" @click="selectGroupSla('soon')"><span>2 小时内临期</span><b class="warn">{{ selectedGroupSnapshot.soon['2h'] }}</b></button>
+            <button type="button" :class="{ active: groupSlaFilter === 'le24' }" :aria-pressed="groupSlaFilter === 'le24'" @click="selectGroupSla('le24')"><span>超时不足 1 天</span><b class="">{{ selectedGroupSnapshot.overdue.le24 }}</b></button>
+            <button type="button" :class="{ active: groupSlaFilter === 'le72' }" :aria-pressed="groupSlaFilter === 'le72'" @click="selectGroupSla('le72')"><span>超时 1-3 天</span><b class="warn">{{ selectedGroupSnapshot.overdue.le72 }}</b></button>
+            <button type="button" :class="{ active: groupSlaFilter === 'gt72' }" :aria-pressed="groupSlaFilter === 'gt72'" @click="selectGroupSla('gt72')"><span>超时超过 3 天</span><b class="danger">{{ selectedGroupSnapshot.overdue.gt72 }}</b></button>
+          </div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="drawer-section-head"><strong>工单明细 · {{ groupSlaLabels[groupSlaFilter] }}</strong><span>共 {{ filteredGroupTickets.length }} 条 <a-button v-if="groupSlaFilter !== 'all'" type="link" size="small" @click="selectGroupSla('all')">全部在办</a-button></span></div>
+          <div class="drawer-table-wrap">
+            <table class="group-ticket-table">
+              <thead><tr><th>工单号</th><th>标题</th><th>优先级</th><th>处理人</th><th>状态</th><th>时效</th></tr></thead>
+              <tbody>
+                <tr v-for="ticket in groupTicketRows" :key="ticket.no">
+                  <td>{{ ticket.no }}</td>
+                  <td>{{ ticket.title }}</td>
+                  <td>{{ ticket.priority }}</td>
+                  <td>{{ ticket.assignee }}</td>
+                  <td>{{ ticket.status }}</td><td :class="ticket.bucket === 'soon' ? 'count-warn' : ticket.bucket !== 'normal' ? 'count-danger' : ''">{{ ticket.sla }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="!filteredGroupTickets.length" class="empty-inline">当前班组暂无{{ groupSlaLabels[groupSlaFilter] }}工单</div>
+          <a-pagination v-if="filteredGroupTickets.length > 6" v-model:current="groupTicketPage" :total="filteredGroupTickets.length" :page-size="6" :show-size-changer="false" size="small" class="group-ticket-pagination" />
+        </section>
+        <p class="drawer-note">演示数据按班组 SLA 快照生成，非真实工单。本抽屉仅用于运营监控，不提供分派、转单或工单配置操作。</p>
+      </div>
+    </a-drawer>
+
     <!-- 风险工单清单 -->
     <a-drawer v-model:open="riskOpen" :title="riskTitle" width="720" placement="right">
       <div v-if="!riskRows.length" class="empty-inline">该范围下没有对应工单</div>
@@ -1450,7 +1563,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 6px 18px;
   gap: 12px;
   flex-wrap: wrap;
   border-radius: 14px;
@@ -1470,7 +1583,11 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   gap: 8px;
   flex-wrap: wrap;
 }
-.greeting-sub { margin-top: 6px; font-size: 12px; color: #64748b; line-height: 1.55; }
+
+.greeting-title {
+  letter-spacing: 0;
+}
+.greeting-sub { margin-top: 2px; font-size: 12px; color: #64748b; line-height: 1.55; }
 .greeting-aside { display: flex; align-items: center; flex: none; }
 .head-tag {
   font-size: 10px; font-weight: 600; color: #64748b;
@@ -1549,6 +1666,9 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   background: #fff; padding: 14px 16px 12px; min-height: 88px;
   display: flex; flex-direction: column; min-width: 0;
 }
+.flow-overview { padding: 8px 12px; gap: 4px; }
+.flow-overview .metric-tile { padding: 8px 14px; min-height: 64px; }
+.flow-overview .mt-value-row { margin-top: 2px; }
 .metric-tile.drillable { cursor: pointer; }
 .metric-tile.drillable:hover { background: #fafbfc; }
 .metric-tile.drillable.active {
@@ -1587,12 +1707,18 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 }
 .me-body { display: block; }
 .me-dims-grid {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 1px;
   background: #e2e8f0;
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   overflow: hidden;
 }
+.business-dim-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; }
+.business-dim-row { display: grid; grid-template-columns: 56px minmax(20px, 1fr) 36px 28px; gap: 6px; align-items: center; font-size: 11px; color: #64748b; }
+.business-dim-track { height: 6px; background: #e8edf3; border-radius: 3px; overflow: hidden; }
+.business-dim-track i { display: block; height: 100%; background: #2563eb; border-radius: 3px; }
+.business-dim-row b { text-align: right; font-weight: 500; color: #334155; }
+.business-dim-row small { text-align: right; font-size: 10px; }
 .me-dim-col {
   background: #fafbfc; padding: 10px 12px 8px;
   min-height: 168px;
@@ -1994,4 +2120,137 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .pop-o { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .pop-foot { display: flex; align-items: center; gap: 12px; }
 .pop-policy { flex: 1; font-size: 11px; color: #9ca3af; line-height: 1.5; }
+/* 1215 工单监控一期：全中心六指标 + 全部班组总览 */
+.group-locator {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) auto;
+  align-items: center;
+  gap: 6px;
+}
+.group-locator :deep(.ant-select) { width: 100%; font-size: 12px; }
+.group-locate-btn {
+  width: 28px; height: 28px; padding: 0; border: 1px solid #d9e2ef; border-radius: 6px;
+  background: #fff; color: #2563eb; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.group-locate-btn:hover { border-color: #2563eb; background: #eff6ff; }
+.metric-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.group-table-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.group-table-wrap { overflow: auto; max-height: 560px; border: 1px solid #e8edf3; border-radius: 8px; }
+.group-overview-table { width: 100%; min-width: 900px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12px; color: #475569; font-variant-numeric: tabular-nums; }
+.group-overview-table th { position: sticky; top: 0; z-index: 1; background: #f8fafc; padding: 8px 10px; color: #64748b; font-weight: 500; text-align: center; border-bottom: 1px solid #e8edf3; white-space: nowrap; }
+.group-overview-table td { padding: 7px 10px; text-align: center; border-bottom: 1px solid #f0f3f7; background: #fff; }
+.group-overview-table th:nth-child(-n+2), .group-overview-table td:nth-child(-n+2) { text-align: left; }
+.group-overview-table tbody tr { cursor: pointer; }
+.group-overview-table tbody tr:hover td { background: #f5f9ff; }
+.group-overview-table tr.highlighted td { background: #eaf3ff; box-shadow: inset 0 1px #91caff, inset 0 -1px #91caff; }
+.group-overview-table tbody tr:last-child td { border-bottom: 0; }
+.group-name-link, .group-detail-link { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: #2563eb; }
+.group-name-link { font-weight: 600; color: #1e293b; }
+.group-metric-heading { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.group-status { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; color: #15803d; background: #f0fdf4; white-space: nowrap; }
+.group-status.warning { color: #b45309; background: #fffbeb; }
+.group-status.critical { color: #dc2626; background: #fef2f2; }
+.group-overview-table .current-count { color: #1e293b; font-weight: 600; }
+.group-overview-table .count-warn { color: #d97706; font-weight: 600; }
+.group-overview-table .count-danger { color: #dc2626; font-weight: 600; }
+.panorama-section { overflow: visible; }
+.panorama-legend { display: flex; align-items: center; gap: 12px; font-size: 11px; color: #64748b; }
+.panorama-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; }
+.legend-dot.warning { background: #f59e0b; }
+.legend-dot.critical { background: #ef4444; }
+.panorama-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.group-card {
+  min-width: 0; padding: 10px; border: 1px solid #e5e7eb; border-top: 3px solid #10b981; border-radius: 6px;
+  background: #fff; color: #0f172a; text-align: left; cursor: pointer; font-family: inherit;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.group-card.severity-warning { border-top-color: #f59e0b; }
+.group-card.severity-critical { border-top-color: #ef4444; }
+.group-card:hover { border-color: #93c5fd; box-shadow: 0 4px 12px rgba(15, 23, 42, .08); transform: translateY(-1px); }
+.group-card.highlighted { outline: 3px solid rgba(37, 99, 235, .25); border-color: #2563eb; }
+.group-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.group-card-head > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.group-card-head strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.group-card-head small { color: #94a3b8; font-size: 10px; }
+.group-card-head > .anticon { flex: none; color: #94a3b8; font-size: 11px; }
+.group-metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 10px; }
+.group-metric-grid > span { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.group-metric-grid em { font-style: normal; color: #64748b; font-size: 10px; }
+.group-metric-grid b { color: #1e293b; font-size: 13px; font-variant-numeric: tabular-nums; }
+.group-metric-grid b.warn, .drawer-overview b.warn, .drawer-sla-grid b.warn { color: #d97706; }
+.group-metric-grid b.danger, .drawer-overview b.danger, .drawer-sla-grid b.danger { color: #dc2626; }
+.group-drawer { display: flex; flex-direction: column; gap: 12px; }
+.drawer-overview { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+.drawer-overview > div { padding: 10px 8px; border-right: 1px solid #eef2f7; background: #f8fafc; }
+.drawer-overview > div:last-child { border-right: 0; }
+.drawer-overview span, .drawer-sla-grid span { display: block; margin-bottom: 4px; color: #64748b; font-size: 10px; }
+.drawer-overview b, .drawer-sla-grid b { font-size: 18px; color: #0f172a; font-variant-numeric: tabular-nums; }
+.drawer-section { border-top: 1px solid #e5e7eb; padding-top: 10px; }
+.drawer-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.drawer-section-head strong { font-size: 13px; color: #0f172a; }
+.drawer-section-head span { font-size: 10px; color: #94a3b8; }
+.drawer-legend { margin-bottom: 4px; }
+.lg-close::before { background: #2563eb; }
+.drawer-chart { display: block; width: 100%; height: 150px; }
+.drawer-axis { display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px; }
+.drawer-sla-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.drawer-sla-grid > button { padding: 9px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; }
+.drawer-table-wrap { overflow-x: auto; }
+.group-ticket-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.group-ticket-table th { padding: 7px 8px; color: #64748b; font-weight: 600; text-align: left; background: #f8fafc; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+.group-ticket-table td { padding: 8px; color: #334155; border-bottom: 1px solid #eef2f7; }
+.group-ticket-table td:nth-child(2) { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* 班组详情：统一卡片、指标与明细层级 */
+.group-drawer { gap: 8px; }
+.drawer-context { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 12px; flex-wrap: wrap; }
+.drawer-context-time { margin-left: auto; font-size: 11px; color: #94a3b8; }
+.drawer-overview { border: 1px solid #e8edf3; border-radius: 10px; background: #fff; }
+.drawer-overview > div { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 10px 6px; background: #fff; }
+.drawer-overview > div:nth-last-child(2) { background: #fffcf5; }
+.drawer-overview > div:last-child { background: #fff8f8; }
+.drawer-overview span, .drawer-sla-grid span { font-size: 12px; margin-bottom: 0; }
+.drawer-overview b { font-size: 20px; line-height: 1.2; letter-spacing: -.5px; }
+.drawer-section { padding: 10px 8px; border: 1px solid #e8edf3; border-radius: 10px; background: #fff; }
+.drawer-section-head { margin-bottom: 8px; }
+.drawer-section-head strong { font-size: 14px; font-weight: 600; }
+.drawer-section-head span { font-size: 11px; color: #94a3b8; }
+.drawer-chart { height: 100px; margin-top: 6px; }
+.drawer-axis { margin-top: 4px; }
+.drawer-sla-grid { gap: 0; background: #f8fafc; border-radius: 8px; overflow: hidden; }
+.drawer-sla-grid > button { border: 0; border-right: 1px solid #e8edf3; border-radius: 0; background: transparent; padding: 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.drawer-sla-grid > button:last-child { border-right: 0; }
+.drawer-sla-grid b { font-size: 18px; }
+.drawer-table-wrap { border: 1px solid #e8edf3; border-radius: 8px; }
+.group-ticket-table th { background: #f8fafc; padding: 7px 8px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.group-ticket-table td { padding: 7px 8px; font-size: 12px; }
+.group-ticket-table .rt-no { font: inherit; letter-spacing: normal; white-space: nowrap; }
+.group-ticket-table tbody tr:hover { background: #f8fbff; }
+.group-ticket-table tbody tr:last-child td { border-bottom: 0; }
+.group-drawer > .drawer-note { margin: 0; color: #94a3b8; font-size: 11px; text-align: center; }
+
+.drawer-sla-grid > button { font: inherit; text-align: left; cursor: pointer; }
+.drawer-sla-grid > button:hover { background: #eff6ff; }
+.drawer-sla-grid > button.active { background: #e6f4ff; box-shadow: inset 0 0 0 1px #69b1ff; }
+.group-ticket-pagination { margin-top: 8px; text-align: right; }
+.group-ticket-table td:first-child { font: inherit; overflow-wrap: anywhere; max-width: 160px; }
+.group-ticket-table td:last-child { white-space: nowrap; }
+.group-ticket-table .count-warn { color: #d97706; }
+.group-ticket-table .count-danger { color: #dc2626; }
+@media (min-width: 1580px) {
+  .panorama-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .metric-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .panorama-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .group-locator { grid-template-columns: minmax(150px, 1fr); }
+  .group-locator .monitor-scope-meta { grid-column: 1 / -1; }
+  .metric-strip, .panorama-grid { grid-template-columns: 1fr; }
+  .drawer-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .drawer-sla-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
