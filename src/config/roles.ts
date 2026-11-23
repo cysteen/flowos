@@ -316,6 +316,8 @@ export const ROLES: Record<RoleKey, RoleDef> = {
  * 无后台入口 → 否；无白名单（管理员）→ 是（scope 级收口仍由各自守卫负责）；有白名单 → 看是否在内。
  */
 export function canAccessAdminItem(role: RoleDef, key: string): boolean {
+  // 公共网站由运营管理员维护本租户，页面和 store 继续复核。
+  if (key === 'public-links') return role.key === 'ops-admin';
   if (!role.hasAdminEntry) return false;
   return !role.adminItems || role.adminItems.includes(key);
 }

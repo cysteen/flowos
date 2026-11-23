@@ -168,13 +168,15 @@ watch(open, (v) => {
 <template>
   <Teleport to="body">
     <div class="ai-copilot-wrap">
-      <PersonalLinksFabMenu v-if="!open">
+      <PersonalLinksFabMenu v-if="!open" v-slot="menu">
         <button
           type="button"
           class="ai-fab"
-          title="悬停查看我的链接，点击打开 AI 助手"
-          aria-label="AI 助手与我的链接"
-          @click="open = true"
+          aria-label="AI 助手与我的网址"
+          aria-haspopup="true"
+          :aria-expanded="menu.open"
+          :aria-controls="menu.controls"
+          @click="scope === 'ticket' && (open = true)"
         >
           <span class="ai-fab-icon" aria-hidden="true">
             <img :src="avatarUrl" alt="" class="ai-fab-img" />
@@ -189,6 +191,9 @@ watch(open, (v) => {
             AI 助手
             <span class="online-dot">在线</span>
           </span>
+          <PersonalLinksFabMenu mode="links" v-slot="menu">
+            <button type="button" class="head-links" aria-label="我的网址" aria-haspopup="true" :aria-expanded="menu.open" :aria-controls="menu.controls">我的网址</button>
+          </PersonalLinksFabMenu>
           <button type="button" class="head-close" title="收起" aria-label="收起" @click="collapse">
             <CloseOutlined />
           </button>
@@ -369,6 +374,17 @@ watch(open, (v) => {
   font-weight: 700;
   color: #111827;
   letter-spacing: 0.01em;
+}
+
+.head-links {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: #1a6fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .head-avatar {

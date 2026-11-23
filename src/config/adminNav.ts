@@ -117,6 +117,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'notify-rules', label: '通知管理', prd: 'PRD-815' },
       // 915：外显号码从容联云同步，本页维护班组授权与备注
       { key: 'outbound-numbers', label: '外显号码', prd: 'PRD-915' },
+      { key: 'public-links', label: '公共网站', prd: '【1215】个人与公共网址管理' },
     ],
   },
   {

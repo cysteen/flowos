@@ -36,6 +36,7 @@ function adminViewFor(key: string) {
   if (key === 'sla-policy') return () => import('@/views/admin/SlaPolicyView.vue');
   if (key === 'tenant-basic') return () => import('@/views/admin/TenantProfileView.vue');
   if (key === 'roles') return () => import('@/views/admin/RolePermissionView.vue');
+  if (key === 'public-links') return () => import('@/views/admin/PublicLinksManageView.vue');
   if (key === 'audit-logs') return () => import('@/views/admin/AuditLogsView.vue');
   if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');

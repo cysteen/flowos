@@ -22,6 +22,7 @@ import { useOpenUnifiedCreate } from '@/views/tickets/composables/unifiedCreateE
 import { XIAOZHI_CREATE_ROLES } from '@/config/roles';
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
 import PersonalLinksSection from '@/components/personal-links/PersonalLinksSection.vue';
+import PublicLinksSection from '@/components/public-links/PublicLinksSection.vue';
 import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
 import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
@@ -495,24 +496,12 @@ function openDrillTicket(no: string) {
       </div>
 
       <div class="card entry-hub-card">
-        <div class="entry-hub-head">
-          <span class="card-title">快捷入口</span>
-        </div>
-        <div class="quick-grid entry-hub-quick">
-          <div
-            v-for="q in HOME_QUICK_LINKS"
-            :key="q.key"
-            class="quick-tile quick-tile--hub"
-            @click="onQuick(q.key)"
-          >
-            <div class="quick-icon" :style="{ background: q.color + '14' }">
-              <component :is="quickIcons[q.icon]" :style="{ color: q.color, fontSize: '13px' }" />
-            </div>
-            <span class="quick-label">{{ q.label }}</span>
-          </div>
-        </div>
+        <div class="entry-hub-head"><span class="card-title">快捷访问</span></div>
+        <div class="entry-hub-scroll" tabindex="0" aria-label="快捷访问网址列表">
+        <div class="entry-hub-public"><PublicLinksSection heading="公共" personal-style /></div>
         <div class="entry-hub-personal">
-          <PersonalLinksSection variant="compact" hide-heading embedded hub-toolbar />
+          <PersonalLinksSection heading="个人" variant="compact" hide-heading embedded hub-toolbar :show-public-links="false" />
+        </div>
         </div>
       </div>
     </div>
@@ -1120,11 +1109,16 @@ function openDrillTicket(no: string) {
   background: #f3f4f6;
 }
 
-/* 底部行 */
+/* 与效能区的内边距、边框和四列网格保持一致，快捷入口对齐触达卡片 */
 .bottom-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 336px);
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-inline: 12px;
+  border-inline: 0.8px solid transparent;
+}
+.todo-card {
+  grid-column: span 3;
 }
 .todo-card,
 .entry-hub-card {
@@ -1136,29 +1130,56 @@ function openDrillTicket(no: string) {
 }
 .entry-hub-card {
   gap: 0;
+  contain: size;
+  min-height: 260px;
 }
-.entry-hub-head {
-  margin-bottom: 6px;
+.entry-hub-head { flex: none; }
+.entry-hub-head { margin-bottom: 8px; }
+.entry-hub-public :deep(.public-links) { border: 0; margin: 0; padding: 0; }
+.entry-hub-public :deep(.public-head), .entry-hub-personal :deep(.pl-head) { margin-bottom: 6px; gap: 6px; }
+.entry-hub-public :deep(.public-head strong), .entry-hub-personal :deep(.pl-title) { font-size: 12px; font-weight: 500; color: #64748b; }
+.entry-hub-public :deep(.public-head > span:last-child) { display: none; }
+.entry-hub-personal { margin-top: 8px; padding-top: 8px; border-top: 1px solid #edf0f5; }
+.entry-hub-personal :deep(.pl-section.compact.pl-section--embedded) { border: 0; background: transparent; padding: 0; border-radius: 0; }
+.entry-hub-public :deep(.public-list), .entry-hub-personal :deep(.pl-section--embedded .pl-list) { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; max-height: 180px; }
+.entry-hub-public :deep(.public-list li), .entry-hub-personal :deep(.pl-list > li) { min-width: 0; max-width: 100%; width: auto; }
+.entry-hub-public :deep(.public-list a), .entry-hub-personal :deep(.pl-section--embedded .pl-link) { display: inline-flex; align-items: center; gap: 5px; width: auto; max-width: 100%; box-sizing: border-box; padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f9fafb; font-family: inherit; font-size: 11px; line-height: 1.5; }
+.entry-hub-public :deep(.public-list a:hover), .entry-hub-personal :deep(.pl-link:hover) { background: #eff6ff; border-color: #bfdbfe; }
+.entry-hub-personal :deep(.pl-empty) { padding: 0; color: #94a3b8; font-size: 11px; line-height: 1.6; }
+.entry-hub-public :deep(.anticon),
+.entry-hub-personal :deep(.anticon),
+.entry-hub-personal :deep(.pl-ico),
+.entry-hub-personal :deep(.pl-bookmark-ico) {
+  color: #1a6fff;
+  font-size: 12px;
 }
-.entry-hub-personal {
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 0;
+.entry-hub-scroll {
+  margin-right: -14px;
+  padding-right: 8px;
+  min-height: 0;
+  flex: 1;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-gutter: stable;
 }
-.entry-hub-personal :deep(.pl-section.compact.pl-section--embedded) {
-  border-bottom: none;
-  background: #fff;
-  padding: 8px 10px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+.entry-hub-scroll :deep(.public-list),
+.entry-hub-scroll :deep(.pl-list),
+.entry-hub-scroll :deep(.pl-list-wrap--compact.pl-list-wrap--scroll) {
+  max-height: none;
+  overflow: visible;
 }
-.entry-hub-personal :deep(.pl-section--embedded .pl-list) {
-  gap: 6px;
+.entry-hub-public :deep(.public-list a > span:last-child),
+.entry-hub-personal :deep(.pl-name) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a6fff;
+  line-height: 1.5;
 }
-.entry-hub-personal :deep(.pl-section--embedded .pl-link) {
-  max-width: 100%;
-}
+.entry-hub-public :deep(.public-list li),
+.entry-hub-personal :deep(.pl-list > li) { flex: 0 0 auto; }
 .entry-hub-split {
   display: flex;
   align-items: center;
@@ -1362,6 +1383,9 @@ function openDrillTicket(no: string) {
   }
   .bottom-row {
     grid-template-columns: 1fr;
+  }
+  .todo-card {
+    grid-column: auto;
   }
 }
 

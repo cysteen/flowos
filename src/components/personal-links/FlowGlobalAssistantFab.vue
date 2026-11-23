@@ -7,8 +7,8 @@ const avatarUrl = `${import.meta.env.BASE_URL}images/ai-assistant-avatar.png`;
 <template>
   <Teleport to="body">
     <div class="global-fab-wrap">
-      <PersonalLinksFabMenu>
-        <button type="button" class="global-fab" title="悬停查看我的链接" aria-label="我的链接">
+      <PersonalLinksFabMenu v-slot="menu">
+        <button type="button" class="global-fab" aria-label="我的网址" aria-haspopup="true" :aria-expanded="menu.open" :aria-controls="menu.controls">
           <img :src="avatarUrl" alt="" class="global-fab-img" />
         </button>
       </PersonalLinksFabMenu>

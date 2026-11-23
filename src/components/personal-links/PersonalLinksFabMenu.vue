@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { BookOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import { usePersonalLinksStore } from '@/stores/personalLinks';
 import PersonalLinksManageModal from './PersonalLinksManageModal.vue';
+import PublicLinksSection from '@/components/public-links/PublicLinksSection.vue';
 
 /** 浮层宽度（与 bridge 对齐） */
 const CARD_W = 200;
+const props = withDefaults(defineProps<{ mode?: 'auto' | 'links' }>(), { mode: 'auto' });
+const menuId = `personal-links-${useId()}`;
 
 const store = usePersonalLinksStore();
+const route = useRoute();
+const anchor = ref<HTMLElement>();
+let trigger: HTMLElement | null = null;
 const manageOpen = ref(false);
 const menuOpen = ref(false);
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -20,6 +27,11 @@ function clearHide() {
 }
 
 function openMenu() {
+  if (!store.scopeKey) return;
+  // hover 同样记录触发按钮，Esc 才能从列表恢复焦点。
+  trigger = anchor.value?.querySelector<HTMLElement>(`[aria-controls="${menuId}"]`)
+    ?? Array.from(anchor.value?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []).find(button => !button.closest('.fab-menu-card'))
+    ?? trigger;
   clearHide();
   menuOpen.value = true;
 }
@@ -27,9 +39,37 @@ function openMenu() {
 function scheduleHide() {
   clearHide();
   hideTimer = setTimeout(() => {
+    if (anchor.value?.contains(document.activeElement)) return;
     menuOpen.value = false;
   }, 160);
 }
+
+function onTriggerClick(event: MouseEvent) {
+  if ((event.target as HTMLElement).closest('.fab-menu-card')) return;
+  // 工单页点击语义仍由 AI 助手提供；共享 AI 面板内入口由主会话接线。
+  if (props.mode !== 'links' && /^\/tickets\/[^/]+$/.test(route.path) && route.path !== '/tickets/list') return;
+  trigger = (event.target as HTMLElement).closest('button') ?? event.target as HTMLElement;
+  clearHide();
+  // 真实鼠标先触发 mouseenter，再触发 click；点击保持展开，避免首次点击反而收起。
+  openMenu();
+}
+async function onArrow(event: KeyboardEvent) {
+  if ((event.target as HTMLElement).closest('.fab-menu-card')) return;
+  event.preventDefault(); trigger = event.target as HTMLElement; openMenu();
+  await nextTick();
+  const panel = anchor.value?.querySelector<HTMLElement>('.fab-menu-card');
+  const firstTarget = panel?.querySelector<HTMLElement>('.fab-bookmark')
+    ?? panel?.querySelector<HTMLElement>('.fab-menu-empty-btn')
+    ?? panel?.querySelector<HTMLElement>('.public-list a')
+    ?? panel?.querySelector<HTMLElement>('.fab-menu-manage');
+  firstTarget?.focus();
+}
+function closeMenu() { clearHide(); menuOpen.value = false; trigger?.focus(); }
+function outside(event: MouseEvent) { if (!anchor.value?.contains(event.target as Node)) { clearHide(); menuOpen.value = false; } }
+function onFocusOut(event: FocusEvent) { if (!anchor.value?.contains(event.relatedTarget as Node)) scheduleHide(); }
+document.addEventListener('click', outside);
+onBeforeUnmount(() => { clearHide(); document.removeEventListener('click', outside); });
+watch(() => store.scopeKey, () => { clearHide(); menuOpen.value = false; manageOpen.value = false; });
 
 function openUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -46,7 +86,13 @@ function openManage(e: MouseEvent) {
 
 <template>
   <div
+    ref="anchor"
     class="fab-menu-anchor"
+    @click.capture="onTriggerClick"
+    @keydown.up="onArrow"
+    @keydown.esc.stop.prevent="closeMenu"
+    @focusin="clearHide"
+    @focusout="onFocusOut"
     @mouseenter="openMenu"
     @mouseleave="scheduleHide"
   >
@@ -60,6 +106,9 @@ function openManage(e: MouseEvent) {
     <Transition name="fab-menu">
       <div
         v-if="menuOpen"
+        :id="menuId"
+        role="region"
+        aria-label="我的网址"
         class="fab-menu-card"
         :style="{ width: `${CARD_W}px` }"
         @mouseenter="openMenu"
@@ -71,28 +120,32 @@ function openManage(e: MouseEvent) {
               <BookOutlined />
             </span>
           </a-tooltip>
-          <span class="fab-menu-title">常用链接</span>
-          <button type="button" class="fab-menu-manage" title="维护" @click="openManage">
+          <span class="fab-menu-title">我的网址</span>
+          <button type="button" class="fab-menu-manage" title="维护" aria-label="维护个人网址" @click="openManage">
             <SettingOutlined />
           </button>
         </p>
 
-        <div v-if="!store.links.length" class="fab-menu-empty">
-          暂无链接
+        <div v-if="store.loadError || store.conflict" class="fab-menu-empty">
+          {{ store.loadError || '个人网址有更新' }}<button type="button" class="fab-menu-empty-btn" @click="store.reload">重新加载</button>
+        </div>
+        <div v-if="!store.links.length && !store.loadError" class="fab-menu-empty">
+          暂无个人网址
           <button type="button" class="fab-menu-empty-btn" @click="openManage">去添加</button>
         </div>
-        <ul v-else class="fab-menu-list">
+        <ul v-else-if="store.links.length" class="fab-menu-list">
           <li v-for="item in store.links" :key="item.id">
-            <button type="button" class="fab-bookmark" :title="item.url" @click.stop="openUrl(item.url)">
+            <button type="button" class="fab-bookmark" :title="`${item.title}\n${item.url}`" @click.stop="openUrl(item.url)">
               <BookOutlined class="fab-bookmark-ico" aria-hidden="true" />
               <span class="fab-bookmark-name">{{ item.title }}</span>
             </button>
           </li>
         </ul>
+        <div class="public-wrap"><PublicLinksSection /></div>
       </div>
     </Transition>
 
-    <slot />
+    <slot :open="menuOpen" :controls="menuId" />
   </div>
 
   <PersonalLinksManageModal v-model:open="manageOpen" />
@@ -132,6 +185,7 @@ function openManage(e: MouseEvent) {
   z-index: 1;
   overflow: hidden;
 }
+.public-wrap { padding: 0 8px 8px; }
 
 .fab-menu-card::after {
   content: '';

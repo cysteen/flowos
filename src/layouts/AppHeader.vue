@@ -22,6 +22,7 @@ import { ROLE_OPTION_GROUPS, isRoleKey, ROLES, CTI_BAR_ROLES, adminHomePath, can
 import { firstMenuPath } from '@/config/navigation';
 import { adminNavActiveKey } from '@/config/adminNav';
 import { DEFAULT_BRAND_LOGO_URL } from '@/constants/brand';
+import { confirmPublicLinksContextChange } from '@/components/personal-links/contextGuard';
 
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -132,12 +133,13 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', syncFullscreen);
 });
 
-function switchTenant(tenantId: string) {
+async function switchTenant(tenantId: string) {
   if (tenantId === tenant.currentTenantId) return;
   if (!tenant.canSwitchTo(tenantId)) {
     message.warning('该租户已停用，无法切换');
     return;
   }
+  if (!await confirmPublicLinksContextChange()) return;
   const roleKey = user.switchTenant(tenantId);
   if (!roleKey) {
     message.error('切换租户失败');

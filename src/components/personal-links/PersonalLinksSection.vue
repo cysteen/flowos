@@ -3,10 +3,13 @@ import { computed, ref } from 'vue';
 import { BookOutlined, LinkOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import { usePersonalLinksStore } from '@/stores/personalLinks';
 import PersonalLinksManageModal from './PersonalLinksManageModal.vue';
+import PublicLinksSection from '@/components/public-links/PublicLinksSection.vue';
 
 const props = withDefaults(
   defineProps<{
     /** compact=AI 面板；inline=门户「快捷入口」卡内子区；card=独立卡片（已废弃，保留兼容） */
+    heading?: string;
+    showPublicLinks?: boolean;
     variant?: 'compact' | 'card' | 'inline';
     /** 门户合一卡：分割条已写「我的网址」，仅保留维护按钮 */
     hideHeading?: boolean;
@@ -15,7 +18,7 @@ const props = withDefaults(
     /** 门户：维护在左、「我的网址」标题紧挨其右侧（无顶部分割条） */
     hubToolbar?: boolean;
   }>(),
-  { variant: 'compact', hideHeading: false, embedded: false, hubToolbar: false },
+  { heading: '我的网址', showPublicLinks: true, variant: 'compact', hideHeading: false, embedded: false, hubToolbar: false },
 );
 
 const store = usePersonalLinksStore();
@@ -36,10 +39,10 @@ function openUrl(url: string) {
 </script>
 
 <template>
-  <section class="pl-section" :class="[variant, { 'pl-section--embedded': embedded }]">
+  <section v-if="store.scopeKey" class="pl-section" :class="[variant, { 'pl-section--embedded': embedded }]">
     <div v-if="variant === 'card'" class="pl-card-head">
-      <span class="card-title">我的网址</span>
-      <button type="button" class="pl-manage" @click="openManage">
+      <span class="card-title">{{ heading }}</span>
+      <button type="button" class="pl-manage" aria-label="维护" @click="openManage">
         <SettingOutlined />
         维护
       </button>
@@ -55,9 +58,9 @@ function openUrl(url: string) {
       <template v-if="hubToolbar">
         <span class="pl-title">
           <LinkOutlined class="pl-ico" />
-          我的网址
+          {{ heading }}
         </span>
-        <button type="button" class="pl-manage" @click="openManage">
+        <button type="button" class="pl-manage" aria-label="维护" @click="openManage">
           <SettingOutlined />
           维护
         </button>
@@ -65,11 +68,12 @@ function openUrl(url: string) {
       <template v-else>
         <span v-if="!hideHeading" class="pl-title">
           <LinkOutlined class="pl-ico" />
-          我的网址
+          {{ heading }}
         </span>
         <button
           type="button"
           class="pl-manage"
+          aria-label="维护"
           :class="{ 'pl-manage--solo': hideHeading }"
           @click="openManage"
         >
@@ -79,11 +83,14 @@ function openUrl(url: string) {
       </template>
     </div>
 
-    <div v-if="!store.links.length" class="pl-empty">
+    <div v-if="store.loadError || store.conflict" class="pl-empty">
+      {{ store.loadError || '个人网址有更新' }} <button type="button" class="pl-manage" @click="store.reload">重新加载</button>
+    </div>
+    <div v-if="!store.links.length && !store.loadError" class="pl-empty">
       暂无个人网址，点「维护」添加常用链接。
     </div>
     <div
-      v-else
+      v-else-if="store.links.length"
       class="pl-list-wrap"
       :class="{
         'pl-list-wrap--compact': variant === 'compact',
@@ -99,7 +106,7 @@ function openUrl(url: string) {
       }"
     >
       <li v-for="item in store.links" :key="item.id">
-        <button type="button" class="pl-link" :title="item.url" @click="openUrl(item.url)">
+        <button type="button" class="pl-link" :title="`${item.title}\n${item.url}`" @click="openUrl(item.url)">
           <span class="pl-link-chip">
             <BookOutlined class="pl-bookmark-ico" aria-hidden="true" />
             <span class="pl-name">{{ item.title }}</span>
@@ -110,6 +117,7 @@ function openUrl(url: string) {
     </ul>
     </div>
 
+    <PublicLinksSection v-if="showPublicLinks" />
     <Teleport to="body">
       <PersonalLinksManageModal v-model:open="manageOpen" />
     </Teleport>
@@ -250,6 +258,7 @@ function openUrl(url: string) {
   flex-wrap: wrap;
   gap: 6px;
 }
+.pl-list > li { min-width: 0; max-width: 100%; }
 .pl-list.is-compact {
   gap: 6px;
 }
@@ -338,6 +347,10 @@ function openUrl(url: string) {
   color: #1a6fff;
 }
 .pl-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 600;
   color: #1a6fff;
